@@ -1,0 +1,13 @@
+[Unit]
+Description=W hub CV Factory Worker
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/whub-cv-factory/workers/cv-worker
+EnvironmentFile=/opt/whub-cv-factory/.env
+ExecStart=/opt/whub-cv-factory/.venv/bin/python -m src.main
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

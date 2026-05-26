@@ -1,0 +1,15 @@
+[project]
+name = "whub-cv-worker"
+version = "0.1.0"
+description = "Worker MVP W hub CV Factory"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2",
+  "pydantic-settings>=2",
+  "supabase>=2",
+  "pymupdf>=1.24",
+  "Pillow>=10"
+]
+
+[project.scripts]
+whub-cv-worker = "src.main:main"
