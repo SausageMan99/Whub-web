@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 import json
 from .config import settings
 from .supabase_client import client
@@ -29,5 +30,12 @@ def save_success(request_id: str, version_number: int, structured_json: dict, pd
         "qa_status": "passed",
         "qa_report": qa_report,
     }).execute().data[0]
-    client.table("cv_requests").update({"status": "ready", "current_version_id": version["id"], "last_error": None}).eq("id", request_id).execute()
+    now = datetime.now(timezone.utc).isoformat()
+    client.table("cv_requests").update({
+        "status": "ready",
+        "current_version_id": version["id"],
+        "last_error": None,
+        "ready_at": now,
+        "updated_at": now,
+    }).eq("id", request_id).execute()
     return version["id"]

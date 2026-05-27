@@ -1,5 +1,52 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-body { background: #f7f5f2; color: #241D19; }
+@theme {
+  --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
+  --color-whub: #7001F5;
+  --color-ink: #241D19;
+  --color-porcelain: #F7F4F0;
+  --color-chalk: #FFFFFF;
+  --color-lilac: #EEE3FF;
+  --color-graphite: #141118;
+  --color-mist: #F1EDF7;
+  --shadow-soft: 0 24px 70px rgba(36, 29, 25, 0.10);
+  --shadow-violet: 0 18px 42px rgba(112, 1, 245, 0.28);
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #f7f4f0;
+  color: #241d19;
+  font-family: var(--font-inter), Inter, system-ui, sans-serif;
+  font-feature-settings: "ss01" on, "cv05" on;
+}
+
+::selection {
+  background: rgba(112, 1, 245, 0.16);
+  color: #241d19;
+}
+
+input,
+textarea,
+select {
+  outline: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: #7001f5;
+  box-shadow: 0 0 0 4px rgba(112, 1, 245, 0.1);
+}

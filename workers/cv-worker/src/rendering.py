@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import subprocess
+import sys
 from PIL import Image
 from .config import settings
 
@@ -23,7 +24,7 @@ def render_pdf(data: dict, workdir: Path) -> Path:
     input_path = workdir / "input.json"
     output_path = workdir / "output.pdf"
     input_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    result = subprocess.run(["python", settings.whub_renderer_path, str(input_path), str(output_path)], text=True, capture_output=True, timeout=180)
+    result = subprocess.run([sys.executable, settings.whub_renderer_path, str(input_path), str(output_path)], text=True, capture_output=True, timeout=180)
     if result.returncode != 0 or not output_path.exists():
         raise RenderingError(result.stderr or result.stdout or "Renderer failed")
     return output_path

@@ -10,7 +10,13 @@ export async function createSupabaseServerClient() {
       cookies: {
         getAll() { return cookieStore.getAll(); },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+          } catch {
+            // Next.js interdit la mutation de cookies depuis certains Server Components.
+            // Supabase peut tenter de rafraîchir la session pendant un simple rendu page ;
+            // dans ce cas on ignore ici, les Server Actions / Route Handlers peuvent encore écrire les cookies.
+          }
         }
       }
     }
