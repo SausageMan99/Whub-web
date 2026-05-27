@@ -26,6 +26,10 @@ export async function createRequest(formData: FormData) {
   if (!file || file.size === 0) redirect("/requests/new?error=file_required");
   if (file.type !== "application/pdf") redirect("/requests/new?error=pdf_required");
 
+  const firstBytes = new Uint8Array(await file.arrayBuffer()).slice(0, 5);
+  const magic = new TextDecoder().decode(firstBytes);
+  if (!magic.startsWith("%PDF-")) redirect("/requests/new?error=pdf_required");
+
   const requestId = crypto.randomUUID();
   const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
   const sourcePath = `${requestId}/source/${safeName || "source.pdf"}`;

@@ -28,7 +28,17 @@ export async function middleware(request: NextRequest) {
   // Force le refresh de l'access token AVANT l'exécution des Server Components.
   // C'est la SEULE endroit où on peut écrire des cookies de session en toute sécurité
   // dans Next.js App Router.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+  const isProtected =
+    pathname.startsWith("/dashboard") || pathname.startsWith("/requests");
+  if (isProtected && !user) {
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return supabaseResponse;
 }
