@@ -6,10 +6,16 @@ from src.structuring import (
     assemble_structured_blocks,
     apply_client_synthesis_policy,
     StructuringError,
+    LONG_CV_CHAR_THRESHOLD,
+    LONG_CV_BLOCK_TARGET_CHARS,
 )
 
 
 class LongCvStructuringTest(unittest.TestCase):
+    def test_default_long_cv_threshold_targets_timeout_prone_inputs(self):
+        self.assertLessEqual(LONG_CV_CHAR_THRESHOLD, 10000)
+        self.assertLessEqual(LONG_CV_BLOCK_TARGET_CHARS, 7000)
+
     def test_split_cv_text_into_semantic_blocks_preserves_content_order(self):
         text = """
 Jean Dupont

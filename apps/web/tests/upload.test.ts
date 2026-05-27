@@ -1,11 +1,12 @@
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 
-/* ---------- mutable state shared with mocks ---------- */
 let state = {
   user: { id: 'u1', email: 'test@whub.fr' } as { id: string; email: string } | null,
   allowed: { email: 'test@whub.fr', role: 'member' } as { email: string; role: string } | null,
+  whitelistError: null as Error | null,
   uploadError: null as Error | null,
+  signedUrl: 'https://signed-upload.local' as string | null,
   profileError: null as Error | null,
   insertError: null as Error | null,
 };
@@ -21,8 +22,7 @@ function makeAdminClient() {
             return {
               eq() {
                 return {
-                  maybeSingle: () =>
-                    Promise.resolve({ data: state.allowed, error: null }),
+                  maybeSingle: () => Promise.resolve({ data: state.allowed, error: state.whitelistError }),
                 };
               },
             };
@@ -48,15 +48,14 @@ function makeAdminClient() {
       return {};
     },
     storage: {
-      from() {
+      from(bucket: string) {
         return {
-          upload(path: string, _file: unknown, meta?: Record<string, unknown>) {
-            recordedCalls.push({
-              table: 'storage.cv-sources',
-              method: 'upload',
-              payload: { path, contentType: meta?.contentType },
+          createSignedUploadUrl(path: string) {
+            recordedCalls.push({ table: `storage.${bucket}`, method: 'createSignedUploadUrl', payload: { path } });
+            return Promise.resolve({
+              data: state.signedUrl ? { signedUrl: state.signedUrl } : null,
+              error: state.uploadError,
             });
-            return Promise.resolve({ error: state.uploadError });
           },
         };
       },
@@ -65,6 +64,7 @@ function makeAdminClient() {
 }
 
 let createRequest: (formData: FormData) => Promise<void>;
+let prepareUpload: (input: { fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
 
 before(async (t) => {
   t.mock.module('next/navigation', {
@@ -88,10 +88,7 @@ before(async (t) => {
       createSupabaseServerClient: () =>
         Promise.resolve({
           auth: {
-            getUser: () =>
-              Promise.resolve({
-                data: { user: state.user },
-              }),
+            getUser: () => Promise.resolve({ data: { user: state.user } }),
           },
         }),
     },
@@ -104,157 +101,102 @@ before(async (t) => {
 
   const mod = await import('../app/requests/new/actions');
   createRequest = mod.createRequest;
+  prepareUpload = mod.prepareUpload;
 });
 
-/* ---------- helpers ---------- */
 function reset(user = true) {
   state.user = user ? { id: 'u1', email: 'test@whub.fr' } : null;
   state.allowed = { email: 'test@whub.fr', role: 'member' };
+  state.whitelistError = null;
   state.uploadError = null;
+  state.signedUrl = 'https://signed-upload.local';
   state.profileError = null;
   state.insertError = null;
   recordedCalls = [];
 }
 
-function makeFormData(file: File, extra: Record<string, string> = {}) {
+function makePreparedForm(extra: Record<string, string> = {}) {
   const fd = new FormData();
-  fd.append('file', file);
-  fd.append('title', extra.title ?? 'T');
-  fd.append('candidate_first_name', extra.candidate_first_name ?? 'Alice');
-  fd.append('instructions', extra.instructions ?? '');
-  fd.append('priority', extra.priority ?? 'normal');
+  fd.set('request_id', extra.request_id ?? '11111111-1111-4111-8111-111111111111');
+  fd.set('source_path', extra.source_path ?? '11111111-1111-4111-8111-111111111111/source/cv.pdf');
+  fd.set('source_file_name', extra.source_file_name ?? 'cv.pdf');
+  fd.set('source_file_size', extra.source_file_size ?? '8');
+  fd.set('source_file_mime', extra.source_file_mime ?? 'application/pdf');
+  fd.set('title', extra.title ?? ' Senior Dev ');
+  fd.set('candidate_first_name', extra.candidate_first_name ?? ' Alice ');
+  fd.set('instructions', extra.instructions ?? ' Do it well ');
+  fd.set('priority', extra.priority ?? 'high');
   return fd;
 }
 
-/* ---------- tests ---------- */
+test('prepareUpload — rejects unauthenticated users', async () => {
+  reset(false);
+  await assert.rejects(() => prepareUpload({ fileName: 'cv.pdf', fileType: 'application/pdf' }), /REDIRECT \/login/);
+});
+
+test('prepareUpload — creates signed upload URL with sanitized source path', async () => {
+  reset();
+  const result = await prepareUpload({ fileName: 'my cv.pdf', fileType: 'application/pdf' });
+
+  assert.equal(result.signedUrl, 'https://signed-upload.local');
+  assert.match(result.requestId, /^[0-9a-f-]{36}$/);
+  assert.match(result.sourcePath, /^[0-9a-f-]{36}\/source\/my_cv\.pdf$/);
+  const call = recordedCalls.find((c) => c.method === 'createSignedUploadUrl');
+  assert.ok(call, 'signed upload call should exist');
+  assert.deepEqual(call!.payload, { path: result.sourcePath });
+});
+
+test('prepareUpload — redirects to upload_failed on signed URL error', async () => {
+  reset();
+  state.uploadError = new Error('boom');
+  await assert.rejects(() => prepareUpload({ fileName: 'cv.pdf', fileType: 'application/pdf' }), /REDIRECT \/requests\/new\?error=upload_failed/);
+});
 
 test('createRequest — rejects unauthenticated users', async () => {
   reset(false);
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/login/
-  );
+  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/login/);
 });
 
-test('createRequest — blocks non-whitelisted users', async () => {
+test('createRequest — propagates non-whitelisted users as not_allowed', async () => {
   reset();
   state.allowed = null;
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/login\?error=not_allowed/
-  );
+  await assert.rejects(() => createRequest(makePreparedForm()), /not_allowed/);
 });
 
-test('createRequest — requires a non-empty file', async () => {
+test('createRequest — requires prepared upload metadata', async () => {
   reset();
-  await assert.rejects(
-    () => createRequest(makeFormData(new File([], 'empty.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/requests\/new\?error=file_required/
-  );
-});
-
-test('createRequest — requires application/pdf MIME type', async () => {
-  reset();
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['not a pdf'], 'cv.txt', { type: 'text/plain' }))),
-    /REDIRECT \/requests\/new\?error=pdf_required/
-  );
-});
-
-test('createRequest — requires PDF magic bytes (%PDF)', async () => {
-  reset();
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['hello world not pdf'], 'cv.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/requests\/new\?error=pdf_required/
-  );
-});
-
-test('createRequest — uploads file to storage with correct source_path', async () => {
-  reset();
-  const fd = makeFormData(
-    new File(['%PDF-1.4'], 'my cv.pdf', { type: 'application/pdf' }),
-    { title: ' Senior Dev ', candidate_first_name: ' Alice ', instructions: ' Do it well ', priority: 'high' }
-  );
-
-  await assert.rejects(
-    () => createRequest(fd),
-    /REDIRECT \/requests\//
-  );
-
-  const uploadCall = recordedCalls.find((c) => c.method === 'upload');
-  assert.ok(uploadCall, 'upload call should exist');
-  const payload = uploadCall!.payload as { path: string; contentType: string };
-  assert.match(payload.path, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/source\/my_cv\.pdf$/);
-  assert.equal(payload.contentType, 'application/pdf');
+  await assert.rejects(() => createRequest(new FormData()), /REDIRECT \/requests\/new\?error=request_failed/);
 });
 
 test('createRequest — inserts correct row into cv_requests', async () => {
   reset();
-  const fd = makeFormData(
-    new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }),
-    { title: ' Senior Dev ', candidate_first_name: ' Alice ', instructions: ' Do it well ', priority: 'high' }
-  );
-
-  await assert.rejects(
-    () => createRequest(fd),
-    /REDIRECT \/requests\//
-  );
+  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/requests\/11111111-1111-4111-8111-111111111111/);
 
   const insertCall = recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert');
   assert.ok(insertCall, 'insert call should exist');
   const row = insertCall!.payload as Record<string, unknown>;
 
+  assert.equal(row.id, '11111111-1111-4111-8111-111111111111');
+  assert.equal(row.created_by, 'u1');
   assert.equal(row.title, 'Senior Dev');
   assert.equal(row.candidate_first_name, 'Alice');
   assert.equal(row.instructions, 'Do it well');
   assert.equal(row.priority, 'high');
   assert.equal(row.status, 'submitted');
+  assert.equal(row.source_file_path, '11111111-1111-4111-8111-111111111111/source/cv.pdf');
   assert.equal(row.source_file_name, 'cv.pdf');
   assert.equal(row.source_file_mime, 'application/pdf');
   assert.equal(row.source_file_size, 8);
-  assert.equal(typeof row.id, 'string');
-  assert.match(row.source_file_path as string, /source\/cv\.pdf$/);
-});
-
-test('createRequest — redirects to upload_failed on storage error', async () => {
-  reset();
-  state.uploadError = new Error('boom');
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/requests\/new\?error=upload_failed/
-  );
 });
 
 test('createRequest — redirects to profile_failed on profile upsert error', async () => {
   reset();
   state.profileError = new Error('boom');
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/requests\/new\?error=profile_failed/
-  );
+  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/requests\/new\?error=profile_failed/);
 });
 
 test('createRequest — redirects to request_failed on insert error', async () => {
   reset();
   state.insertError = new Error('boom');
-  await assert.rejects(
-    () => createRequest(makeFormData(new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }))),
-    /REDIRECT \/requests\/new\?error=request_failed/
-  );
-});
-
-test('createRequest — redirects to the new request page on success', async () => {
-  reset();
-  const fd = makeFormData(new File(['%PDF-1.4'], 'cv.pdf', { type: 'application/pdf' }));
-
-  let redirectUrl: string | null = null;
-  try {
-    await createRequest(fd);
-  } catch (err: any) {
-    const m = err.message.match(/REDIRECT (.*)/);
-    if (m) redirectUrl = m[1];
-  }
-
-  assert.ok(redirectUrl, 'should have redirected');
-  assert.match(redirectUrl!, /^\/requests\/[0-9a-f-]{36}$/);
+  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/requests\/new\?error=request_failed/);
 });

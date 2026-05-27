@@ -85,6 +85,11 @@ class TestExtractJson:
         with pytest.raises(StructuringError, match="clés manquantes"):
             _extract_json(raw)
 
+    def test_defaults_missing_formations_to_empty_list(self):
+        raw = '{"name":"A","title":"B","skills":[],"experiences":[]}'
+        result = _extract_json(raw)
+        assert result["formations"] == []
+
     def test_raises_when_experiences_not_list(self):
         raw = '{"name":"A","title":"B","formations":[],"skills":[],"experiences":"nope"}'
         with pytest.raises(StructuringError, match="doit être une liste"):

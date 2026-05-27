@@ -17,8 +17,8 @@ CONTACT_PATTERNS = [r"@", r"linkedin", r"github\.com", r"https?://", r"\+33", r"
 
 REQUIRED_TOP_LEVEL_KEYS = {"name", "title", "formations", "skills", "experiences"}
 MAX_PROMPT_CV_CHARS = 45000
-LONG_CV_CHAR_THRESHOLD = int(os.getenv("WHUB_LONG_CV_CHAR_THRESHOLD", "30000"))
-LONG_CV_BLOCK_TARGET_CHARS = int(os.getenv("WHUB_LONG_CV_BLOCK_TARGET_CHARS", "12000"))
+LONG_CV_CHAR_THRESHOLD = int(os.getenv("WHUB_LONG_CV_CHAR_THRESHOLD", "10000"))
+LONG_CV_BLOCK_TARGET_CHARS = int(os.getenv("WHUB_LONG_CV_BLOCK_TARGET_CHARS", "7000"))
 HERMES_STRUCTURING_TIMEOUT_SECONDS = int(os.getenv("WHUB_HERMES_STRUCTURING_TIMEOUT_SECONDS", "600"))
 WHUB_CV_SYNTHESIS_MODE = os.getenv("WHUB_CV_SYNTHESIS_MODE", "standard").strip().lower()
 SYNTHESIS_MODES = {"standard", "complete", "urgent"}
@@ -77,6 +77,9 @@ def _extract_json(raw: str) -> dict:
     if not isinstance(data, dict):
         raise StructuringError("JSON Hermes invalide: objet racine attendu")
     missing = REQUIRED_TOP_LEVEL_KEYS - set(data.keys())
+    if missing == {"formations"}:
+        data["formations"] = []
+        missing = set()
     if missing:
         raise StructuringError(f"JSON renderer incomplet, clés manquantes: {sorted(missing)}")
     for key in ["formations", "skills", "experiences"]:

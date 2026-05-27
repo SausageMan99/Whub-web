@@ -11,3 +11,4 @@ __pycache__
 supabase/.temp/
 *.egg-info/
 *.tsbuildinfo
+.vercel

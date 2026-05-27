@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
 import { AutoRefreshWhenActive } from "@/components/AutoRefreshWhenActive";
-import { addComment } from "./actions";
+import { addComment, retryRequest } from "./actions";
 
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -39,7 +39,17 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           <h1 className="mt-3 max-w-4xl text-5xl font-black leading-[0.98] tracking-[-0.06em]">{request.title || "Demande CV"}</h1>
           <p className="mt-4 text-base font-semibold text-ink/50">Prénom candidat : <span className="text-ink">{request.candidate_first_name || "—"}</span></p>
         </div>
-        <StatusBadge status={request.status} />
+        <div className="flex flex-col items-start gap-3">
+          <StatusBadge status={request.status} />
+          {["failed", "qa_failed"].includes(request.status) && (
+            <form action={retryRequest}>
+              <input type="hidden" name="request_id" value={id} />
+              <button className="rounded-2xl bg-ink px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5">
+                Relancer la génération
+              </button>
+            </form>
+          )}
+        </div>
       </div>
 
       <Panel className="mt-8 p-6">
