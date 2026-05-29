@@ -78,6 +78,14 @@ test('getCvProgress — ready event overrides status', () => {
   });
 });
 
+test('getCvProgress — draft_ready', () => {
+  assert.deepEqual(getCvProgress('draft_ready', []), {
+    percent: 100,
+    label: 'Brouillon prêt',
+    helper: 'Le PDF peut être téléchargé pour relecture, avec des points qualité à corriger avant envoi client.',
+  });
+});
+
 test('getCvProgress — failed', () => {
   assert.deepEqual(getCvProgress('failed', []), {
     percent: 100,

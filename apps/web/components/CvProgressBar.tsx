@@ -2,7 +2,7 @@ import { getCvProgress } from "@/lib/cv-ui";
 
 export function CvProgressBar({ status, events = [], compact = false }: { status: string; events?: string[]; compact?: boolean }) {
   const progress = getCvProgress(status, events);
-  const tone = status === "failed" || status === "qa_failed" ? "bg-red-500" : status === "ready" ? "bg-emerald-500" : "bg-whub";
+  const tone = status === "failed" || status === "qa_failed" ? "bg-red-500" : status === "ready" ? "bg-emerald-500" : status === "draft_ready" ? "bg-amber-500" : "bg-whub";
 
   return (
     <div className={compact ? "min-w-[160px]" : "w-full"}>

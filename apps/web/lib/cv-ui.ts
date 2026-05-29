@@ -3,6 +3,7 @@ export type CvStatus =
   | "processing"
   | "qa_failed"
   | "ready"
+  | "draft_ready"
   | "revision_requested"
   | "failed"
   | "cancelled"
@@ -39,6 +40,14 @@ export function getCvProgress(status: CvStatus, eventTypes: string[] = []): CvPr
       percent: 100,
       label: "CV prêt",
       helper: "Le PDF final a passé la QA et peut être téléchargé."
+    };
+  }
+
+  if (status === "draft_ready") {
+    return {
+      percent: 100,
+      label: "Brouillon prêt",
+      helper: "Le PDF peut être téléchargé pour relecture, avec des points qualité à corriger avant envoi client."
     };
   }
 

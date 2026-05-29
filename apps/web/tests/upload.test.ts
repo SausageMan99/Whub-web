@@ -1,5 +1,7 @@
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 let state = {
   user: { id: 'u1', email: 'test@whub.fr' } as { id: string; email: string } | null,
@@ -8,6 +10,7 @@ let state = {
   uploadError: null as Error | null,
   signedUrl: 'https://signed-upload.local' as string | null,
   profileError: null as Error | null,
+  profileThrow: null as Error | null,
   insertError: null as Error | null,
 };
 
@@ -32,6 +35,7 @@ function makeAdminClient() {
       if (table === 'profiles') {
         return {
           upsert(payload: unknown) {
+            if (state.profileThrow) throw state.profileThrow;
             recordedCalls.push({ table, method: 'upsert', payload });
             return Promise.resolve({ error: state.profileError });
           },
@@ -63,8 +67,9 @@ function makeAdminClient() {
   };
 }
 
-let createRequest: (formData: FormData) => Promise<void>;
+let createRequest: (formData: FormData) => Promise<{ ok: boolean; requestId?: string; error?: string }>;
 let prepareUpload: (input: { fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
+let buildGuidedInstructions: (selected: string[], freeText: string) => string;
 
 before(async (t) => {
   t.mock.module('next/navigation', {
@@ -102,6 +107,8 @@ before(async (t) => {
   const mod = await import('../app/requests/new/actions');
   createRequest = mod.createRequest;
   prepareUpload = mod.prepareUpload;
+  const intentions = await import('../app/requests/new/intentions');
+  buildGuidedInstructions = intentions.buildGuidedInstructions;
 });
 
 function reset(user = true) {
@@ -111,6 +118,7 @@ function reset(user = true) {
   state.uploadError = null;
   state.signedUrl = 'https://signed-upload.local';
   state.profileError = null;
+  state.profileThrow = null;
   state.insertError = null;
   recordedCalls = [];
 }
@@ -127,6 +135,34 @@ function makePreparedForm(extra: Record<string, string> = {}) {
   fd.set('instructions', extra.instructions ?? ' Do it well ');
   fd.set('priority', extra.priority ?? 'high');
   return fd;
+}
+
+async function captureConsoleError<T>(run: () => Promise<T>): Promise<{ result: T; logs: unknown[][] }> {
+  const original = console.error;
+  const logs: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    logs.push(args);
+  };
+  try {
+    return { result: await run(), logs };
+  } finally {
+    console.error = original;
+  }
+}
+
+function assertCreateRequestFailureLog(
+  logs: unknown[][],
+  stage: string,
+  requestId: string | null,
+  message?: string,
+) {
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], 'createRequest failed');
+  const payload = logs[0][1] as { stage?: string; requestId?: string | null; message?: string; source_path?: string };
+  assert.equal(payload.stage, stage);
+  assert.equal(payload.requestId, requestId);
+  assert.equal(payload.source_path, undefined);
+  if (message) assert.equal(payload.message, message);
 }
 
 test('prepareUpload — rejects unauthenticated users', async () => {
@@ -157,20 +193,27 @@ test('createRequest — rejects unauthenticated users', async () => {
   await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/login/);
 });
 
-test('createRequest — propagates non-whitelisted users as not_allowed', async () => {
+test('createRequest — returns request_failed and logs unexpected exception for non-whitelisted users', async () => {
   reset();
   state.allowed = null;
-  await assert.rejects(() => createRequest(makePreparedForm()), /not_allowed/);
+  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
+  assert.deepEqual(result, { ok: false, error: 'request_failed' });
+  assertCreateRequestFailureLog(logs, 'unexpected_exception', null, 'not_allowed');
 });
 
-test('createRequest — requires prepared upload metadata', async () => {
+test('createRequest — requires prepared upload metadata and logs missing_upload_metadata', async () => {
   reset();
-  await assert.rejects(() => createRequest(new FormData()), /REDIRECT \/requests\/new\?error=request_failed/);
+  const { result, logs } = await captureConsoleError(() => createRequest(new FormData()));
+  assert.deepEqual(result, { ok: false, error: 'request_failed' });
+  assertCreateRequestFailureLog(logs, 'missing_upload_metadata', null, 'unknown');
 });
 
-test('createRequest — inserts correct row into cv_requests', async () => {
+test('createRequest — inserts correct row into cv_requests and returns success instead of throwing redirect', async () => {
   reset();
-  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/requests\/11111111-1111-4111-8111-111111111111/);
+  assert.deepEqual(await createRequest(makePreparedForm()), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
 
   const insertCall = recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert');
   assert.ok(insertCall, 'insert call should exist');
@@ -189,14 +232,57 @@ test('createRequest — inserts correct row into cv_requests', async () => {
   assert.equal(row.source_file_size, 8);
 });
 
-test('createRequest — redirects to profile_failed on profile upsert error', async () => {
+test('createRequest — returns profile_failed and logs profile_upsert on profile upsert error', async () => {
   reset();
   state.profileError = new Error('boom');
-  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/requests\/new\?error=profile_failed/);
+  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
+  assert.deepEqual(result, { ok: false, error: 'profile_failed' });
+  assertCreateRequestFailureLog(logs, 'profile_upsert', '11111111-1111-4111-8111-111111111111', 'boom');
 });
 
-test('createRequest — redirects to request_failed on insert error', async () => {
+test('createRequest — returns request_failed and logs cv_requests_insert on insert error', async () => {
   reset();
   state.insertError = new Error('boom');
-  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/requests\/new\?error=request_failed/);
+  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
+  assert.deepEqual(result, { ok: false, error: 'request_failed' });
+  assertCreateRequestFailureLog(logs, 'cv_requests_insert', '11111111-1111-4111-8111-111111111111', 'boom');
+});
+
+test('createRequest — catches thrown dependencies and logs unexpected_exception', async () => {
+  reset();
+  state.profileThrow = new Error('dependency exploded');
+  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
+  assert.deepEqual(result, { ok: false, error: 'request_failed' });
+  assertCreateRequestFailureLog(logs, 'unexpected_exception', '11111111-1111-4111-8111-111111111111', 'dependency exploded');
+});
+
+test('new request page — uses the signed-upload client form, not direct createRequest form action', () => {
+  const source = readFileSync(join(process.cwd(), 'app/requests/new/page.tsx'), 'utf8');
+  assert.match(source, /import NewRequestForm from "\.\/NewRequestForm"/);
+  assert.match(source, /<NewRequestForm initialError=\{rawError \?\? null\} \/>/);
+  assert.doesNotMatch(source, /<form action=\{createRequest\}/);
+});
+
+test('guided CV intentions — enrich free-text instructions without replacing them', () => {
+  const result = buildGuidedInstructions(['short_client', 'highlight_stack', 'recent_experience', 'unknown'], 'Mission Stago, insister sur Java/AWS.');
+
+  assert.match(result, /^Intentions guidées W hub :/);
+  assert.match(result, /CV court client/);
+  assert.match(result, /stack technique/);
+  assert.match(result, /expérience récente/);
+  assert.match(result, /Consignes libres :\nMission Stago, insister sur Java\/AWS\./);
+  assert.doesNotMatch(result, /unknown/);
+});
+
+test('new request form — exposes light guided intention options and keeps free instructions textarea', () => {
+  const formSource = readFileSync(join(process.cwd(), 'app/requests/new/NewRequestForm.tsx'), 'utf8');
+  const intentionSource = readFileSync(join(process.cwd(), 'app/requests/new/intentions.ts'), 'utf8');
+
+  for (const value of ['standard', 'short_client', 'highlight_stack', 'recent_experience', 'senior_target']) {
+    assert.match(intentionSource, new RegExp(`key: \\"${value}\\"`));
+  }
+  assert.match(formSource, /name="cv_intentions"/);
+  assert.match(formSource, /value=\{intention\.key\}/);
+  assert.match(formSource, /name="instructions"/);
+  assert.match(formSource, /buildGuidedInstructions/);
 });

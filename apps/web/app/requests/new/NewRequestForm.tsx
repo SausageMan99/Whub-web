@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { prepareUpload, createRequest } from "./actions";
+import { buildGuidedInstructions, guidedCvIntentions } from "./intentions";
 
 const errorMessages: Record<string, string> = {
   file_required: "Ajoute un PDF source avant de créer la demande.",
@@ -62,6 +63,9 @@ export default function NewRequestForm({ initialError }: { initialError?: string
         return;
       }
 
+      const guidedIntentions = form.getAll("cv_intentions").map(String);
+      const instructions = buildGuidedInstructions(guidedIntentions, String(form.get("instructions") || ""));
+
       const meta = new FormData();
       meta.set("request_id", requestId);
       meta.set("source_path", sourcePath);
@@ -70,10 +74,17 @@ export default function NewRequestForm({ initialError }: { initialError?: string
       meta.set("source_file_mime", file.type);
       meta.set("title", String(form.get("title") || ""));
       meta.set("candidate_first_name", String(form.get("candidate_first_name") || ""));
-      meta.set("instructions", String(form.get("instructions") || ""));
+      meta.set("instructions", instructions);
       meta.set("priority", String(form.get("priority") || "normal"));
 
-      await createRequest(meta);
+      const result = await createRequest(meta);
+      if (!result.ok) {
+        setErrorCode(result.error);
+        setIsSubmitting(false);
+        return;
+      }
+
+      router.push(`/requests/${result.requestId}`);
     } catch {
       setErrorCode("request_failed");
       setIsSubmitting(false);
@@ -115,9 +126,29 @@ export default function NewRequestForm({ initialError }: { initialError?: string
         <span className="mt-3 block text-xs font-semibold text-ink/45">PDF uniquement. Les coordonnées seront retirées du rendu client.</span>
       </label>
 
+      <fieldset className="rounded-[1.75rem] border border-ink/8 bg-white/70 p-5">
+        <legend className="px-1 text-sm font-black text-ink">Intention du CV</legend>
+        <p className="mt-1 text-xs font-semibold leading-5 text-ink/45">
+          Optionnel : coche une ou deux intentions. Le worker gardera le jugement W hub et les faits du CV.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {guidedCvIntentions.map((intention) => (
+            <label key={intention.key} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-ink/8 bg-porcelain/60 px-4 py-3 transition hover:border-whub/35 hover:bg-whub/[0.04]">
+              <input
+                type="checkbox"
+                name="cv_intentions"
+                value={intention.key}
+                className="mt-1 h-4 w-4 rounded border-ink/20 accent-whub"
+              />
+              <span className="text-sm font-black leading-5 text-ink/72">{intention.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
       <label className="block">
         <span className="text-sm font-black text-ink">Consignes de génération</span>
-        <textarea name="instructions" rows={7} className="mt-2 w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Titre souhaité, stack à mettre en avant, mission client, éléments à retirer, urgence commerciale..." />
+        <textarea name="instructions" rows={6} className="mt-2 w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Mission cible, stack à pousser, contexte client, éléments à raccourcir..." />
       </label>
 
       <div className="flex flex-col items-start justify-between gap-4 border-t border-ink/8 pt-6 sm:flex-row sm:items-center">

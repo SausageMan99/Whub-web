@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
 import { AutoRefreshWhenActive } from "@/components/AutoRefreshWhenActive";
 import { addComment, retryRequest } from "./actions";
+import { draftReadyTitle, hardFailureCopy, isHardFailureStatus, normalizeDraftWarnings } from "@/lib/request-detail-ui";
 
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,6 +30,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   }
 
   const eventTypes = (events ?? []).map((event) => event.event_type);
+  const latestVersion = versions?.[0] ?? null;
+  const draftTitle = draftReadyTitle(request.status);
+  const draftWarnings = draftTitle ? normalizeDraftWarnings(latestVersion?.qa_report) : [];
+  const hardFailure = hardFailureCopy(request.status);
+  const canDownloadGeneratedPdf = !isHardFailureStatus(request.status);
 
   return (
     <AppShell active="detail">
@@ -65,6 +71,51 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
       </Panel>
 
+      {draftTitle && (
+        <Panel className="mt-6 border-amber-200/80 bg-amber-50/80 p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-700">Brouillon téléchargeable</p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">{draftTitle}</h2>
+              <p className="mt-2 text-sm font-semibold leading-6 text-ink/60">
+                Le PDF est sûr à relire, mais il reste des points de mise en page à corriger avant envoi client.
+              </p>
+            </div>
+            {latestVersion?.final_pdf_path && canDownloadGeneratedPdf && (
+              <a className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-ink px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5" href={`/requests/${id}/download/${latestVersion.id}`}>
+                Télécharger le brouillon
+              </a>
+            )}
+          </div>
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-white/75 p-4">
+            <h3 className="font-black text-ink">Points qualité détectés</h3>
+            {draftWarnings.length ? (
+              <ul className="mt-3 space-y-2">
+                {draftWarnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`} className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-ink/70">{warning}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm font-semibold text-ink/50">Un point qualité de mise en page a été détecté. Indique la correction souhaitée ci-dessous.</p>
+            )}
+          </div>
+          <form action={addComment} className="mt-5 space-y-3 border-t border-amber-200 pt-5">
+            <input type="hidden" name="request_id" value={id} />
+            <label className="block text-sm font-black text-ink" htmlFor="draft-feedback">Que veux-tu modifier ?</label>
+            <textarea id="draft-feedback" name="body" rows={4} className="w-full resize-none rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Ex. Aérer la page 2, garder toutes les expériences, réduire seulement le bloc compétences..." />
+            <button className="rounded-2xl bg-whub px-5 py-3 font-black text-white shadow-violet">Demander les modifications</button>
+          </form>
+        </Panel>
+      )}
+
+      {hardFailure && (
+        <Panel className="mt-6 border-red-200/80 bg-red-50/80 p-6">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-red-700">Sortie bloquée</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">{hardFailure.title}</h2>
+          <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-ink/60">{hardFailure.body}</p>
+        </Panel>
+      )}
+
       <div className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-6">
           <Panel className="p-6">
@@ -96,11 +147,13 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
                   </div>
                   <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="break-all text-xs font-semibold text-ink/42">{v.final_pdf_path || "PDF non disponible"}</p>
-                    {v.final_pdf_path && (
+                    {v.final_pdf_path && canDownloadGeneratedPdf ? (
                       <a className="inline-flex shrink-0 items-center justify-center rounded-xl bg-ink px-4 py-2 text-xs font-black text-white" href={`/requests/${id}/download/${v.id}`}>
                         Télécharger
                       </a>
-                    )}
+                    ) : v.final_pdf_path ? (
+                      <span className="inline-flex shrink-0 items-center justify-center rounded-xl bg-red-100 px-4 py-2 text-xs font-black text-red-800">PDF bloqué</span>
+                    ) : null}
                   </div>
                 </div>
               ))}
