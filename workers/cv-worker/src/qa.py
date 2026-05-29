@@ -329,7 +329,7 @@ def _extract_pdf_source_sensitive_entities(text: str) -> list[str]:
             if len(cleaned) < 4:
                 continue
             normalized = _normalize_for_fidelity(cleaned)
-            if normalized in {"missions cles suite", "prestations realisee suite", "environnement technique suite", "contexte suite"}:
+            if normalized in {"missions cles suite", "prestations realisee suite", "environnement technique suite", "contexte suite"} or normalized.endswith(" suite"):
                 continue
             tokens = normalized.split()
             if not tokens or all(token in PDF_ENTITY_STOPWORDS for token in tokens):

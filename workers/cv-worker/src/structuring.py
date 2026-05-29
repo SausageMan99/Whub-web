@@ -20,6 +20,7 @@ REQUIRED_TOP_LEVEL_KEYS = {"name", "title", "formations", "skills", "experiences
 MAX_PROMPT_CV_CHARS = 45000
 LONG_CV_CHAR_THRESHOLD = int(os.getenv("WHUB_LONG_CV_CHAR_THRESHOLD", "10000"))
 LONG_CV_BLOCK_TARGET_CHARS = int(os.getenv("WHUB_LONG_CV_BLOCK_TARGET_CHARS", "7000"))
+MEDIUM_CV_SINGLE_PASS_THRESHOLD = int(os.getenv("WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD", "15000"))
 HERMES_STRUCTURING_TIMEOUT_SECONDS = int(os.getenv("WHUB_HERMES_STRUCTURING_TIMEOUT_SECONDS", "600"))
 WHUB_CV_SYNTHESIS_MODE = os.getenv("WHUB_CV_SYNTHESIS_MODE", "complete").strip().lower()
 SYNTHESIS_MODES = {"standard", "complete", "urgent"}
@@ -229,6 +230,8 @@ def find_numbered_placeholder_repetitions(strings: list[str] | str) -> list[dict
             continue
         base = match.group(1).strip(" -–—:.;")
         normalized_base = _normalize_for_fidelity(base)
+        if " suite" in f" {normalized_base} ":
+            continue
         if len(normalized_base) < 8:
             continue
         entry = groups.setdefault(normalized_base, {"base": base, "numbers": set(), "examples": []})
@@ -599,7 +602,7 @@ _HEADING_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("experience", re.compile(r"^(exp[ée]riences?|exp[ée]riences? professionnelles?|parcours professionnel|missions?)\b", re.I)),
 ]
 _EXPERIENCE_START_RE = re.compile(
-    r"^(?:\d{4}|(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+\d{4})\b.*",
+    r"^(?:(?:\d{2}/\d{4}|\d{4})\s*(?:[-–—]|à|a|au|to)\s*(?:\d{2}/\d{4}|\d{4}|aujourd|présent|present|ce\s+jour)|(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+\d{4}|\d{4}\b.+)\b.*",
     re.I,
 )
 
@@ -625,6 +628,94 @@ def _heading_kind(line: str) -> str | None:
 
 def _make_block(kind: str, lines: list[str], index: int) -> dict:
     return {"kind": kind, "index": index, "text": "\n".join(lines).strip()}
+
+
+def _is_experience_start_line(line: str) -> bool:
+    cleaned = str(line or "").strip()
+    if not cleaned or not _EXPERIENCE_START_RE.match(cleaned):
+        return False
+    normalized = _normalize_for_fidelity(cleaned)
+    # A bare year such as "2019" is usually a timeline tick or page fragment, not
+    # a new experience. Require either role markers or an obvious company/entity.
+    if re.fullmatch(r"(?:19|20)\d{2}", normalized):
+        return False
+    has_role_or_company = bool(_EXPERIENCE_ROLE_MARKER_RE.search(cleaned) or re.search(r"\b[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ]{3,}\b", cleaned))
+    return bool(
+        has_role_or_company and (
+            _EXPERIENCE_DATE_RANGE_RE.search(cleaned)
+            or re.match(r"^(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+\d{4}", cleaned, re.I)
+            or re.match(r"^(?:19|20)\d{2}\b.+", cleaned)
+        )
+    )
+
+
+def _is_contact_noise_block(block: dict) -> bool:
+    if block.get("kind") != "experience":
+        return False
+    text = str(block.get("text") or "")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return True
+    has_contact = bool(re.search(r"@|linkedin|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b", text, re.I))
+    meaningful = [line for line in lines if _heading_kind(line) != "experience" and not re.search(r"@|linkedin|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b|rue|avenue|boulevard|impasse|\b\d{5}\b", line, re.I)]
+    return has_contact and not meaningful
+
+
+def _is_tiny_year_fragment(block: dict) -> bool:
+    return str(block.get("text") or "").strip().isdigit() and len(str(block.get("text") or "").strip()) == 4
+
+
+def _is_empty_experience_heading_block(block: dict) -> bool:
+    text = str(block.get("text") or "").strip()
+    return block.get("kind") == "experience" and bool(text) and _heading_kind(text) == "experience"
+
+
+def repair_long_cv_blocks(blocks: list[dict]) -> list[dict]:
+    """Repair deterministic long-CV split artifacts before Hermes structuring.
+
+    Some source PDFs expose experience role lines under a nearby FORMATION heading
+    and split the following `Missions` body into a separate block. We do not drop
+    source content; we only reclassify/merge blocks so each Hermes call receives a
+    coherent section.
+    """
+    repaired: list[dict] = []
+    pending_experience_header: dict | None = None
+
+    def flush_pending() -> None:
+        nonlocal pending_experience_header
+        if pending_experience_header is not None:
+            repaired.append(pending_experience_header)
+            pending_experience_header = None
+
+    for block in blocks:
+        text = str(block.get("text") or "").strip()
+        if not text or _is_contact_noise_block(block) or _is_empty_experience_heading_block(block) or _is_tiny_year_fragment(block):
+            continue
+        first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        kind = str(block.get("kind") or "")
+        if kind == "education" and _is_experience_start_line(first_line):
+            block = dict(block)
+            block["kind"] = "experience"
+            kind = "experience"
+
+        if kind == "experience":
+            has_start = any(_is_experience_start_line(line.strip()) for line in text.splitlines() if line.strip())
+            if has_start and not re.search(r"\bmissions?\b|\blivrables?\b|environnement\s+technique", text, re.I):
+                flush_pending()
+                pending_experience_header = dict(block)
+                continue
+            if pending_experience_header is not None and not has_start:
+                merged = dict(pending_experience_header)
+                merged["text"] = f"{pending_experience_header['text'].rstrip()}\n{block['text'].lstrip()}"
+                pending_experience_header = merged
+                continue
+
+        flush_pending()
+        repaired.append(block)
+    flush_pending()
+    for index, block in enumerate(repaired, start=1):
+        block["index"] = index
+    return repaired
 
 
 def _split_oversized_block(block: dict, target_chars: int) -> list[dict]:
@@ -671,31 +762,37 @@ def split_cv_text_into_blocks(text: str, target_chars: int = LONG_CV_BLOCK_TARGE
         current_lines = []
 
     for line in compacted.splitlines():
+        if _is_experience_start_line(line.strip()) and current_lines:
+            # Split on real experience starts regardless of the current visible
+            # section. Some PDFs put professional date/role lines directly under
+            # a FORMATION heading, but those must still start an experience block.
+            flush()
+            current_kind = "experience"
+            inside_experiences = True
+            current_lines = [line]
+            continue
+
         kind = _heading_kind(line)
         if kind:
+            if kind == "experience" and current_kind == "experience" and current_lines:
+                # `Missions:` / `Missions clés` inside an experience is content,
+                # not a new top-level experience block.
+                current_lines.append(line)
+                continue
             flush()
             current_kind = kind
             inside_experiences = kind == "experience"
             current_lines = [line]
             continue
 
-        if inside_experiences and _EXPERIENCE_START_RE.match(line.strip()) and current_lines:
-            # Keep the visible "EXPÉRIENCES" heading attached to the first
-            # dated mission, but split subsequent dated missions.
-            if not (len(current_lines) == 1 and _heading_kind(current_lines[0]) == "experience"):
-                flush()
-                current_kind = "experience"
-                current_lines = [line]
-                continue
-
         current_lines.append(line)
 
     flush()
 
     blocks: list[dict] = []
-    for block in raw_blocks:
+    for block in repair_long_cv_blocks(raw_blocks):
         blocks.extend(_split_oversized_block(block, target_chars))
-    return blocks
+    return repair_long_cv_blocks(blocks)
 
 
 def assemble_structured_blocks(parts: list[dict], candidate_first_name: str | None = None) -> dict:
@@ -1354,7 +1451,12 @@ def build_whub_json(
     compacted_text = compact_extracted_text(extracted_text)
     runner = hermes_runner or _default_hermes_runner
 
-    if len(compacted_text) <= long_cv_threshold:
+    use_default_long_threshold = long_cv_threshold == LONG_CV_CHAR_THRESHOLD
+    use_single_pass = len(compacted_text) <= long_cv_threshold or (
+        use_default_long_threshold and len(compacted_text) <= MEDIUM_CV_SINGLE_PASS_THRESHOLD
+    )
+
+    if use_single_pass:
         prompt = _hermes_prompt(compacted_text, instructions, comments, candidate_first_name)
         start = perf_counter()
         try:

@@ -18,6 +18,8 @@ from src.structuring import (
     apply_client_synthesis_policy,
     _hermes_prompt,
     _source_gate_structured_data,
+    split_cv_text_into_blocks,
+    find_numbered_placeholder_repetitions,
 )
 
 
@@ -39,6 +41,51 @@ class TestCompactExtractedText:
     def test_normalizes_crlf(self):
         source = "A\r\nB\rC"
         assert compact_extracted_text(source) == "A\nB\nC"
+
+
+class TestLongCVSplitting:
+    def test_repairs_oussama_style_contact_noise_and_date_stubs(self):
+        source = """
+Oussama ASSAOUI
+Technical Leader RPA/IA
+2019 - 2020
+2016 - 2019
+Université Gustave Eiffel
+M2 en Informatique
+EXPÉRIENCES PROFESSIONNELLES
++33 7 58 46 54 53
+oussama.assaoui@example.com
+https://www.linkedin.com/in/oussama-assaoui/
+FORMATION
+07/2022 – 01/2024     Software Engineer - CDI chez BNP Paribas - France
+Missions :
+-
+Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.
+Livrables clés :
+-
+Déploiement de 4 nouveaux robots RPA en production.
+01/2024 – Aujourd’hui     Consultant RPA Senior – Freelance chez EDF - France
+Missions :
+-
+Contribuer activement à la feuille de route RPA d’EDF.
+2019
+2018
+CERTIFICATIONS
+COMPÉTENCES
+•   RPA :
+Blue Prism
+"""
+
+        blocks = split_cv_text_into_blocks(source)
+        texts = [block["text"] for block in blocks]
+
+        assert not any("+33" in text or "linkedin" in text.lower() for text in texts)
+        assert not any(text.strip() in {"2019", "2018"} for text in texts)
+        assert any(block["kind"] == "experience" and "Software Engineer - CDI chez BNP Paribas" in block["text"] and "Conceptualiser" in block["text"] for block in blocks)
+        assert not any(block["kind"] == "education" and "Software Engineer - CDI" in block["text"] for block in blocks)
+
+    def test_suite_numbered_categories_are_not_placeholder_repetitions(self):
+        assert find_numbered_placeholder_repetitions(["Autres — suite 2", "Autres — suite 3", "Autres — suite 4"]) == []
 
 
 class TestAssertNoContactInJson:
