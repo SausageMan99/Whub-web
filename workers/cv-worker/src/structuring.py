@@ -106,6 +106,11 @@ def _normalize_for_fidelity(text: str) -> str:
     without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
     folded = without_accents.lower().replace("’", "'")
     folded = re.sub(r"[–—−]", "-", folded)
+    # LinkedIn/profile PDFs can inject page markers in the middle of a sentence
+    # (e.g. "responsable de Page 2 of 4 l'identité visuelle"). These are
+    # extraction artifacts, not source wording, and must not break copy-fidelity
+    # validation when the generated content faithfully joins the sentence.
+    folded = re.sub(r"\bpage\s+\d+\s+(?:of|sur)\s+\d+\b", " ", folded)
     # Fidelity checks compare text extracted from different PDF/layout surfaces.
     # Punctuation used only as a visual separator is unstable: source PDFs may
     # have "Jenkins,\nLogiciels" while the W hub render has "Jenkins. Logiciels".

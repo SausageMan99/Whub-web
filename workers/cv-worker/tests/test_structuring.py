@@ -161,6 +161,36 @@ Tech Lead RPA - CDI chez STALLERGENES GREER - France
         assert "experience_header_without_body" in message
         assert "empty_experience_date_stub" in message
 
+    def test_source_fidelity_ignores_pdf_page_markers_inside_source_sentence(self):
+        source = """
+DIGITAL SEEDER
+UI - UX Designer
+mars 2020 - mars 2021
+Pour un client dans le domaine du football, j'ai travaillé sur la conception
+d'une application mobile de type réseau social axée autour du football. Le
+projet a nécessité la création de plus de 100 écrans, y compris des wireframes
+détaillés et des maquettes haute-fidélité. J'ai également été responsable de
+Page 2 of 4
+l'identité visuelle complète du produit et de l'accompagnement client pour
+définition du besoin.
+"""
+        data = {
+            "name": "GAËL",
+            "title": "UI - UX Designer",
+            "formations": [],
+            "skills": [],
+            "experiences": [{
+                "date": "mars 2020 - mars 2021",
+                "role": "UI - UX Designer chez DIGITAL SEEDER",
+                "company_highlight": "DIGITAL SEEDER",
+                "sections": [{"heading": "Missions clés", "content": [
+                    "Pour un client dans le domaine du football, j'ai travaillé sur la conception d'une application mobile de type réseau social axée autour du football. Le projet a nécessité la création de plus de 100 écrans, y compris des wireframes détaillés et des maquettes haute-fidélité. J'ai également été responsable de l'identité visuelle complète du produit et de l'accompagnement client pour définition du besoin."
+                ]}],
+            }],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
     def test_rejects_numbered_placeholder_repeated_bullets(self):
         data = {
             "name": "ZAHIA",
