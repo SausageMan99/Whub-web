@@ -14,6 +14,7 @@ from .qa import run_qa, QAError, classify_qa_report
 from .storage import next_version_number, save_version
 from .layout_retry import is_safe_layout_retry_report
 from .layout_packing import build_layout_packing_options
+from .layout_intelligence import build_layout_retry_options
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
@@ -100,14 +101,7 @@ def process_job(job: dict) -> None:
             pdf = render_pdf(
                 structured,
                 workdir,
-                layout_options={
-                    **layout_options,
-                    "anti_crowding": True,
-                    "force_experiences_new_page": True,
-                    "page_dense_char_threshold": 2600,
-                    "max_used_ratio": 0.80,
-                    "readability_reserve": 170,
-                },
+                layout_options=build_layout_retry_options(layout_options, e.report),
                 output_name="output_layout_retry.pdf",
             )
             timings["render_pdf_layout_retry"] = perf_counter() - stage_start

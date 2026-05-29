@@ -35,6 +35,7 @@ SKILL_DENSE_SEPARATOR_THRESHOLD = 18
 SKILL_HEADING_RE = re.compile(r"comp[ée]tences|cloud|devops|backend|frontend|outils|m[ée]thodes|data", re.I)
 EXPERIENCE_SECTION_RE = re.compile(r"exp[ée]riences?|missions?|prestations?|r[ée]alis[ée]e?s?|activit[ée]s?|environnement", re.I)
 EXPERIENCE_DATE_RE = re.compile(r"(?:19|20)\d{2}|aujourd|janvier|f[ée]vrier|mars|avril|mai|juin|juillet|ao[ûu]t|septembre|octobre|novembre|d[ée]cembre", re.I)
+CONTINUATION_START_RE = re.compile(r"^(?:\(suite\)|missions?\s*\(suite\)|livrables?\s+cl[ée]s?\s*\(suite\))(?:\s|$|[:–—-])", re.I)
 
 SOFT_LAYOUT_CODES = {
     "page_too_dense",
@@ -146,6 +147,38 @@ def _page_text_stats(blocks: list[dict[str, Any]]) -> tuple[str, int, float, flo
     return text, char_count, used_top, used_bottom
 
 
+def collect_page_layout_metrics(doc: fitz.Document) -> list[dict[str, Any]]:
+    """Return deterministic page-level layout metrics used by QA heuristics."""
+    metrics: list[dict[str, Any]] = []
+    for page_index in range(1, doc.page_count + 1):
+        page = doc[page_index - 1]
+        blocks = sorted(_text_blocks(page), key=lambda block: (block["bbox"][1], block["bbox"][0]))
+        text, char_count, used_top, used_bottom = _page_text_stats(blocks)
+        block_count = len(blocks)
+        page_height = float(page.rect.height or 0.0)
+        used_ratio = (used_bottom - used_top) / page_height if page_height else 0.0
+        blank_after_pt = max(0.0, page_height - used_bottom) if blocks else page_height
+        first_text = " ".join((_block_text(blocks[0]) if blocks else "").split())
+        metrics.append({
+            "page": page_index,
+            "char_count": char_count,
+            "block_count": block_count,
+            "used_ratio": used_ratio,
+            "blank_after_pt": blank_after_pt,
+            "starts_with_suite": bool(CONTINUATION_START_RE.search(first_text)),
+            "has_experience_heading": any(
+                _looks_like_experience_heading(_block_text(block)) or bool(EXPERIENCE_SECTION_RE.search(_block_text(block)))
+                for block in blocks
+            ),
+            # Internal fields reused by legacy layout checks.
+            "text": text,
+            "used_top": used_top,
+            "used_bottom": used_bottom,
+            "blocks": blocks,
+        })
+    return metrics
+
+
 def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
     """Detect visually ugly but technically valid CV layouts.
 
@@ -157,12 +190,16 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
     """
     findings: list[dict[str, Any]] = []
     page_count = doc.page_count
-    for page_index in range(1, page_count + 1):
+    page_metrics = collect_page_layout_metrics(doc)
+    for metric in page_metrics:
+        page_index = int(metric["page"])
         page = doc[page_index - 1]
-        blocks = sorted(_text_blocks(page), key=lambda block: (block["bbox"][1], block["bbox"][0]))
-        text, char_count, used_top, used_bottom = _page_text_stats(blocks)
-        block_count = len(blocks)
-        used_ratio = (used_bottom - used_top) / page.rect.height if page.rect.height else 0.0
+        blocks = cast(list[dict[str, Any]], metric["blocks"])
+        text = str(metric["text"])
+        char_count = int(metric["char_count"])
+        block_count = int(metric["block_count"])
+        used_ratio = float(metric["used_ratio"])
+        blank_after_pt = float(metric["blank_after_pt"])
 
         if "(suite)" in text and SKILL_HEADING_RE.search(text) and not EXPERIENCE_SECTION_RE.search(text.split("(suite)", 1)[0]):
             findings.append(_issue(
@@ -207,6 +244,27 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 char_count=char_count,
                 block_count=block_count,
                 used_ratio=round(float(used_ratio), 3),
+            ))
+
+        sparse_non_final = (
+            page_count >= 3
+            and 1 < page_index < page_count
+            and (
+                (used_ratio <= 0.40 and char_count <= 900)
+                or (bool(metric["starts_with_suite"]) and used_ratio <= 0.45)
+                or (blank_after_pt >= 430 and char_count <= 1200)
+            )
+        )
+        if sparse_non_final:
+            findings.append(_issue(
+                "page_too_sparse",
+                page_index,
+                f"Page {page_index} trop peu remplie: {char_count} caractères, {block_count} blocs, hauteur utilisée {used_ratio:.0%}",
+                char_count=char_count,
+                block_count=block_count,
+                used_ratio=round(float(used_ratio), 3),
+                blank_after_pt=round(float(blank_after_pt), 1),
+                starts_with_suite=bool(metric["starts_with_suite"]),
             ))
 
         in_skills_area = False

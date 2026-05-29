@@ -201,6 +201,63 @@ class RendererOverflowTest(unittest.TestCase):
         self.assertIn('ARCHITECTE CLOUD CHEZ CLIENT', text)
         self.assert_no_text_below_margin(pdf_path)
 
+    def test_skill_overflow_does_not_create_sparse_experience_continuation_tail(self):
+        skill_items = [
+            f'Compétence avancée {i:02d} architecture cloud data sécurité intégration API gouvernance qualité'
+            for i in range(1, 105)
+        ]
+        long_livrables = [
+            f'Livrable clé synthétique numéro {i:02d} avec cadrage métier, analyse fonctionnelle, coordination équipes et validation recette détaillée'
+            for i in range(1, 50)
+        ]
+        data = {
+            'name': 'LINO',
+            'title': 'Consultant transformation SI',
+            'formations': [{'date': '2020', 'degree': 'Master systèmes d’information', 'school': 'Université'}],
+            'skills': [{'category': 'Architecture et delivery', 'items': skill_items}],
+            'experiences': [
+                {
+                    'date': 'Janvier 2024 - Aujourd’hui',
+                    'role': 'CONSULTANT TRANSFORMATION SI CHEZ CLIENT ALPHA',
+                    'company_highlight': 'CLIENT ALPHA',
+                    'sections': [
+                        {
+                            'heading': 'Missions',
+                            'content': [
+                                f'Mission structurante numéro {i:02d} de pilotage projet, ateliers, coordination et reporting'
+                                for i in range(1, 12)
+                            ],
+                        },
+                        {'heading': 'Livrables clés', 'content': long_livrables},
+                    ],
+                },
+                {
+                    'date': '2022 - 2023',
+                    'role': 'CONSULTANT AMOA CHEZ CLIENT BETA',
+                    'company_highlight': 'CLIENT BETA',
+                    'sections': [{'heading': 'Missions', 'content': ['Cadrage besoin', 'Recette utilisateur']}],
+                },
+            ],
+        }
+
+        pdf_path = self.render(data)
+        doc = fitz.open(str(pdf_path))
+        sparse_continuation_pages = []
+        for page_number in range(2, doc.page_count):
+            text = str(doc[page_number - 1].get_text('text'))
+            normalized = ' '.join(text.split())
+            starts_with_experience_tail = normalized.startswith('LINO Missions (suite)') or normalized.startswith('LINO Livrables clés (suite)')
+            has_next_experience = 'CONSULTANT AMOA CHEZ CLIENT BETA' in normalized
+            if starts_with_experience_tail and len(text) < 900 and not has_next_experience:
+                sparse_continuation_pages.append((page_number, len(text), normalized[:220]))
+
+        self.assertEqual(
+            sparse_continuation_pages,
+            [],
+            'renderer created a quasi-empty non-final experience continuation page after skill overflow',
+        )
+        self.assert_no_text_below_margin(pdf_path)
+
     def test_skill_columns_are_balanced_by_measured_height_not_alternating_index(self):
         renderer_module = load_renderer_module()
         renderer_module.prep_assets()

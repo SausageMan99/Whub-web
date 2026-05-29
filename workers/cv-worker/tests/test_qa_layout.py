@@ -107,6 +107,53 @@ class QALayoutTest(unittest.TestCase):
         self.assertIn('last_page_sparse', codes)
         self.assertIn('page_too_sparse', codes)
 
+    def test_detects_sparse_non_final_continuation_page_with_large_blank(self):
+        def draw(doc):
+            page1 = self.add_page(doc)
+            for i in range(28):
+                page1.insert_text((54, 70 + i * 18), f'Page initiale ligne {i:02d} avec contenu expérience détaillé et utile', fontsize=9)
+
+            page2 = self.add_page(doc)
+            page2.insert_text((54, 90), 'Missions (suite)', fontsize=10)
+            page2.insert_textbox(
+                fitz.Rect(67, 120, 535, 230),
+                '• Finalisation de quelques ateliers métier.\n'
+                '• Transmission des livrables clés et support ponctuel aux équipes.',
+                fontsize=8,
+            )
+
+            page3 = self.add_page(doc)
+            for i in range(24):
+                page3.insert_text((54, 75 + i * 18), f'Page finale ligne {i:02d} avec éléments suffisants pour éviter une fin vide', fontsize=9)
+
+        doc = fitz.open(self.write_pdf(draw))
+        self.addCleanup(doc.close)
+        issues = find_layout_issues(doc)
+        sparse_pages = [issue['page'] for issue in issues if issue['code'] == 'page_too_sparse']
+
+        self.assertIn(2, sparse_pages)
+
+    def test_does_not_flag_normal_medium_non_final_page_as_sparse(self):
+        def draw(doc):
+            page1 = self.add_page(doc)
+            for i in range(28):
+                page1.insert_text((54, 70 + i * 18), f'Page initiale ligne {i:02d} avec contenu expérience détaillé et utile', fontsize=9)
+
+            page2 = self.add_page(doc)
+            for i in range(21):
+                page2.insert_text((54, 80 + i * 22), f'Page intermédiaire équilibrée ligne {i:02d} avec contenu professionnel significatif', fontsize=9)
+
+            page3 = self.add_page(doc)
+            for i in range(24):
+                page3.insert_text((54, 75 + i * 18), f'Page finale ligne {i:02d} avec éléments suffisants pour éviter une fin vide', fontsize=9)
+
+        doc = fitz.open(self.write_pdf(draw))
+        self.addCleanup(doc.close)
+        issues = find_layout_issues(doc)
+        page2_sparse = [issue for issue in issues if issue['code'] == 'page_too_sparse' and issue['page'] == 2]
+
+        self.assertEqual(page2_sparse, [])
+
     def test_run_qa_fails_with_layout_issue_report(self):
         def draw(doc):
             page = self.add_page(doc)
