@@ -172,7 +172,8 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 snippet=text[:180],
             ))
 
-        if char_count >= PAGE_DENSE_CHAR_THRESHOLD or (block_count >= PAGE_DENSE_BLOCK_THRESHOLD and used_ratio >= 0.75):
+        dense_by_chars = char_count >= PAGE_DENSE_CHAR_THRESHOLD and not (char_count < 3400 and used_ratio < 0.70)
+        if dense_by_chars or (block_count >= PAGE_DENSE_BLOCK_THRESHOLD and used_ratio >= 0.75):
             dense_code = "page_too_dense" if char_count >= 3600 or used_ratio >= 0.92 else "page_dense_but_acceptable"
             findings.append(_issue(
                 dense_code,

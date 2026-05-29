@@ -75,7 +75,12 @@ def build_layout_packing_options(data: dict[str, Any], *, force_experiences_new_
     # experiences onto continuation pages and adding deterministic breaks can turn
     # two pages of source material into four sparse pages. Reserve forced packing
     # for genuinely heavy experience sets.
-    is_short_groupable_cv = bool(experiences) and len(experiences) <= 6 and total_units <= 45 and max_units <= 10
+    # Medium CVs like Oussama can have many experience units because source
+    # bullets are faithfully preserved. Do not interpret that alone as a reason
+    # to isolate each mission: artificial break hints created 7-page PDFs with
+    # half-empty experience pages. Reserve forced packing for genuinely large or
+    # highly unbalanced experience sets.
+    is_short_groupable_cv = bool(experiences) and len(experiences) <= 8 and total_units <= 120 and max_units <= 30
     auto_force_experiences = force_experiences_new_page is None
     if auto_force_experiences:
         force_experiences_new_page = not is_short_groupable_cv

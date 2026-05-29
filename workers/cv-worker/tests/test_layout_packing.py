@@ -39,7 +39,8 @@ def test_real_oussama_fixture_groups_middle_and_final_experiences_as_planned():
 
     options = build_layout_packing_options(data)
 
-    assert options["force_page_break_before_experience_indexes"] == [2, 5]
+    assert options["force_page_break_before_experience_indexes"] == []
+    assert options["force_experiences_new_page"] is False
 
 
 def test_layout_packing_options_are_non_destructive_and_expose_force_breaks():
@@ -68,6 +69,29 @@ def test_layout_packing_guard_rejects_content_mutation():
         assert "mutated" in str(exc)
     else:
         raise AssertionError("expected layout packing guard to reject mutations")
+
+
+def test_medium_faithful_cv_does_not_create_sparse_forced_pages():
+    data = {
+        "name": "OUSSAMA",
+        "title": "Technical Leader RPA/IA",
+        "formations": [],
+        "skills": [{"category": f"Cat {i}", "items": ["A", "B", "C"]} for i in range(18)],
+        "experiences": [
+            _exp("A", 18),
+            _exp("B", 20),
+            _exp("C", 20),
+            _exp("D", 7),
+            _exp("E", 6),
+            _exp("F", 7),
+            _exp("G", 5),
+        ],
+    }
+
+    options = build_layout_packing_options(data)
+
+    assert options["force_experiences_new_page"] is False
+    assert options["force_page_break_before_experience_indexes"] == []
 
 
 def test_short_cv_layout_packing_does_not_force_artificial_experience_pages():
