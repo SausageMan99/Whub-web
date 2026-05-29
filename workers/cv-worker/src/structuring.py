@@ -341,6 +341,86 @@ def _contains_forbidden_identity_term(text: str, forbidden_terms: list[str]) -> 
     return None
 
 
+_EXPERIENCE_ROLE_MARKER_RE = re.compile(
+    r"\b(?:cdi|cdd|freelance|stage|consultant|consultante|développeur|developpeur|engineer|lead|tech\s*lead|business\s*analyst|rpa|chef\s+de\s+projet)\b",
+    re.I,
+)
+_EXPERIENCE_DATE_RANGE_RE = re.compile(
+    r"(?:\d{2}/\d{4}|\d{4})\s*(?:[-–—]|à|a|au|to)\s*(?:\d{2}/\d{4}|\d{4}|aujourd|présent|present|ce\s+jour)",
+    re.I,
+)
+
+
+def _has_experience_sections(exp: dict) -> bool:
+    for section in exp.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        if _content_items(section.get("content")):
+            return True
+        if str(section.get("heading") or "").strip():
+            return True
+    return False
+
+
+def _looks_like_experience_formation(formation: dict) -> bool:
+    date = str(formation.get("date") or "").strip()
+    degree = str(formation.get("degree") or "").strip()
+    school = str(formation.get("school") or "").strip()
+    text = " ".join(part for part in [date, degree, school] if part)
+    if not text:
+        return False
+    return bool(_EXPERIENCE_DATE_RANGE_RE.search(date) and _EXPERIENCE_ROLE_MARKER_RE.search(text))
+
+
+def _add_structural_integrity_issues(data: dict, issues: list[dict]) -> None:
+    """Catch source-backed JSON that would render as a broken CV layout."""
+    for index, formation in enumerate(data.get("formations") or [], start=1):
+        if not isinstance(formation, dict):
+            continue
+        if _looks_like_experience_formation(formation):
+            issues.append({
+                "code": "experience_misclassified_as_formation",
+                "message": "Une expérience professionnelle a été classée dans formations, ce qui casse la mise en page.",
+                "formation_index": index,
+                "formation": formation,
+            })
+        elif str(formation.get("date") or "").strip() and not (str(formation.get("degree") or "").strip() or str(formation.get("school") or "").strip()):
+            issues.append({
+                "code": "empty_formation_stub",
+                "message": "Formation réduite à une date seule; probablement un fragment mal classé.",
+                "formation_index": index,
+                "formation": formation,
+            })
+
+    experiences = [exp for exp in (data.get("experiences") or []) if isinstance(exp, dict)]
+    multiple_experiences = len(experiences) > 1
+    for index, exp in enumerate(experiences, start=1):
+        date = str(exp.get("date") or "").strip()
+        role = str(exp.get("role") or "").strip()
+        has_sections = _has_experience_sections(exp)
+        if has_sections and not (date or role):
+            issues.append({
+                "code": "headerless_experience_sections",
+                "message": "Sections d'expérience sans date ni rôle: le PDF détache le contenu de son expérience.",
+                "experience_index": index,
+            })
+        if multiple_experiences and (date or role) and not has_sections and _normalize_for_fidelity(role) != "projets academiques":
+            issues.append({
+                "code": "experience_header_without_body",
+                "message": "Expérience avec date/rôle mais sans contenu: risque d'en-tête orphelin ou page quasi vide.",
+                "experience_index": index,
+                "date": date,
+                "role": role,
+            })
+        if date and not role and not has_sections:
+            issues.append({
+                "code": "empty_experience_date_stub",
+                "message": "Expérience réduite à une date seule; probablement un fragment résiduel.",
+                "experience_index": index,
+                "date": date,
+            })
+
+
 def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: bool = False, forbidden_identity_terms: list[str] | None = None) -> None:
     """Block hallucinations and rewritten experience content.
 
@@ -352,6 +432,7 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
     json_strings = _iter_json_strings(data)
     source_normalized = _normalize_for_fidelity(source_text)
     forbidden_terms = forbidden_identity_terms if forbidden_identity_terms is not None else infer_forbidden_candidate_identity_terms(source_text)
+    _add_structural_integrity_issues(data, issues)
     for text_value in json_strings:
         forbidden = _contains_forbidden_identity_term(str(text_value), forbidden_terms)
         if forbidden:

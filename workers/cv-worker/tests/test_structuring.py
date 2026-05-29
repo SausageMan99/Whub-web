@@ -78,6 +78,42 @@ class TestAssertNoContactInJson:
 
 
 class TestSourceFidelity:
+    def test_rejects_oussama_style_structural_fragments_before_render(self):
+        source = """
+Oussama
+07/2022 – 01/2024
+Software Engineer - CDI
+BNP Paribas - France
+Missions
+Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.
+09/2020 – 07/2022
+Tech Lead RPA - CDI chez STALLERGENES GREER - France
+2018
+"""
+        data = {
+            "name": "OUSSAMA",
+            "title": "Technical Leader RPA/IA",
+            "formations": [
+                {"date": "07/2022 – 01/2024", "degree": "Software Engineer - CDI", "school": "BNP Paribas - France"},
+                {"date": "2018", "degree": "", "school": ""},
+            ],
+            "skills": [],
+            "experiences": [
+                {"date": "", "role": "", "company_highlight": "", "sections": [{"heading": "Missions", "content": ["Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés."]}]},
+                {"date": "09/2020 – 07/2022", "role": "Tech Lead RPA - CDI chez STALLERGENES GREER - France", "company_highlight": "STALLERGENES GREER", "sections": []},
+                {"date": "2018", "role": "", "company_highlight": "", "sections": []},
+            ],
+        }
+
+        with pytest.raises(StructuringError) as exc:
+            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+        message = str(exc.value)
+        assert "experience_misclassified_as_formation" in message
+        assert "headerless_experience_sections" in message
+        assert "experience_header_without_body" in message
+        assert "empty_experience_date_stub" in message
+
     def test_rejects_numbered_placeholder_repeated_bullets(self):
         data = {
             "name": "ZAHIA",
@@ -538,9 +574,9 @@ class TestBuildWHubJson:
             "title": "Architecte",
             "formations": [{"date": "2020", "degree": "Master", "school": "Uni"}],
             "skills": [{"category": "Cloud", "items": ["AWS"]}],
-            "experiences": [{"date": "2024", "role": "Lead", "sections": []}],
+            "experiences": [{"date": "2024", "role": "Lead", "sections": [{"heading": "Missions clés", "content": ["Piloter l'architecture cible."]}]}],
         }
-        result = build_whub_json("Jean\nArchitecte\n2024 Lead\nsome cv text\n" * 20, "", [], "Jean", hermes_runner=self._make_runner(data))
+        result = build_whub_json("Jean\nArchitecte\n2024 Lead\nPiloter l'architecture cible.\nsome cv text\n" * 20, "", [], "Jean", hermes_runner=self._make_runner(data))
         assert REQUIRED_TOP_LEVEL_KEYS.issubset(set(result.keys()))
         assert result["name"] == "JEAN"
         assert result["title"] == "Architecte"
@@ -566,9 +602,9 @@ class TestBuildWHubJson:
             "title": "Cheffe de projet",
             "formations": [],
             "skills": [],
-            "experiences": [{"date": "2024", "role": "Mission", "sections": []}],
+            "experiences": [{"date": "2024", "role": "Mission", "sections": [{"heading": "Missions clés", "content": ["Assurer la coordination projet."]}]}],
         }
-        result = build_whub_json("Zahia Aris\nCheffe de projet\n2024 Mission\ncv text\n" * 20, "", [], "ZAHIA ARIS", hermes_runner=self._make_runner(data))
+        result = build_whub_json("Zahia Aris\nCheffe de projet\n2024 Mission\nAssurer la coordination projet.\ncv text\n" * 20, "", [], "ZAHIA ARIS", hermes_runner=self._make_runner(data))
         assert result["name"] == "ZAHIA"
 
     def test_build_whub_json_raises_on_hermes_failure(self):
