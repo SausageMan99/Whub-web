@@ -50,6 +50,27 @@ class TestRenderPdf:
         assert args[0] == [sys.executable, "/fake/renderer.py", str(input_path), str(output_pdf)]
         assert result == output_pdf
 
+    def test_render_pdf_can_pass_internal_layout_retry_options(self, tmp_path: Path):
+        data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
+        workdir = tmp_path / "work"
+        workdir.mkdir()
+        output_pdf = workdir / "retry.pdf"
+        output_pdf.write_bytes(b"fake pdf")
+        mock_result = MagicMock(returncode=0)
+
+        with patch("src.rendering.assert_whub_assets"):
+            with patch("src.rendering.subprocess.run", return_value=mock_result) as mock_run:
+                with patch("src.rendering.settings.whub_renderer_path", "/fake/renderer.py"):
+                    result = render_pdf(data, workdir, layout_options={"anti_crowding": True}, output_name="retry.pdf")
+
+        input_path = workdir / "input_layout_retry.json"
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
+        assert payload["_layout"] == {"anti_crowding": True}
+        assert "_layout" not in data
+        args, _ = mock_run.call_args
+        assert args[0] == [sys.executable, "/fake/renderer.py", str(input_path), str(output_pdf)]
+        assert result == output_pdf
+
     def test_render_pdf_raises_when_subprocess_fails(self, tmp_path: Path):
         data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
         workdir = tmp_path / "work"

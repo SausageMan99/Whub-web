@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from src.structuring import (
@@ -5,6 +6,7 @@ from src.structuring import (
     split_cv_text_into_blocks,
     assemble_structured_blocks,
     apply_client_synthesis_policy,
+    _hermes_prompt,
     StructuringError,
     LONG_CV_CHAR_THRESHOLD,
     LONG_CV_BLOCK_TARGET_CHARS,
@@ -81,7 +83,7 @@ Environnement technique: Java, Kubernetes
             ],
         }
 
-        synthesized = apply_client_synthesis_policy(data, mode="standard")
+        synthesized = apply_client_synthesis_policy(data, mode="standard", allow_condensation=True)
 
         self.assertEqual([exp["role"] for exp in synthesized["experiences"]], ["Lead chez A", "Lead chez B", "Lead chez C", "Développeur chez D", "Développeur chez E"])
         self.assertEqual(synthesized["experiences"][0]["sections"][0]["content"], ["A1", "A2", "A3"])
@@ -93,18 +95,50 @@ Environnement technique: Java, Kubernetes
         self.assertIn("Backend", old_sections[1]["content"])
         self.assertIn("DevOps", old_sections[1]["content"])
 
-    def test_complete_synthesis_mode_preserves_experience_sections_verbatim(self):
+    def test_complete_synthesis_mode_preserves_experience_sections_but_curates_long_skills(self):
+        items = [
+            "Java", "Spring", "React", "Angular", "AWS", "Azure", "Docker",
+            "Kubernetes", "Terraform", "Helm", "PostgreSQL", "Power BI", "Jira",
+        ]
         data = {
             "name": "JEAN",
             "title": "Architecte Solution",
             "formations": [],
-            "skills": [],
+            "skills": [{"category": "Compétences techniques", "items": items}],
             "experiences": [{"date": "2018", "role": "Dev", "sections": [{"heading": "Missions clés", "content": ["X1", "X2", "X3"]}]}],
         }
 
         synthesized = apply_client_synthesis_policy(data, mode="complete")
+        flat_items = [item for skill in synthesized["skills"] for item in skill["items"]]
 
         self.assertEqual(synthesized["experiences"][0]["sections"], data["experiences"][0]["sections"])
+        self.assertTrue(any(skill["category"] == "Backend" for skill in synthesized["skills"]))
+        self.assertTrue(any(skill["category"] == "Cloud / DevOps" for skill in synthesized["skills"]))
+        self.assertTrue(all(len(skill["items"]) <= 6 for skill in synthesized["skills"]))
+        for expected in items:
+            self.assertIn(expected, flat_items)
+
+    def test_build_whub_json_source_gates_invented_skill_expansions(self):
+        data = {
+            "name": "Zahia",
+            "title": "Chef de projet",
+            "formations": [],
+            "skills": [{
+                "category": "Compétences techniques",
+                "items": ["Power BI", "SQL", "Google Analytics", "Méthode hybride", "Études de faisabilité"],
+            }],
+            "experiences": [{"date": "2024", "role": "Chef de projet KLESIA", "company_highlight": "KLESIA", "sections": [
+                {"heading": "Missions clés", "content": [
+                    "Pilotage recette transverse",
+                    "Impact business : croissance du chiffre d’affaires de +40 % entre 2018",
+                    "Cartographie des achats de 10 business units",
+                ]}
+            ]}],
+        }
+        source_text = "Zahia\nChef de projet KLESIA\nCompétences\nPower BI\nSQL\n"
+
+        with self.assertRaises(StructuringError):
+            build_whub_json(source_text, "", [], "Zahia", hermes_runner=lambda prompt, timeout: (0, json.dumps(data, ensure_ascii=False), ""))
 
     def test_long_certifications_and_skills_are_grouped_without_dropping_items(self):
         certs = [f"Certification AWS niveau {i}" for i in range(1, 8)]
@@ -116,11 +150,62 @@ Environnement technique: Java, Kubernetes
             "experiences": [],
         }
 
-        synthesized = apply_client_synthesis_policy(data, mode="standard")
+        synthesized = apply_client_synthesis_policy(data, mode="standard", allow_condensation=True)
 
         self.assertEqual(len(synthesized["formations"]), 1)
         self.assertEqual(synthesized["formations"][0]["degree"].count("Certification AWS"), 7)
-        self.assertEqual(synthesized["skills"][0]["items"], ["; ".join(certs)])
+        self.assertEqual([skill["category"] for skill in synthesized["skills"]], ["Certifications"])
+        self.assertEqual(synthesized["skills"][0]["items"], certs)
+
+    def test_oussama_like_long_skill_category_is_curated_into_short_family_groups(self):
+        items = [
+            "Java", "Spring Boot", "Spring", "Hibernate", "API REST", "Microservices",
+            "React", "Angular", "TypeScript", "JavaScript", "HTML5", "CSS3",
+            "AWS", "Azure", "Docker", "Kubernetes", "Jenkins", "GitLab CI", "Terraform", "Helm",
+            "PostgreSQL", "MySQL", "Oracle", "MongoDB", "Power BI",
+            "Agile Scrum", "Kanban", "Jira", "Confluence", "Git", "Maven", "SonarQube",
+            "Java", "spring boot",
+        ]
+        data = {
+            "name": "OUSSAMA",
+            "title": "Tech Lead Full Stack Java / Angular",
+            "formations": [],
+            "skills": [{"category": "Compétences techniques", "items": items}],
+            "experiences": [],
+        }
+
+        synthesized = apply_client_synthesis_policy(data, mode="standard", allow_condensation=True)
+        skills = synthesized["skills"]
+        flat_items = [item for skill in skills for item in skill["items"]]
+        flat_text = " | ".join(flat_items)
+
+        self.assertGreaterEqual(len(skills), 5)
+        self.assertTrue(any(skill["category"] == "Backend" for skill in skills))
+        self.assertTrue(any(skill["category"] == "Frontend" for skill in skills))
+        self.assertTrue(any(skill["category"] == "Cloud / DevOps" for skill in skills))
+        self.assertTrue(any(skill["category"] == "Cloud / DevOps — suite" for skill in skills))
+        self.assertTrue(any(skill["category"] == "Data" for skill in skills))
+        self.assertTrue(any(skill["category"] == "Outils & méthodes" for skill in skills))
+        self.assertTrue(all(len(skill["items"]) <= 6 for skill in skills))
+        self.assertTrue(all(len(item) <= 80 for item in flat_items))
+        self.assertEqual(sum(1 for item in flat_items if item.lower() == "java"), 1)
+        expected_unique_terms = [
+            "Java", "Spring Boot", "Spring", "Hibernate", "API REST", "Microservices", "Maven",
+            "React", "Angular", "TypeScript", "JavaScript", "HTML5", "CSS3",
+            "AWS", "Azure", "Docker", "Kubernetes", "Jenkins", "GitLab CI", "Terraform", "Helm",
+            "PostgreSQL", "MySQL", "Oracle", "MongoDB", "Power BI",
+            "Agile Scrum", "Kanban", "Jira", "Confluence", "Git", "SonarQube",
+        ]
+        for expected in expected_unique_terms:
+            self.assertIn(expected, flat_text)
+
+    def test_structuring_prompt_requests_client_facing_hierarchical_short_skills(self):
+        prompt = _hermes_prompt("COMPÉTENCES\nJava\nSpring\nAWS", "", [], "Oussama")
+
+        self.assertIn("compétences", prompt.lower())
+        self.assertIn("hiérarchisées", prompt.lower())
+        self.assertIn("client-facing", prompt.lower())
+        self.assertIn("pavés", prompt.lower())
 
     def test_long_cv_rejects_contact_details_after_synthesis(self):
         def fake_runner(prompt: str, timeout: int):

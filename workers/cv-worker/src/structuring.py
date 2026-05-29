@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
@@ -20,13 +21,54 @@ MAX_PROMPT_CV_CHARS = 45000
 LONG_CV_CHAR_THRESHOLD = int(os.getenv("WHUB_LONG_CV_CHAR_THRESHOLD", "10000"))
 LONG_CV_BLOCK_TARGET_CHARS = int(os.getenv("WHUB_LONG_CV_BLOCK_TARGET_CHARS", "7000"))
 HERMES_STRUCTURING_TIMEOUT_SECONDS = int(os.getenv("WHUB_HERMES_STRUCTURING_TIMEOUT_SECONDS", "600"))
-WHUB_CV_SYNTHESIS_MODE = os.getenv("WHUB_CV_SYNTHESIS_MODE", "standard").strip().lower()
+WHUB_CV_SYNTHESIS_MODE = os.getenv("WHUB_CV_SYNTHESIS_MODE", "complete").strip().lower()
 SYNTHESIS_MODES = {"standard", "complete", "urgent"}
 HermesRunner = Callable[[str, int], tuple[int, str, str]]
+NUMBERED_PLACEHOLDER_RE = re.compile(r"^(.{8,}?)[\s\u00a0]+([1-9]\d?)$", re.I)
+NO_COMPACTION_RE = re.compile(
+    r"\b(ne\s+pas\s+(?:compacter|condenser|r[ée]sumer|synth[ée]tiser|raccourcir)|sans\s+(?:compaction|condensation|r[ée]sum[ée]|synth[èe]se)|cv\s+complet|contenu\s+complet|fid[èe]le|conserver\s+(?:tout|l['’]?int[ée]gralit[ée]))\b",
+    re.I,
+)
+EXPLICIT_SYNTHESIS_RE = re.compile(
+    r"\b(?:synth[èe]se|synth[ée]tiser|r[ée]sum[ée]|r[ée]sumer|condens(?:er|ation|é|e)|compacter|raccourcir|court|courte|client\s+short)\b",
+    re.I,
+)
+EXPERIENCE_LOCATION_RE = re.compile(
+    r"(?:📌|\b(?:lieu|localisation)\s*[:\-])\s*([^\n|•]+?\(\s*\d{2,3}\s*\))",
+    re.I,
+)
 
 
 class StructuringError(Exception):
     pass
+
+
+_FIRST_NAME_SUFFIXES = {"jr", "sr"}
+
+
+def normalize_candidate_first_name(candidate_first_name: str | None) -> str | None:
+    """Return the client-facing first name only, preserving hyphenated first names.
+
+    Portal fields are user-entered and can contain a full identity such as
+    "ZAHIA ARIS". The W hub renderer must display only the first name. Taking
+    the first whitespace token keeps common composed first names such as
+    "Jean-Pierre" intact while removing a following surname.
+    """
+    cleaned = re.sub(r"\s+", " ", (candidate_first_name or "").strip())
+    if not cleaned:
+        return None
+    tokens = cleaned.split(" ")
+    first = tokens[0].strip(" ,;:/\\")
+    if not first or first.lower().strip(".") in _FIRST_NAME_SUFFIXES:
+        return None
+    return first.upper()
+
+
+def enforce_client_first_name(data: dict, candidate_first_name: str | None) -> dict:
+    normalized = normalize_candidate_first_name(candidate_first_name)
+    if normalized:
+        data["name"] = normalized
+    return data
 
 
 def compact_extracted_text(text: str) -> str:
@@ -56,6 +98,387 @@ def assert_no_contact_in_json(data: dict) -> None:
     hits = [p for p in CONTACT_PATTERNS if re.search(p, text)]
     if hits:
         raise StructuringError(f"Coordonnées détectées dans JSON renderer: {hits}")
+
+
+def _normalize_for_fidelity(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text or "")
+    without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+    folded = without_accents.lower().replace("’", "'")
+    folded = re.sub(r"[–—−]", "-", folded)
+    # Fidelity checks compare text extracted from different PDF/layout surfaces.
+    # Punctuation used only as a visual separator is unstable: source PDFs may
+    # have "Jenkins,\nLogiciels" while the W hub render has "Jenkins. Logiciels".
+    # Normalize those separators away, while keeping technical symbols that
+    # carry meaning in stack names such as C# and C++.
+    folded = re.sub(r"[.,;:]+", " ", folded)
+    folded = re.sub(r"[^a-z0-9+#+]+", " ", folded)
+    return re.sub(r"\s+", " ", folded).strip()
+
+
+def _substantial_tokens(text: str) -> list[str]:
+    return [token for token in _normalize_for_fidelity(text).split() if len(token) >= 3]
+
+
+def _contains_fidelity_fact(haystack_normalized: str, fact: str) -> bool:
+    normalized_fact = _normalize_for_fidelity(fact)
+    if not normalized_fact:
+        return True
+    if normalized_fact in haystack_normalized:
+        return True
+    tokens = _substantial_tokens(fact)
+    if not tokens:
+        return True
+    compact_haystack = haystack_normalized.replace(" ", "")
+    return all(token in haystack_normalized or token in compact_haystack for token in tokens)
+
+
+def _contains_strict_source_text(source_normalized: str, value: str) -> bool:
+    """Require a normalized source substring for visible experience content."""
+    normalized_value = _normalize_for_fidelity(value)
+    if not normalized_value or len(normalized_value) < 5:
+        return True
+    return normalized_value in source_normalized
+
+
+def _iter_experience_content_items(exp: dict) -> list[tuple[str, str]]:
+    items: list[tuple[str, str]] = []
+    for section in exp.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        heading = str(section.get("heading") or "").strip()
+        content = section.get("content")
+        if isinstance(content, list):
+            for item in content:
+                cleaned = str(item).strip()
+                if cleaned:
+                    items.append((heading, cleaned))
+        elif isinstance(content, str) and content.strip():
+            items.append((heading, content.strip()))
+    return items
+
+
+def _extract_date_tokens(value: str) -> list[str]:
+    normalized = _normalize_for_fidelity(value)
+    tokens = re.findall(r"\b(?:19|20)\d{2}\b", normalized)
+    unique: list[str] = []
+    for token in tokens:
+        if token not in unique:
+            unique.append(token)
+    return unique
+
+
+_SYNTHETIC_TECHNICAL_HEADINGS = {
+    "environnement technique",
+    "environnements techniques",
+    "stack technique",
+    "stacks techniques",
+    "technologies",
+}
+
+
+def _is_explicit_technical_heading_allowed(source_normalized: str, heading: str) -> bool:
+    normalized_heading = _normalize_for_fidelity(heading)
+    if normalized_heading not in _SYNTHETIC_TECHNICAL_HEADINGS:
+        return True
+    return bool(re.search(rf"(?:^|\s){re.escape(normalized_heading)}(?:\s|$)", source_normalized))
+
+
+def extract_experience_location_facts(source_text: str) -> list[str]:
+    """Return mission/client locations from source text, excluding personal city lines.
+
+    W hub removes candidate contact/address data, but a mission location such as
+    "📌 Montreuil (93)" is a professional source fact and must remain available
+    in the client-facing JSON/PDF.
+    """
+    facts: list[str] = []
+    for match in EXPERIENCE_LOCATION_RE.finditer(source_text or ""):
+        location = re.sub(r"\s+", " ", match.group(1).strip(" .;:-\t"))
+        location = location.replace("‘", "’").replace("'", "’")
+        if location and location not in facts:
+            facts.append(location)
+    return facts
+
+
+def _iter_json_strings(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        strings: list[str] = []
+        for item in value:
+            strings.extend(_iter_json_strings(item))
+        return strings
+    if isinstance(value, dict):
+        strings: list[str] = []
+        for item in value.values():
+            strings.extend(_iter_json_strings(item))
+        return strings
+    return []
+
+
+def find_numbered_placeholder_repetitions(strings: list[str] | str) -> list[dict]:
+    """Detect synthetic placeholder bullets like 'Analyse ... 1/2/3'."""
+    if isinstance(strings, str):
+        candidates = re.split(r"\n|[•▪●]", strings)
+    else:
+        candidates = strings
+    groups: dict[str, dict[str, object]] = {}
+    for raw in candidates:
+        cleaned = re.sub(r"\s+", " ", str(raw).strip(" -–—•\t.;"))
+        match = NUMBERED_PLACEHOLDER_RE.match(cleaned)
+        if not match:
+            continue
+        base = match.group(1).strip(" -–—:.;")
+        normalized_base = _normalize_for_fidelity(base)
+        if len(normalized_base) < 8:
+            continue
+        entry = groups.setdefault(normalized_base, {"base": base, "numbers": set(), "examples": []})
+        numbers = entry["numbers"]
+        examples = entry["examples"]
+        if isinstance(numbers, set):
+            numbers.add(int(match.group(2)))
+        if isinstance(examples, list) and len(examples) < 5:
+            examples.append(cleaned)
+    issues = []
+    for entry in groups.values():
+        raw_numbers = entry["numbers"]
+        if not isinstance(raw_numbers, set):
+            continue
+        numbers = sorted(raw_numbers)
+        if len(numbers) >= 3 and numbers[-1] - numbers[0] <= len(numbers) + 2:
+            issues.append({
+                "code": "numbered_placeholder_repetition",
+                "message": "Contenu placeholder numéroté répété détecté",
+                "base": entry["base"],
+                "numbers": numbers,
+                "examples": entry["examples"],
+            })
+    return issues
+
+
+def _looks_like_full_name_display(name: str) -> bool:
+    tokens = [token for token in re.split(r"\s+", name.strip()) if token]
+    if len(tokens) < 2:
+        return False
+    return all(re.search(r"[A-Za-zÀ-ÿ]", token) for token in tokens[:2])
+
+
+def _role_fact_fragments(role: str) -> list[str]:
+    fragments = [part.strip(" -–—•\t.;:") for part in re.split(r"\||\n|\s+chez\s+", role, flags=re.I)]
+    facts: list[str] = []
+    for fragment in fragments:
+        if len(fragment) < 4:
+            continue
+        tokens = _substantial_tokens(fragment)
+        has_acronym = bool(re.search(r"\b[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ]{2,}\b", fragment))
+        if len(tokens) < 2 and not has_acronym:
+            continue
+        if fragment not in facts:
+            facts.append(fragment)
+    return facts
+
+
+def resolve_synthesis_mode(mode: str, instructions: str = "", comments: list[dict] | None = None) -> str:
+    normalized_mode = (mode or "complete").strip().lower()
+    comments_text = "\n".join(str(comment.get("body", "")) for comment in comments or [] if isinstance(comment, dict))
+    instruction_text = f"{instructions or ''}\n{comments_text}"
+    if normalized_mode in {"faithful", "fidèle", "fidele", "full"}:
+        return "complete"
+    if NO_COMPACTION_RE.search(instruction_text):
+        return "complete"
+    if EXPLICIT_SYNTHESIS_RE.search(instruction_text):
+        return "urgent" if "urgent" in instruction_text.lower() else "standard"
+    # Safety default: even if an env var/internal caller says "standard" or
+    # "urgent", do not condense unless the user explicitly asked for a short /
+    # synthesized CV in instructions or comments.
+    return "complete"
+
+
+def _identity_tokens(value: str) -> list[str]:
+    return [token.strip(" ,;:/\\()[]{}") for token in re.split(r"\s+", value or "") if re.search(r"[A-Za-zÀ-ÿ]", token)]
+
+
+def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_name: str | None = None) -> list[str]:
+    """Infer surname/full-name tokens that must not appear in client-facing JSON/PDF.
+
+    The source CV first non-empty line is usually the candidate identity. W hub
+    keeps the first name only, so subsequent identity tokens become forbidden.
+    """
+    allowed_first = normalize_candidate_first_name(candidate_first_name)
+    identity_line = ""
+    if allowed_first:
+        for line in (source_text or "").splitlines()[:8]:
+            tokens = _identity_tokens(line.strip())
+            if len(tokens) >= 2 and any(normalize_candidate_first_name(token) == allowed_first for token in tokens):
+                identity_line = line.strip()
+                break
+        if not identity_line:
+            return []
+    else:
+        identity_line = next((line.strip() for line in (source_text or "").splitlines() if line.strip()), "")
+
+    tokens = _identity_tokens(identity_line)
+    if len(tokens) < 2:
+        return []
+    allowed_first = allowed_first or normalize_candidate_first_name(tokens[0])
+    forbidden: list[str] = []
+    for token in tokens:
+        normalized = normalize_candidate_first_name(token)
+        if not normalized or normalized == allowed_first:
+            continue
+        if len(_normalize_for_fidelity(token)) < 3:
+            continue
+        if token not in forbidden:
+            forbidden.append(token)
+    return forbidden
+
+
+def _contains_forbidden_identity_term(text: str, forbidden_terms: list[str]) -> str | None:
+    normalized_text = f" {_normalize_for_fidelity(text)} "
+    for term in forbidden_terms:
+        normalized_term = _normalize_for_fidelity(term)
+        if normalized_term and re.search(rf"(?<![a-z0-9]){re.escape(normalized_term)}(?![a-z0-9])", normalized_text):
+            return term
+    return None
+
+
+def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: bool = False, forbidden_identity_terms: list[str] | None = None) -> None:
+    """Block hallucinations and rewritten experience content.
+
+    Experience bullets/content must be copied from the normalized source text.
+    We tolerate extraction/layout noise (case, accents, spaces and minor
+    punctuation), but not synonym substitutions or shortened/rephrased bullets.
+    """
+    issues: list[dict] = []
+    json_strings = _iter_json_strings(data)
+    source_normalized = _normalize_for_fidelity(source_text)
+    forbidden_terms = forbidden_identity_terms if forbidden_identity_terms is not None else infer_forbidden_candidate_identity_terms(source_text)
+    for text_value in json_strings:
+        forbidden = _contains_forbidden_identity_term(str(text_value), forbidden_terms)
+        if forbidden:
+            issues.append({
+                "code": "candidate_identity_term_exposed",
+                "message": f"Nom de famille / terme d'identité candidat exposé dans le JSON: {forbidden}",
+                "term": forbidden,
+                "text": str(text_value)[:180],
+            })
+            break
+    for issue in find_numbered_placeholder_repetitions(json_strings):
+        examples = issue.get("examples") or []
+        if source_normalized and all(_contains_fidelity_fact(source_normalized, str(example)) for example in examples):
+            continue
+        issues.append(issue)
+
+    displayed_name = str(data.get("name") or "").strip()
+    if _looks_like_full_name_display(displayed_name):
+        issues.append({
+            "code": "full_name_display",
+            "message": f"Nom complet affiché au lieu du prénom seul: {displayed_name}",
+            "name": displayed_name,
+        })
+
+    title_value = str(data.get("title") or "").strip()
+    if source_normalized and title_value and not _contains_fidelity_fact(source_normalized, title_value):
+        # Keep only conservative fallback titles; reject enriched client-facing titles.
+        if _normalize_for_fidelity(title_value) not in {"consultant it", "consultant", "dev", "developpeur"}:
+            issues.append({
+                "code": "title_absent_from_source",
+                "message": f"Titre principal absent du CV source: {title_value}",
+                "title": title_value,
+            })
+
+    if not allow_synthesis:
+        for text_value in json_strings:
+            normalized_text_value = _normalize_for_fidelity(text_value)
+            if "synthese mission" in normalized_text_value or "synthese w hub" in normalized_text_value:
+                issues.append({
+                    "code": "unexpected_synthesis_section",
+                    "message": "Synthèse mission / Synthèse W hub interdite sans consigne explicite de CV court.",
+                    "text": str(text_value)[:180],
+                })
+                break
+
+    if source_normalized:
+        json_normalized = _normalize_for_fidelity("\n".join(json_strings))
+        for location in extract_experience_location_facts(source_text):
+            if _contains_fidelity_fact(json_normalized, location):
+                continue
+            issues.append({
+                "code": "experience_location_missing_from_json",
+                "message": f"Localisation de mission absente du JSON: {location}",
+                "missing_location": location,
+            })
+
+        for entry in extract_source_business_coverage_facts(source_text):
+            fact = entry["fact"]
+            if _contains_fidelity_fact(json_normalized, fact):
+                continue
+            issues.append({
+                "code": "source_coverage_missing_section",
+                "message": f"Section source business absente du JSON: {entry['section']} — {fact}",
+                "section": entry["section"],
+                "fact": fact,
+            })
+
+        for index, exp in enumerate(data.get("experiences") or [], start=1):
+            if not isinstance(exp, dict):
+                continue
+            company = str(exp.get("company_highlight") or "").strip()
+            if len(company) >= 3:
+                if not _contains_fidelity_fact(source_normalized, company):
+                    issues.append({
+                        "code": "company_highlight_absent_from_source",
+                        "message": f"Entreprise/client absent du CV source: {company}",
+                        "experience_index": index,
+                        "company_highlight": company,
+                    })
+
+            date_value = str(exp.get("date") or "").strip()
+            missing_date_tokens = []
+            if _extract_date_tokens(source_text):
+                missing_date_tokens = [token for token in _extract_date_tokens(date_value) if token not in source_normalized]
+            if missing_date_tokens:
+                issues.append({
+                    "code": "experience_date_absent_from_source",
+                    "message": f"Date d'expérience absente du CV source: {date_value}",
+                    "experience_index": index,
+                    "date": date_value,
+                    "missing_tokens": missing_date_tokens,
+                })
+
+            role_value = str(exp.get("role") or "").strip()
+            for fragment in _role_fact_fragments(role_value):
+                if _contains_fidelity_fact(source_normalized, fragment):
+                    continue
+                issues.append({
+                    "code": "experience_role_fact_absent_from_source",
+                    "message": f"Fait de rôle/mission absent du CV source: {fragment}",
+                    "experience_index": index,
+                    "role": role_value,
+                    "missing_fragment": fragment,
+                })
+
+            for heading, content_item in _iter_experience_content_items(exp):
+                if heading and not _is_explicit_technical_heading_allowed(source_normalized, heading):
+                    issues.append({
+                        "code": "synthetic_technical_environment",
+                        "message": "Section Environnement technique / Stack technique interdite si ce heading n'existe pas explicitement dans le CV source.",
+                        "experience_index": index,
+                        "section_heading": heading,
+                        "content": content_item,
+                    })
+                    continue
+                if _contains_strict_source_text(source_normalized, content_item):
+                    continue
+                issues.append({
+                    "code": "experience_content_rewritten_or_absent_from_source",
+                    "message": "Contenu d'expérience non retrouvé en copier-coller normalisé dans le CV source (reformulation interdite).",
+                    "experience_index": index,
+                    "section_heading": heading,
+                    "content": content_item,
+                })
+
+    if issues:
+        raise StructuringError(f"Fidélité source insuffisante: {issues}")
 
 
 def _extract_json(raw: str) -> dict:
@@ -218,12 +641,11 @@ def assemble_structured_blocks(parts: list[dict], candidate_first_name: str | No
                 raise StructuringError(f"CV long: bloc structuré invalide, {key} doit être une liste")
             assembled[key].extend(value)
 
-    if candidate_first_name:
-        assembled["name"] = candidate_first_name.strip().upper()
+    enforce_client_first_name(assembled, candidate_first_name)
     if descriptions:
         assembled["description"] = "\n".join(descriptions)
     if not assembled["name"]:
-        assembled["name"] = (candidate_first_name or "CANDIDAT").strip().upper()
+        assembled["name"] = normalize_candidate_first_name(candidate_first_name) or "CANDIDAT"
     if not assembled["title"]:
         assembled["title"] = "Consultant IT"
     return assembled
@@ -305,17 +727,229 @@ def _condense_experience(exp: dict, max_items: int) -> dict:
     return condensed
 
 
-def _group_long_skills(skills: list[dict], max_items: int = 6) -> list[dict]:
-    grouped_skills: list[dict] = []
-    for skill in skills:
-        items = [str(item).strip() for item in skill.get("items", []) if str(item).strip()]
-        if len(items) > max_items:
-            grouped = deepcopy(skill)
-            grouped["items"] = ["; ".join(items)]
-            grouped_skills.append(grouped)
+_SKILL_FAMILIES: list[tuple[str, tuple[str, ...]]] = [
+    ("Backend", ("java", "spring", "hibernate", "api", "microservices", "node", "php", "symfony", ".net", "c#", "python", "django", "fastapi", "maven")),
+    ("Frontend", ("react", "angular", "vue", "next", "typescript", "javascript", "html5", "css3", "html", "css")),
+    ("Cloud / DevOps", ("aws", "azure", "gcp", "cloud", "docker", "kubernetes", "terraform", "jenkins", "gitlab ci", "ci/cd", "ansible", "helm")),
+    ("Data", ("sql", "postgres", "mysql", "oracle", "mongodb", "mongo", "power bi", "tableau", "spark", "databricks", "snowflake")),
+    ("Sécurité", ("iam", "sso", "oauth", "cyber", "security", "sécurité", "dora", "iso 27001")),
+    ("Outils & méthodes", ("agile", "scrum", "kanban", "jira", "confluence", "git", "sonarqube", "sonar", "uml", "itil")),
+]
+
+_GENERIC_SKILL_CATEGORIES = {"compétences", "competences", "skills", "expertises", "technologies", "technique", "techniques", "environnements techniques"}
+_SOURCE_FAITHFUL_SKILL_CATEGORIES = {
+    "compétences et outils",
+    "competences et outils",
+    "processus métiers",
+    "processus metiers",
+    "exemples de realisations professionnelles",
+    "realisations professionnelles",
+    "realisations",
+    "projets",
+    "projets significatifs",
+    "certifications",
+}
+
+_BUSINESS_COVERAGE_HEADINGS = {
+    "exemples de realisations professionnelles": "Exemples de réalisations professionnelles",
+    "realisations professionnelles": "Réalisations professionnelles",
+    "realisations": "Réalisations",
+    "projets": "Projets",
+    "projets significatifs": "Projets significatifs",
+    "certifications": "Certifications",
+}
+
+_BUSINESS_COVERAGE_HEADING_RE = re.compile(
+    r"^(?:exemples?\s+de\s+)?r[ée]alisations?(?:\s+professionnelles?)?$|^projets?(?:\s+significatifs?)?$|^certifications?$",
+    re.I,
+)
+_SECTION_BOUNDARY_RE = re.compile(
+    r"^(?:comp[ée]tences|processus\s+m[ée]tiers|loisirs?|formations?|dipl[oô]mes?|exp[ée]riences?|parcours|mots[-\s]?cl[ée]s?)\b",
+    re.I,
+)
+
+
+def _skill_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9+#.]+", "", value.lower())
+
+
+def _canonical_business_coverage_heading(line: str) -> str | None:
+    cleaned = re.sub(r"\s+", " ", str(line or "").strip(" :•✓-–—\t"))
+    if not cleaned:
+        return None
+    normalized = _normalize_for_fidelity(cleaned)
+    if normalized in _BUSINESS_COVERAGE_HEADINGS:
+        return _BUSINESS_COVERAGE_HEADINGS[normalized]
+    if _BUSINESS_COVERAGE_HEADING_RE.match(cleaned):
+        return cleaned[:1].upper() + cleaned[1:]
+    return None
+
+
+def _looks_like_section_boundary(line: str) -> bool:
+    cleaned = re.sub(r"\s+", " ", str(line or "").strip(" :•✓-–—\t"))
+    return bool(cleaned and (_SECTION_BOUNDARY_RE.match(cleaned) or _canonical_business_coverage_heading(cleaned)))
+
+
+def _is_allowed_source_coverage_exclusion(line: str) -> bool:
+    cleaned = str(line or "").strip()
+    if not cleaned:
+        return True
+    lower = cleaned.lower()
+    return bool(
+        re.search(r"@|linkedin|github\.com|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b", cleaned, re.I)
+        or re.search(r"rue|avenue|boulevard|impasse|all[ée]e|\b\d{5}\b", lower)
+        or "cv envoyé par hellowork" in lower
+        or "données personnelles" in lower
+        or "donnees personnelles" in lower
+    )
+
+
+def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, str]]:
+    """Return business-critical non-experience sections that must not disappear.
+
+    This intentionally focuses on high-value sections such as achievements,
+    projects and certifications. Contact/privacy/header material is excluded;
+    hobbies are not silently promoted to business facts.
+    """
+    facts: list[dict[str, str]] = []
+    current_section: str | None = None
+    current_item: list[str] = []
+
+    def flush_item() -> None:
+        nonlocal current_item
+        if not current_section or not current_item:
+            current_item = []
+            return
+        fact = re.sub(r"\s+", " ", " ".join(current_item)).strip(" :•✓-–—\t")
+        current_item = []
+        if len(_normalize_for_fidelity(fact)) < 12 or _is_allowed_source_coverage_exclusion(fact):
+            return
+        if not any(existing["section"] == current_section and existing["fact"] == fact for existing in facts):
+            facts.append({"section": current_section, "fact": fact})
+
+    for raw_line in compact_extracted_text(source_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        heading = _canonical_business_coverage_heading(line)
+        if heading:
+            flush_item()
+            current_section = heading
+            continue
+        if current_section and _looks_like_section_boundary(line):
+            flush_item()
+            current_section = None
+            continue
+        if not current_section:
+            continue
+        cleaned = line.strip()
+        if cleaned == ":":
+            continue
+        starts_new_item = bool(re.match(r"^[✓•\-*]\s*\S", cleaned))
+        cleaned = cleaned.strip("✓•-* ")
+        if not cleaned or _is_allowed_source_coverage_exclusion(cleaned):
+            continue
+        if starts_new_item:
+            flush_item()
+            current_item = [cleaned]
+        elif current_item:
+            current_item.append(cleaned)
         else:
-            grouped_skills.append(skill)
-    return grouped_skills
+            current_item = [cleaned]
+    flush_item()
+    return facts
+
+
+def _business_coverage_section_for_item(source_text: str, item: str) -> str | None:
+    normalized_item = _normalize_for_fidelity(item)
+    if len(normalized_item) < 20:
+        return None
+    for entry in extract_source_business_coverage_facts(source_text):
+        fact = entry["fact"]
+        normalized_fact = _normalize_for_fidelity(fact)
+        if normalized_item in normalized_fact or _contains_fidelity_fact(normalized_fact, item):
+            return entry["section"]
+    return None
+
+
+def _skill_keyword_matches(term: str, keyword: str) -> bool:
+    lower = term.lower()
+    key = keyword.lower()
+    if not key.isalnum():
+        return key in lower
+    if re.search(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])", lower):
+        return True
+    return any(lower.startswith(prefix) for prefix in ("postgresql", "mongodb") if key in prefix)
+
+
+def _skill_family(term: str) -> str:
+    return next((name for name, keys in _SKILL_FAMILIES if any(_skill_keyword_matches(term, key) for key in keys)), "Autres")
+
+
+def _dedupe_skill_items(items: list[str], *, split_packed: bool = True) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        # Hermes sometimes returns comma/pipe/semicolon packed skills inside one item.
+        # Source-faithful categories must keep original lines intact: commas can be
+        # part of the source bullet and splitting them creates non-copy fragments.
+        parts = re.split(r"[,|;]", item) if split_packed else [item]
+        for part in parts:
+            cleaned = part.strip(" •\t")
+            key = _skill_key(cleaned)
+            if cleaned and key not in seen:
+                seen.add(key)
+                unique.append(cleaned)
+    return unique
+
+
+def _skill_family_chunks(items: list[str], max_items: int) -> list[list[str]]:
+    """Split long skill families without silently dropping source technologies."""
+    if max_items <= 0:
+        return [items]
+    return [items[index:index + max_items] for index in range(0, len(items), max_items)]
+
+
+def _continued_skill_category(family: str, chunk_index: int) -> str:
+    if chunk_index == 0:
+        return family
+    if chunk_index == 1:
+        return f"{family} — suite"
+    return f"{family} — suite {chunk_index}"
+
+
+def _group_long_skills(skills: list[dict], max_items: int = 6) -> list[dict]:
+    curated: list[dict] = []
+    for skill in skills:
+        original_category = str(skill.get("category") or "Compétences").strip() or "Compétences"
+        normalized_category = original_category.lower().strip()
+        source_faithful_category = _normalize_for_fidelity(original_category) in _SOURCE_FAITHFUL_SKILL_CATEGORIES
+        items = _dedupe_skill_items(
+            [str(item).strip() for item in skill.get("items", []) if str(item).strip()],
+            split_packed=not source_faithful_category,
+        )
+        if not items:
+            continue
+
+        is_generic_or_long = len(items) > max_items or any(label in normalized_category for label in _GENERIC_SKILL_CATEGORIES)
+        is_certification = "certif" in normalized_category
+        if source_faithful_category or not is_generic_or_long or is_certification:
+            kept = deepcopy(skill)
+            kept["category"] = original_category
+            kept["items"] = items
+            curated.append(kept)
+            continue
+
+        grouped: dict[str, list[str]] = {family: [] for family, _ in _SKILL_FAMILIES}
+        grouped["Autres"] = []
+        for item in items:
+            grouped[_skill_family(item)].append(item)
+
+        for family in [name for name, _ in _SKILL_FAMILIES] + ["Autres"]:
+            for chunk_index, family_items in enumerate(_skill_family_chunks(grouped[family], max_items)):
+                if family_items:
+                    curated.append({"category": _continued_skill_category(family, chunk_index), "items": family_items})
+    return curated
 
 
 def _looks_like_certification(formation: dict) -> bool:
@@ -340,25 +974,150 @@ def _group_long_certifications(formations: list[dict], max_items: int = 6) -> li
     return others + [{"date": "Certifications", "degree": grouped_degree, "school": ", ".join(schools)}]
 
 
-def apply_client_synthesis_policy(data: dict, mode: str = "standard") -> dict:
+def _source_gate_skills(data: dict, source_text: str) -> dict:
+    """Remove skill items that are not supported by the actual uploaded CV text.
+
+    Skill curation may regroup and deduplicate, but it must not turn a model
+    expansion into a visible client-facing fact. Experiences are not mutated here;
+    this gate only filters the structured skills surface where hallucinated
+    expansions are most common.
+    """
+    source_normalized = _normalize_for_fidelity(source_text or "")
+    if not source_normalized:
+        return data
+
+    gated = deepcopy(data)
+    gated_skills: list[dict] = []
+    promoted_business_items: dict[str, list[str]] = {}
+    has_source_faithful_skill_categories = any(
+        _normalize_for_fidelity(str(skill.get("category") or "")) in _SOURCE_FAITHFUL_SKILL_CATEGORIES
+        for skill in gated.get("skills") or []
+        if isinstance(skill, dict)
+    )
+    for skill in gated.get("skills") or []:
+        if not isinstance(skill, dict):
+            continue
+        category = str(skill.get("category") or "").strip()
+        if has_source_faithful_skill_categories and _normalize_for_fidelity(category) not in _SOURCE_FAITHFUL_SKILL_CATEGORIES:
+            for item in skill.get("items") or []:
+                item_text = str(item).strip()
+                if not item_text or not _contains_fidelity_fact(source_normalized, item_text):
+                    continue
+                business_section = _business_coverage_section_for_item(source_text, item_text)
+                if business_section:
+                    bucket = promoted_business_items.setdefault(business_section, [])
+                    if item_text not in bucket:
+                        bucket.append(item_text)
+            continue
+        kept_items: list[str] = []
+        for item in skill.get("items") or []:
+            item_text = str(item).strip()
+            if not item_text:
+                continue
+            if _contains_fidelity_fact(source_normalized, item_text):
+                kept_items.append(item_text)
+        if kept_items:
+            kept_skill = deepcopy(skill)
+            kept_skill["items"] = kept_items
+            gated_skills.append(kept_skill)
+    for section, items in promoted_business_items.items():
+        if items:
+            gated_skills.append({"category": section, "items": items})
+    json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
+    for entry in extract_source_business_coverage_facts(source_text):
+        fact = entry["fact"]
+        if _contains_fidelity_fact(json_normalized, fact):
+            continue
+        target = next((skill for skill in gated_skills if _normalize_for_fidelity(str(skill.get("category") or "")) == _normalize_for_fidelity(entry["section"])), None)
+        if target is None:
+            target = {"category": entry["section"], "items": []}
+            gated_skills.append(target)
+        items = target.setdefault("items", [])
+        if fact not in items:
+            items.append(fact)
+        json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
+    gated["skills"] = gated_skills
+    return gated
+
+
+def _is_high_risk_generated_fact(value: str) -> bool:
+    """Facts with numbers, percentages, acronyms or proper entities should be source-backed."""
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return False
+    if re.search(r"\d|%", cleaned):
+        return True
+    if re.search(r"\b[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ]{2,}\b", cleaned):
+        return True
+    return False
+
+
+def _source_gate_high_risk_experience_content(data: dict, source_text: str) -> dict:
+    """Drop only high-risk hallucinated experience bullets; do not condense source content."""
+    source_normalized = _normalize_for_fidelity(source_text or "")
+    if not source_normalized:
+        return data
+
+    gated = deepcopy(data)
+    for exp in gated.get("experiences") or []:
+        if not isinstance(exp, dict):
+            continue
+        next_sections: list[dict] = []
+        for section in exp.get("sections") or []:
+            if not isinstance(section, dict):
+                continue
+            content = section.get("content")
+            if isinstance(content, list):
+                kept = [
+                    str(item).strip()
+                    for item in content
+                    if str(item).strip() and (
+                        not _is_high_risk_generated_fact(str(item))
+                        or _contains_fidelity_fact(source_normalized, str(item))
+                    )
+                ]
+                if kept:
+                    next_section = deepcopy(section)
+                    next_section["content"] = kept
+                    next_sections.append(next_section)
+            elif isinstance(content, str):
+                if content.strip() and (not _is_high_risk_generated_fact(content) or _contains_fidelity_fact(source_normalized, content)):
+                    next_sections.append(section)
+            else:
+                next_sections.append(section)
+        exp["sections"] = next_sections
+    return gated
+
+
+def _source_gate_structured_data(data: dict, source_text: str) -> dict:
+    # Skills may be regrouped/filtered as a compact client-facing surface, but
+    # experiences must never be silently edited to pass validation. Rewritten or
+    # hallucinated experience bullets are now rejected by validate_source_fidelity.
+    return _source_gate_skills(data, source_text)
+
+
+def apply_client_synthesis_policy(data: dict, mode: str = "complete", *, allow_condensation: bool = False) -> dict:
     """Apply W hub client-readability rules without inventing source facts.
 
     Modes:
-    - complete: faithful full content, no condensation.
-    - standard: recent 3 experiences detailed; older experiences condensed explicitly.
-    - urgent: recent 1 experience detailed; older experiences condensed more aggressively.
+    - complete: faithful full experience content, but still curate skills/certs.
+    - standard/urgent: only when allow_condensation=True after explicit user instruction.
     """
-    normalized_mode = (mode or "standard").strip().lower()
+    normalized_mode = (mode or "complete").strip().lower()
     if normalized_mode in {"faithful", "fidèle", "fidele", "full"}:
+        normalized_mode = "complete"
+    if normalized_mode in {"standard", "urgent"} and not allow_condensation:
         normalized_mode = "complete"
     if normalized_mode not in SYNTHESIS_MODES:
         raise StructuringError(f"Mode de synthèse CV inconnu: {mode}")
 
     synthesized = deepcopy(data)
     if normalized_mode == "complete":
+        synthesized["skills"] = _group_long_skills(synthesized.get("skills") or [])
+        synthesized["formations"] = _group_long_certifications(synthesized.get("formations") or [])
         synthesized["synthesis_policy"] = {
             "mode": "complete",
-            "rules": "Contenu fidèle complet: aucune condensation automatique des expériences.",
+            "rules": "Contenu fidèle complet: aucune condensation automatique des expériences; compétences et certifications regroupées pour lisibilité sans suppression de faits source.",
         }
         return synthesized
 
@@ -407,14 +1166,20 @@ Tu dois suivre le skill whub-client-cv-generator déjà chargé.{block_rule}
 Règles non négociables:
 - Réponds uniquement avec un objet JSON valide. Aucun markdown, aucun commentaire, aucun texte autour.
 - Identité candidat: champ name = prénom uniquement, idéalement: {first_name_rule!r}. Aucun nom de famille.
-- Supprime toutes les coordonnées: email, téléphone, LinkedIn, URL, GitHub, adresse complète.
+- Supprime les coordonnées et l'adresse personnelle du candidat: email, téléphone, LinkedIn, URL, GitHub, adresse complète.
+- Conserve les localisations de mission/client présentes dans les expériences (ex: ville + département comme Montreuil (93)); ce ne sont pas des coordonnées candidat.
 - Ne crée pas d'informations absentes du CV.
 - Préserve les dates, entreprises, missions, stacks et diplômes présents dans le CV.
-- Corrige seulement les erreurs évidentes de typographie/casse/espacement.
-- Structure les compétences en catégories lisibles.
-- Structure les expériences en liste, avec sections `Missions clés` et `Environnement technique` quand l'information existe.
-- Pour un CV très long: conserve les expériences récentes détaillées; les anciennes peuvent être synthétisées uniquement avec une mention explicite, sans inventer ni masquer la condensation.
-- Regroupe les longues listes de certifications/technologies proprement par familles plutôt que de les couper.
+- Ne corrige pas les typos, noms d’écoles, accents ou formulations du CV source. Normalise seulement les espaces et les retours ligne nécessaires au JSON.
+- Fidélité copier-coller: chaque élément visible dans `experiences[].sections[].content` doit être un extrait exact du CV source après normalisation des espaces/retours ligne. Ne remplace pas un mot source par un synonyme, même évident.
+- Structure les compétences en catégories lisibles, hiérarchisées et client-facing quand elles proviennent d'une section compétences source; ne transforme pas des outils cités dans une expérience en compétences globales inventées.
+- Évite les pavés par la mise en page et les retours ligne JSON, pas par synthèse du contenu source.
+- Structure les expériences sans inventer de sous-sections. Tu peux utiliser `Missions clés` comme conteneur neutre uniquement pour regrouper des phrases source exactes sans heading visible.
+- N’utilise `Environnement technique`, `Stack technique` ou équivalent que si ce heading existe explicitement dans le CV source pour cette expérience.
+- Ne déduis jamais un environnement technique à partir d’outils cités dans un paragraphe. Ne découpe pas un paragraphe source en liste de technologies.
+- Conserve les headings source pertinents quand ils existent dans l'expérience, par exemple `Périmètre applicatif`, au lieu de les renommer.
+- Pour un CV très long: conserve toutes les expériences et informations source; ne synthétise/condense que si la consigne utilisateur demande explicitement une version courte, synthèse ou condensée.
+- Regroupe les longues listes de certifications/technologies proprement par familles seulement hors expériences et seulement si chaque item reste source-backed.
 - Ne mets jamais `@`, `linkedin`, `http`, `github.com`, `+33`, téléphone mobile français dans le JSON.
 
 Schéma attendu:
@@ -430,8 +1195,8 @@ Schéma attendu:
       "role": "...",
       "company_highlight": "...",
       "sections": [
-        {{"heading": "Missions clés", "content": ["..."]}},
-        {{"heading": "Environnement technique", "content": "..."}}
+        {{"heading": "Missions clés", "content": ["phrases source exactes, sans reformulation"]}},
+        {{"heading": "Périmètre applicatif", "content": ["ligne/paragraphe source exact si ce heading existe dans le CV"]}}
       ]
     }}
   ]
@@ -539,8 +1304,21 @@ def build_whub_json(
                 raise StructuringError(f"CV long: échec sur bloc {label} ({sample}): {exc}") from exc
         data = assemble_structured_blocks(structured_blocks, candidate_first_name)
 
-    if candidate_first_name:
-        data["name"] = candidate_first_name.strip().upper()
-    data = apply_client_synthesis_policy(data, synthesis_mode)
+    enforce_client_first_name(data, candidate_first_name)
+    resolved_synthesis_mode = resolve_synthesis_mode(synthesis_mode, instructions, comments)
+    data = _source_gate_structured_data(data, compacted_text)
+    data = apply_client_synthesis_policy(
+        data,
+        resolved_synthesis_mode,
+        allow_condensation=resolved_synthesis_mode != "complete",
+    )
+    data = _source_gate_structured_data(data, compacted_text)
+    enforce_client_first_name(data, candidate_first_name)
     assert_no_contact_in_json(data)
+    validate_source_fidelity(
+        compacted_text,
+        data,
+        allow_synthesis=resolved_synthesis_mode != "complete",
+        forbidden_identity_terms=infer_forbidden_candidate_identity_terms(compacted_text, candidate_first_name),
+    )
     return data

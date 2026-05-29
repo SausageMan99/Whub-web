@@ -1,0 +1,44 @@
+Oussama ASSAOUI
+Technical Leader RPA/IA
+
+01/2024 – Aujourd’hui Software Engineer - CDI chez EDF - France
+Piloter le cadrage technique des automatisations RPA et IA.
+Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.
+Maintenir la documentation technique et accompagner les utilisateurs.
+Environnement technique: UiPath, Python, Git, Jira.
+
+07/2022 – 01/2024 Software Engineer - CDI chez BNP Paribas - France
+Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.
+Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration.
+Industrialiser les robots existants et suivre les incidents de production.
+Environnement technique: Blue Prism, UiPath, SQL, Python.
+
+02/2022 – 07/2022 RPA Developer chez STALLERGENES GREER - France
+Analyser les processus métier et identifier les opportunités d’automatisation.
+Développer les workflows RPA conformément aux besoins exprimés.
+Environnement technique: UiPath, Orchestrator, Excel.
+
+09/2021 – 02/2022 RPA Developer chez Banque de France - France
+Réaliser les robots logiciels pour automatiser les contrôles opérationnels.
+Documenter les développements et préparer les recettes utilisateurs.
+Environnement technique: Blue Prism, SQL Server.
+
+03/2021 – 09/2021 Software Engineer chez EMGS Group - France
+Développer des scripts d’automatisation pour améliorer la qualité des données.
+Assurer la maintenance corrective et évolutive des outils internes.
+Environnement technique: Python, VBA, Git.
+
+09/2020 – 03/2021 Développeur informatique chez SAFILAIT - Maroc
+Concevoir des modules applicatifs pour le suivi des activités internes.
+Rédiger les spécifications techniques et réaliser les tests fonctionnels.
+Environnement technique: Java, Spring Boot, MySQL.
+
+03/2020 – 09/2020 Stagiaire développeur chez HUWAEI - Maroc
+Participer au développement d’une application web de suivi des interventions.
+Corriger les anomalies remontées lors des phases de recette.
+Environnement technique: Angular, Java, Git.
+
+2019 – 2020 Projets académiques
+Développer une application de gestion des absences dans le cadre universitaire.
+Réaliser un projet de classification de données avec Python.
+Environnement technique: Python, Java, MySQL.

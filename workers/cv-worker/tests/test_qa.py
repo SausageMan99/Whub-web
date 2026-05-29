@@ -4,7 +4,8 @@ from pathlib import Path
 import fitz
 import pytest
 
-from src.qa import run_qa, QAError, find_text_overflow
+from src.qa import run_qa, QAError, find_text_overflow, find_pdf_source_fidelity_issues
+from src.structuring import StructuringError, validate_source_fidelity, extract_experience_location_facts
 
 
 class TestRunQA:
@@ -84,4 +85,116 @@ class TestRunQA:
         assert "email" in hits
         assert "linkedin" in hits
         assert "phone_fr" in hits
+        tmp.cleanup()
+
+    def test_detects_numbered_placeholder_bullets(self):
+        path, tmp = self._make_pdf("Analyse des besoins assurance 1\nAnalyse des besoins assurance 2\nAnalyse des besoins assurance 3")
+        with pytest.raises(QAError) as exc_info:
+            run_qa(path)
+        assert any(issue["code"] == "numbered_placeholder_repetition" for issue in exc_info.value.report["content_integrity_issues"])
+        tmp.cleanup()
+
+    def test_pdf_gate_rejects_json_experience_missing_from_rendered_pdf(self):
+        path, tmp = self._make_pdf("Zahia\nChef de projet\nGROUPE KLESIA")
+        structured = {
+            "name": "ZAHIA",
+            "title": "Chef de projet",
+            "formations": [],
+            "skills": [],
+            "experiences": [{
+                "date": "Juin 2023 – à ce jour",
+                "role": "Chef de projet | GROUPE KLESIA | Protection sociale",
+                "company_highlight": "GROUPE KLESIA",
+                "sections": [{"heading": "Missions clés", "content": ["Pilotage recette"]}],
+            }],
+        }
+
+        with pytest.raises(QAError) as exc_info:
+            run_qa(path, source_text="Zahia\nJuin 2023 – à ce jour\nChef de projet | GROUPE KLESIA | Protection sociale\nPilotage recette", structured_data=structured)
+        assert any(issue["code"] == "json_fact_missing_from_pdf" for issue in exc_info.value.report["content_integrity_issues"])
+        tmp.cleanup()
+
+    def test_pdf_gate_rejects_pdf_company_absent_from_source(self):
+        path, tmp = self._make_pdf("Zahia\nChef de projet\nMutuelle GSMC")
+        with pytest.raises(QAError) as exc_info:
+            run_qa(path, source_text="Zahia\nChef de projet\nGROUPE KLESIA")
+        assert any(issue["code"] == "pdf_fact_absent_from_source" for issue in exc_info.value.report["content_integrity_issues"])
+        tmp.cleanup()
+
+    def test_pdf_source_fidelity_accepts_line_break_and_punctuation_normalization(self):
+        pdf_text = "Langages : Python, Angular, JavaScript, MySQL, Jenkins. Logiciels : PEGA"
+        source_text = "Langages : Python, Angular, JavaScript, MySQL, Jenkins,\nLogiciels : PEGA"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert issues == []
+
+    def test_pdf_source_fidelity_accepts_comparison_symbol_normalization(self):
+        pdf_text = "Objectifs prévisionnels : −30 % sur le délai demande d’achat, commande | ≥ 90 % des demandes dans SAP/SRM"
+        source_text = "Objectifs prévisionnels : −30 % sur le délai demande d’achat, commande | ≥ 90 % des demandes dans SAP/SRM"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert issues == []
+
+    def test_pdf_source_fidelity_accepts_ocr_split_inside_word(self):
+        pdf_text = "≥ 90 % des demandes dans SAP/SRM"
+        source_text = "90 % des de mandes dans SAP/SRM"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert issues == []
+
+    def test_extracts_and_requires_experience_locations_without_personal_city(self):
+        source_text = "Zahia Aris\nzaris@example.com\nJouy-Le-Moutier\nGROUPE KLESIA 📌 Montreuil (93)\n📆 Juin 2023 – A ce jour\nCHEF DE PROJET"
+        assert extract_experience_location_facts(source_text) == ["Montreuil (93)"]
+
+        data = {
+            "name": "ZAHIA",
+            "title": "Chef de projet",
+            "formations": [],
+            "skills": [],
+            "experiences": [{"date": "Juin 2023 – A ce jour", "role": "GROUPE KLESIA — Chef de projet", "company_highlight": "GROUPE KLESIA", "sections": []}],
+        }
+        with pytest.raises(StructuringError) as exc_info:
+            validate_source_fidelity(source_text, data)
+        assert "experience_location_missing_from_json" in str(exc_info.value)
+
+        data["experiences"][0]["role"] = "GROUPE KLESIA — Montreuil (93) — Chef de projet"
+        validate_source_fidelity(source_text, data)
+
+    def test_pdf_source_fidelity_rejects_missing_experience_location(self):
+        source_text = "GROUPE KLESIA 📌 Montreuil (93)\n📆 Juin 2023 – A ce jour"
+        pdf_text = "GROUPE KLESIA\nJuin 2023 – A ce jour\nChef de projet"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert any(issue["code"] == "source_experience_location_missing_from_pdf" for issue in issues)
+
+
+    def test_pdf_source_coverage_rejects_missing_business_realizations_section(self):
+        source_text = """
+THOREZ Nicolas
+06 66 44 13 14
+Exemples de réalisations professionnelles
+:
+✓Gestion d'un SI d'une usine pharmaceutique (+500 employés)
+✓Conception, développement et mise en place d’une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]
+Compétences et outils :
+✓Management d'équipe
+"""
+        pdf_text = "NICOLAS\nCompétences et outils\nManagement d'équipe"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert any(issue["code"] == "source_coverage_missing_section" for issue in issues)
+        assert any("Exemples de réalisations professionnelles" in issue.get("section", "") for issue in issues)
+
+    def test_forbidden_name_does_not_match_inside_city_name(self):
+        path, tmp = self._make_pdf("ESAM School, Paris")
+
+        report = run_qa(path, forbidden_names=["Aris"])
+
+        assert report["passed"] is True
+        assert report["contact_hits"] == []
         tmp.cleanup()
