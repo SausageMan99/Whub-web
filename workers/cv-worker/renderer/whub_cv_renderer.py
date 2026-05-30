@@ -30,12 +30,18 @@ BLACK = HexColor('#000000')
 TITLE = HexColor('#241D19')
 PURPLE = HexColor('#7001F5')
 
-DEFAULT_ASSETS_DIR = Path.home() / '.hermes' / 'image_cache'
-DEFAULT_FONTS_DIR = Path('/tmp/poppins_full')
+WORKER_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ASSETS_DIR = WORKER_ROOT / 'assets' / 'whub'
+DEFAULT_FONTS_DIR = WORKER_ROOT / 'assets' / 'fonts' / 'poppins'
+EXPECTED_ASSET_SIZES = {
+    'img_0dcab6df734b.png': (1051, 398),
+    'img_90df8f14aa40.png': (1192, 1192),
+}
 FONT_DIR_CANDIDATES = [
     Path(os.environ.get('WHUB_FONTS_DIR', DEFAULT_FONTS_DIR)),
     DEFAULT_FONTS_DIR,
     Path.home() / '.hermes' / 'assets' / 'fonts' / 'poppins',
+    Path('/tmp/poppins_full'),
 ]
 ASSETS_DIR = Path(os.environ.get('WHUB_ASSETS_DIR', DEFAULT_ASSETS_DIR))
 LOGO_SRC = ASSETS_DIR / 'img_0dcab6df734b.png'
@@ -68,7 +74,13 @@ def ensure_poppins() -> Path:
     for d in FONT_DIR_CANDIDATES:
         if all((d / f'Poppins-{w}.ttf').exists() for w in ['Regular', 'Bold', 'SemiBold', 'Light']):
             return d
-    die('Poppins fonts not found. Put Poppins-Regular/Bold/SemiBold/Light.ttf in WHUB_FONTS_DIR, ~/.hermes/assets/fonts/poppins or /tmp/poppins_full')
+    die(f'Poppins fonts not found. Put Poppins-Regular/Bold/SemiBold/Light.ttf in WHUB_FONTS_DIR or {DEFAULT_FONTS_DIR}')
+
+
+def assert_asset_size(path: Path, expected: tuple[int, int]) -> None:
+    actual = Image.open(path).size
+    if actual != expected:
+        die(f'Invalid W hub asset dimensions for {path}: {actual}, expected {expected}')
 
 
 def register_fonts(font_dir: Path) -> None:
@@ -104,6 +116,8 @@ def trim_transparent(src: Path, dst: Path, threshold: int = 8, watermark: bool =
 def prep_assets() -> None:
     if not LOGO_SRC.exists() or not WM_SRC.exists():
         die(f'W hub logo/watermark images missing from {ASSETS_DIR}')
+    assert_asset_size(LOGO_SRC, EXPECTED_ASSET_SIZES[LOGO_SRC.name])
+    assert_asset_size(WM_SRC, EXPECTED_ASSET_SIZES[WM_SRC.name])
     trim_transparent(LOGO_SRC, LOGO, 8, False)
     trim_transparent(WM_SRC, WM, 1, True)
 

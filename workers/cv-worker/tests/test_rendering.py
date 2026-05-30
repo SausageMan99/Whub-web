@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.config import DEFAULT_WHUB_RENDERER_PATH
+from src.config import DEFAULT_WHUB_ASSETS_DIR, DEFAULT_WHUB_FONTS_DIR, DEFAULT_WHUB_RENDERER_PATH
 from src.rendering import render_pdf, RenderingError, assert_whub_assets
 
 
@@ -26,12 +26,23 @@ class TestAssertWHubAssets:
             with pytest.raises(RenderingError, match="Mauvais asset W hub"):
                 assert_whub_assets()
 
+    def test_packaged_assets_have_valid_dimensions(self):
+        from PIL import Image
+        assert Image.open(DEFAULT_WHUB_ASSETS_DIR / "img_0dcab6df734b.png").size == (1051, 398)
+        assert Image.open(DEFAULT_WHUB_ASSETS_DIR / "img_90df8f14aa40.png").size == (1192, 1192)
+
 
 class TestRenderPdf:
     def test_default_renderer_path_is_repo_local(self):
         assert DEFAULT_WHUB_RENDERER_PATH.name == "whub_cv_renderer.py"
         assert DEFAULT_WHUB_RENDERER_PATH.parent.name == "renderer"
         assert DEFAULT_WHUB_RENDERER_PATH.exists()
+
+    def test_default_assets_and_fonts_are_repo_local(self):
+        assert DEFAULT_WHUB_ASSETS_DIR == DEFAULT_WHUB_RENDERER_PATH.parents[1] / "assets" / "whub"
+        assert DEFAULT_WHUB_FONTS_DIR == DEFAULT_WHUB_RENDERER_PATH.parents[1] / "assets" / "fonts" / "poppins"
+        for weight in ["Regular", "Bold", "SemiBold", "Light"]:
+            assert (DEFAULT_WHUB_FONTS_DIR / f"Poppins-{weight}.ttf").exists()
 
     def test_render_pdf_writes_json_and_calls_renderer(self, tmp_path: Path):
         data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
@@ -56,8 +67,8 @@ class TestRenderPdf:
         mock_run.assert_called_once()
         args, kwargs = mock_run.call_args
         assert args[0] == [sys.executable, str(fake_renderer), str(input_path), str(output_pdf)]
-        assert kwargs["env"]["WHUB_ASSETS_DIR"] == "/root/.hermes/image_cache"
-        assert kwargs["env"]["WHUB_FONTS_DIR"] == "/tmp/poppins_full"
+        assert kwargs["env"]["WHUB_ASSETS_DIR"] == str(DEFAULT_WHUB_ASSETS_DIR)
+        assert kwargs["env"]["WHUB_FONTS_DIR"] == str(DEFAULT_WHUB_FONTS_DIR)
         assert result == output_pdf
 
     def test_render_pdf_can_pass_internal_layout_retry_options(self, tmp_path: Path):
