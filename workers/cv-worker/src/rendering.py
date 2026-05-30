@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import os
 import subprocess
 import sys
 from PIL import Image
@@ -22,6 +23,9 @@ def assert_whub_assets() -> None:
 
 def render_pdf(data: dict, workdir: Path, layout_options: dict | None = None, output_name: str = "output.pdf") -> Path:
     assert_whub_assets()
+    renderer_path = Path(settings.whub_renderer_path)
+    if not renderer_path.exists():
+        raise RenderingError(f"Renderer W hub manquant: {renderer_path}")
     input_path = workdir / ("input_layout_retry.json" if layout_options else "input.json")
     output_path = workdir / output_name
     renderer_data = dict(data)
@@ -29,7 +33,18 @@ def render_pdf(data: dict, workdir: Path, layout_options: dict | None = None, ou
         renderer_data["_layout"] = dict(layout_options)
         assert_layout_retry_preserves_content(data, renderer_data)
     input_path.write_text(json.dumps(renderer_data, ensure_ascii=False, indent=2), encoding="utf-8")
-    result = subprocess.run([sys.executable, settings.whub_renderer_path, str(input_path), str(output_path)], text=True, capture_output=True, timeout=180)
+    renderer_env = {
+        **os.environ,
+        "WHUB_ASSETS_DIR": settings.whub_assets_dir,
+        "WHUB_FONTS_DIR": settings.whub_fonts_dir,
+    }
+    result = subprocess.run(
+        [sys.executable, str(renderer_path), str(input_path), str(output_path)],
+        text=True,
+        capture_output=True,
+        timeout=180,
+        env=renderer_env,
+    )
     if result.returncode != 0 or not output_path.exists():
         raise RenderingError(result.stderr or result.stdout or "Renderer failed")
     return output_path

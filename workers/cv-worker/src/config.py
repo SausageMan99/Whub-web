@@ -1,4 +1,10 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+
+WORKER_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_WHUB_RENDERER_PATH = WORKER_ROOT / "renderer" / "whub_cv_renderer.py"
 
 class Settings(BaseSettings):
     supabase_url: str
@@ -12,7 +18,7 @@ class Settings(BaseSettings):
     cv_artifacts_bucket: str = "cv-artifacts"
     hermes_cli_path: str = "hermes"
     hermes_profile: str = "default"
-    whub_renderer_path: str = "/root/.hermes/scripts/whub_cv_renderer.py"
+    whub_renderer_path: str = str(DEFAULT_WHUB_RENDERER_PATH)
     whub_assets_dir: str = "/root/.hermes/image_cache"
     whub_fonts_dir: str = "/tmp/poppins_full"
     tmp_dir: str = "/tmp/whub-cv-factory"

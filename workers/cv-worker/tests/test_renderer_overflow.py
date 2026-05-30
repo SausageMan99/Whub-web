@@ -10,7 +10,7 @@ from typing import Any, cast
 import fitz
 
 
-RENDERER = Path('/root/.hermes/scripts/whub_cv_renderer.py')
+RENDERER = Path(__file__).resolve().parents[1] / 'renderer' / 'whub_cv_renderer.py'
 
 
 def load_renderer_module():
