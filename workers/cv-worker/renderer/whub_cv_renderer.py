@@ -9,6 +9,7 @@ Do not include candidate phone/email/linkedin: W hub client CVs must not expose 
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -37,12 +38,13 @@ EXPECTED_ASSET_SIZES = {
     'img_0dcab6df734b.png': (1051, 398),
     'img_90df8f14aa40.png': (1192, 1192),
 }
-FONT_DIR_CANDIDATES = [
-    Path(os.environ.get('WHUB_FONTS_DIR', DEFAULT_FONTS_DIR)),
-    DEFAULT_FONTS_DIR,
-    Path.home() / '.hermes' / 'assets' / 'fonts' / 'poppins',
-    Path('/tmp/poppins_full'),
-]
+EXPECTED_FONT_SHA256 = {
+    'Regular': '7e65201e9b79159e2300267cc885e16c8dcef2424cdfa09a29bfb0980a94a7ba',
+    'Bold': '983676516167748b74de6f4771fb384c664fd913acb8b471122ecacf5da5ea6c',
+    'SemiBold': 'd3bf1bdaf0550e83da9ac0b1d1d9fe6db086835a83aa28578e609a394b9a0286',
+    'Light': '650ba57fa99d12ec40c31ccfb680be656be4497fbe14164617d67e32ffe9cd46',
+}
+REQUIRED_FONT_WEIGHTS = tuple(EXPECTED_FONT_SHA256)
 ASSETS_DIR = Path(os.environ.get('WHUB_ASSETS_DIR', DEFAULT_ASSETS_DIR))
 LOGO_SRC = ASSETS_DIR / 'img_0dcab6df734b.png'
 WM_SRC = ASSETS_DIR / 'img_90df8f14aa40.png'
@@ -70,11 +72,30 @@ def die(msg: str) -> None:
     sys.exit(1)
 
 
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def ensure_poppins() -> Path:
-    for d in FONT_DIR_CANDIDATES:
-        if all((d / f'Poppins-{w}.ttf').exists() for w in ['Regular', 'Bold', 'SemiBold', 'Light']):
-            return d
-    die(f'Poppins fonts not found. Put Poppins-Regular/Bold/SemiBold/Light.ttf in WHUB_FONTS_DIR or {DEFAULT_FONTS_DIR}')
+    font_dir = Path(os.environ['WHUB_FONTS_DIR']) if 'WHUB_FONTS_DIR' in os.environ else DEFAULT_FONTS_DIR
+    missing = [f'Poppins-{w}.ttf' for w in REQUIRED_FONT_WEIGHTS if not (font_dir / f'Poppins-{w}.ttf').is_file()]
+    if missing:
+        source = 'configured WHUB_FONTS_DIR' if 'WHUB_FONTS_DIR' in os.environ else 'default fonts dir'
+        die(f"Poppins fonts incomplete in {source} {font_dir}: missing {', '.join(missing)}")
+    for weight in REQUIRED_FONT_WEIGHTS:
+        path = font_dir / f'Poppins-{weight}.ttf'
+        actual_sha256 = sha256(path)
+        expected_sha256 = EXPECTED_FONT_SHA256[weight]
+        if actual_sha256 != expected_sha256:
+            die(
+                f'Poppins font divergent in {font_dir}: {path} '
+                f'sha256={actual_sha256}, expected {expected_sha256}'
+            )
+    return font_dir
 
 
 def assert_asset_size(path: Path, expected: tuple[int, int]) -> None:

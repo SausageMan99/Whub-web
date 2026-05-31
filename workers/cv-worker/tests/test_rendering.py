@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -138,3 +139,32 @@ class TestRenderPdf:
             with patch("src.rendering.settings.whub_renderer_path", str(tmp_path / "missing.py")):
                 with pytest.raises(RenderingError, match="Renderer W hub manquant"):
                     render_pdf(data, workdir)
+
+    def test_renderer_fails_closed_when_configured_poppins_dir_is_partial(self, tmp_path: Path):
+        input_path = tmp_path / "input.json"
+        output_path = tmp_path / "output.pdf"
+        partial_fonts_dir = tmp_path / "partial-fonts"
+        partial_fonts_dir.mkdir()
+        (partial_fonts_dir / "Poppins-Regular.ttf").write_bytes(
+            (DEFAULT_WHUB_FONTS_DIR / "Poppins-Regular.ttf").read_bytes()
+        )
+        input_path.write_text(
+            json.dumps({"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}),
+            encoding="utf-8",
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(DEFAULT_WHUB_RENDERER_PATH), str(input_path), str(output_path)],
+            text=True,
+            capture_output=True,
+            env={
+                **os.environ,
+                "WHUB_ASSETS_DIR": str(DEFAULT_WHUB_ASSETS_DIR),
+                "WHUB_FONTS_DIR": str(partial_fonts_dir),
+            },
+        )
+
+        assert result.returncode != 0
+        assert not output_path.exists()
+        assert "Poppins fonts incomplete" in result.stderr
+        assert str(partial_fonts_dir) in result.stderr

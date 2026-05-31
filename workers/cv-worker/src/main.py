@@ -15,6 +15,7 @@ from .storage import next_version_number, save_version
 from .layout_retry import is_safe_layout_retry_report
 from .layout_packing import build_layout_packing_options
 from .layout_intelligence import build_layout_retry_options
+from .preflight import run_startup_preflight
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
@@ -144,6 +145,15 @@ def process_job(job: dict) -> None:
 
 def main() -> None:
     log.info("starting worker %s", settings.worker_name)
+    preflight_report = run_startup_preflight()
+    log.info(
+        "startup preflight ok renderer=%s assets_dir=%s fonts_dir=%s fonts_source=%s supabase=%s",
+        preflight_report["renderer"],
+        preflight_report["assets_dir"],
+        preflight_report["fonts_dir"],
+        preflight_report["fonts_source"],
+        preflight_report["supabase"],
+    )
     while True:
         job = claim_next_job()
         if not job:

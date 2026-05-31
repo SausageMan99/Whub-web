@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "tsc --project tsconfig.lint.json --noEmit",
     "test": "tsx --test --experimental-test-module-mocks tests/*.test.ts"
   },
   "dependencies": {

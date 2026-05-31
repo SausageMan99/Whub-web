@@ -18,6 +18,16 @@ MVP interne pour transformer des CV candidats en CV client-facing W hub.
 5. PDF final W hub avec QA bloquante.
 6. Commentaires de modification et versions V1/V2/V3.
 
+## Vérification locale avant release
+
+Lancer la gate complète depuis la racine du repo :
+
+```bash
+scripts/verify_all.sh
+```
+
+La commande exécute le lint/typecheck web compatible Next 16, les tests web, le build Next, les tests worker, la compilation Python de `workers/cv-worker/src`, `workers/cv-worker/renderer` et `workers/cv-worker/scripts`, le preflight assets/fonts W hub repo-local validé par SHA-256 (`workers/cv-worker/scripts/verify_whub_assets.py`) et `git diff --check`.
+
 ## Sécurité non négociable
 
 - Accès limité aux emails whitelistés dans `allowed_users`.
