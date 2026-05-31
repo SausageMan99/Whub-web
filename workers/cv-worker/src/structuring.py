@@ -27,13 +27,26 @@ SYNTHESIS_MODES = {"standard", "complete", "urgent"}
 HermesRunner = Callable[[str, int], tuple[int, str, str]]
 NUMBERED_PLACEHOLDER_RE = re.compile(r"^(.{8,}?)[\s\u00a0]+([1-9]\d?)$", re.I)
 NO_COMPACTION_RE = re.compile(
-    r"\b(ne\s+pas\s+(?:compacter|condenser|r[ée]sumer|synth[ée]tiser|raccourcir)|sans\s+(?:compaction|condensation|r[ée]sum[ée]|synth[èe]se)|cv\s+complet|contenu\s+complet|fid[èe]le|conserver\s+(?:tout|l['’]?int[ée]gralit[ée]))\b",
+    r"\b(ne\s+pas\s+(?:compacter|condenser|r[ée]sumer|synth[ée]tiser|raccourcir)|sans\s+(?:compaction|condensation|r[ée]sum[ée]|synth[èe]se|reformulation)|sans\s+[^.\n]{0,100}\b(?:condens(?:er|ation|é|e)|synth[ée]tiser|synth[èe]se|omettre|omission)|cv\s+complet|contenu\s+complet|fid[èe]le|conserver\s+(?:tout|l['’]?int[ée]gralit[ée]))\b",
     re.I,
 )
-EXPLICIT_SYNTHESIS_RE = re.compile(
-    r"\b(?:synth[èe]se|synth[ée]tiser|r[ée]sum[ée]|r[ée]sumer|condens(?:er|ation|é|e)|compacter|raccourcir|court|courte|client\s+short)\b",
+EXPLICIT_SHORT_VERSION_RE = re.compile(
+    r"\b(?:version\s+courte|cv\s+court|cv\s+synth[ée]tique|client\s+short|raccourci[rs]?|raccourcir|r[ée]sumer(?:\s+(?:le\s+)?cv)?|r[ée]sum[ée]\s+(?:du|de\s+ce)\s+cv|synth[ée]tiser|synth[èe]se|condens(?:er|ation|é|e)|compacter|all[ée]ger|tenir\s+en\s+(?:\d+|deux|trois)\s+pages?|(?:\d+|deux|trois)\s+pages?\s+max)\b",
     re.I,
 )
+EXPLICIT_REWRITE_RE = re.compile(
+    r"\b(?:r[ée][ée]cri(?:s|re|t|ture)|rewrite|reformul(?:e|er|ation)|am[ée]liore\s+(?:l['’]?|la\s+|le\s+)?(?:pr[ée]sentation|accroche|profil|r[ée]sum[ée]))\b",
+    re.I,
+)
+TARGETED_EDIT_RE = re.compile(
+    r"\b(?:corrige|corriger|modifie|modifier|change|changer|remplace|remplacer|ajoute|ajouter|supprime|supprimer|retire|retirer|mets\s+[àa]\s+jour|mettre\s+[àa]\s+jour)\b.{0,120}\b(?:titre|pr[ée]sentation|profil|r[ée]sum[ée]|comp[ée]tences?|formation|exp[ée]rience|mission|date|client|entreprise|stack|outil|certification)\b",
+    re.I | re.S,
+)
+VAGUE_FORMATTING_RE = re.compile(
+    r"\b(?:cv\s+standard|standard\s+w\s*hub|format\s+w\s*hub|mettre\s+au\s+format\s+w\s*hub|mise\s+au\s+format|faire\s+propre|cv\s+propre|rendre\s+propre|int[ée]grable\s+[àa]\s+la\s+base|mise\s+en\s+page\s+uniquement)\b",
+    re.I,
+)
+USER_INSTRUCTION_INTENTS = {"complete_faithful", "explicit_short_version", "explicit_rewrite", "targeted_edit"}
 EXPERIENCE_LOCATION_RE = re.compile(
     r"(?:📌|\b(?:lieu|localisation)\s*[:\-])\s*([^\n|•]+?\(\s*\d{2,3}\s*\))",
     re.I,
@@ -285,19 +298,46 @@ def _role_fact_fragments(role: str) -> list[str]:
     return facts
 
 
+def _comments_text(comments: list[dict] | None = None) -> str:
+    return "\n".join(str(comment.get("body", "")) for comment in comments or [] if isinstance(comment, dict))
+
+
+def classify_user_instruction_intent(instructions: str = "", comments: list[dict] | None = None) -> str:
+    """Classify user intent before deciding whether source content may change.
+
+    Vague W hub formatting requests are not editing authorization. Only explicit
+    short/synthesis wording unlocks condensation; rewrite/edit requests stay
+    scoped and do not switch the whole CV away from faithful mode.
+    """
+    instruction_text = f"{instructions or ''}\n{_comments_text(comments)}".strip()
+    if not instruction_text:
+        return "complete_faithful"
+
+    has_no_compaction = bool(NO_COMPACTION_RE.search(instruction_text))
+    if EXPLICIT_SHORT_VERSION_RE.search(instruction_text) and not has_no_compaction:
+        return "explicit_short_version"
+    if EXPLICIT_REWRITE_RE.search(instruction_text):
+        return "explicit_rewrite"
+    if TARGETED_EDIT_RE.search(instruction_text):
+        return "targeted_edit"
+    # Keep this branch explicit for auditability: these phrases are common portal
+    # shorthand for branding/layout, never permission to summarize or rewrite.
+    if VAGUE_FORMATTING_RE.search(instruction_text):
+        return "complete_faithful"
+    return "complete_faithful"
+
+
 def resolve_synthesis_mode(mode: str, instructions: str = "", comments: list[dict] | None = None) -> str:
     normalized_mode = (mode or "complete").strip().lower()
-    comments_text = "\n".join(str(comment.get("body", "")) for comment in comments or [] if isinstance(comment, dict))
-    instruction_text = f"{instructions or ''}\n{comments_text}"
+    instruction_intent = classify_user_instruction_intent(instructions, comments)
     if normalized_mode in {"faithful", "fidèle", "fidele", "full"}:
         return "complete"
-    if NO_COMPACTION_RE.search(instruction_text):
-        return "complete"
-    if EXPLICIT_SYNTHESIS_RE.search(instruction_text):
-        return "urgent" if "urgent" in instruction_text.lower() else "standard"
+    if instruction_intent == "explicit_short_version":
+        return "urgent" if "urgent" in f"{instructions or ''}\n{_comments_text(comments)}".lower() else "standard"
     # Safety default: even if an env var/internal caller says "standard" or
     # "urgent", do not condense unless the user explicitly asked for a short /
-    # synthesized CV in instructions or comments.
+    # synthesized CV in instructions or comments. Explicit rewrite/targeted edit
+    # instructions are scoped edits, not global CV-shortening permission.
     return "complete"
 
 
@@ -488,25 +528,37 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
 
     if source_normalized:
         json_normalized = _normalize_for_fidelity("\n".join(json_strings))
-        for location in extract_experience_location_facts(source_text):
-            if _contains_fidelity_fact(json_normalized, location):
-                continue
-            issues.append({
-                "code": "experience_location_missing_from_json",
-                "message": f"Localisation de mission absente du JSON: {location}",
-                "missing_location": location,
-            })
+        if not allow_synthesis:
+            for location in extract_experience_location_facts(source_text):
+                if _contains_fidelity_fact(json_normalized, location):
+                    continue
+                issues.append({
+                    "code": "experience_location_missing_from_json",
+                    "message": f"Localisation de mission absente du JSON: {location}",
+                    "missing_location": location,
+                })
 
-        for entry in extract_source_business_coverage_facts(source_text):
-            fact = entry["fact"]
-            if _contains_fidelity_fact(json_normalized, fact):
-                continue
-            issues.append({
-                "code": "source_coverage_missing_section",
-                "message": f"Section source business absente du JSON: {entry['section']} — {fact}",
-                "section": entry["section"],
-                "fact": fact,
-            })
+            for entry in extract_source_business_coverage_facts(source_text):
+                fact = entry["fact"]
+                if _contains_fidelity_fact(json_normalized, fact):
+                    continue
+                issues.append({
+                    "code": "source_coverage_missing_section",
+                    "message": f"Section source business absente du JSON: {entry['section']} — {fact}",
+                    "section": entry["section"],
+                    "fact": fact,
+                })
+
+            for entry in extract_source_experience_coverage_items(source_text):
+                item = entry["item"]
+                if _contains_fidelity_fact(json_normalized, item):
+                    continue
+                issues.append({
+                    "code": "source_coverage_missing_experience_item",
+                    "message": f"Élément d'expérience source absent du JSON: {entry['heading']} — {item}",
+                    "heading": entry["heading"],
+                    "item": item,
+                })
 
         for index, exp in enumerate(data.get("experiences") or [], start=1):
             if not isinstance(exp, dict):
@@ -940,14 +992,24 @@ _BUSINESS_COVERAGE_HEADINGS = {
     "projets": "Projets",
     "projets significatifs": "Projets significatifs",
     "certifications": "Certifications",
+    "competences": "Compétences",
+    "competences techniques": "Compétences techniques",
+    "competences et outils": "Compétences et outils",
+    "langues": "Langues",
+    "languages": "Langues",
+    "autres": "Autres",
 }
 
 _BUSINESS_COVERAGE_HEADING_RE = re.compile(
-    r"^(?:exemples?\s+de\s+)?r[ée]alisations?(?:\s+professionnelles?)?$|^projets?(?:\s+significatifs?)?$|^certifications?$",
+    r"^(?:exemples?\s+de\s+)?r[ée]alisations?(?:\s+professionnelles?)?$|^projets?(?:\s+significatifs?)?$|^certifications?$|^comp[ée]tences?(?:\s+(?:techniques?|et\s+outils?))?$|^lang(?:ues|uages)$|^autres$",
     re.I,
 )
 _SECTION_BOUNDARY_RE = re.compile(
-    r"^(?:comp[ée]tences|processus\s+m[ée]tiers|loisirs?|formations?|dipl[oô]mes?|exp[ée]riences?|parcours|mots[-\s]?cl[ée]s?)\b",
+    r"^(?:processus\s+m[ée]tiers|loisirs?|formations?|dipl[oô]mes?|exp[ée]riences?|parcours|mots[-\s]?cl[ée]s?|contact|coordonn[ée]es?)\b",
+    re.I,
+)
+_EXPERIENCE_COVERAGE_HEADING_RE = re.compile(
+    r"^(?:missions?(?:\s+cl[ée]s?)?|responsabilit[ée]s?|r[ée]alisations?|livrables?(?:\s+cl[ée]s?)?|activit[ée]s?|t[âa]ches?)\s*:?$",
     re.I,
 )
 
@@ -968,9 +1030,32 @@ def _canonical_business_coverage_heading(line: str) -> str | None:
     return None
 
 
+def _split_business_coverage_inline_heading(line: str) -> tuple[str | None, str]:
+    """Return (canonical business heading, inline value) for lines like 'Langues: Anglais'."""
+    cleaned = re.sub(r"\s+", " ", str(line or "").strip(" •✓-–—\t"))
+    if not cleaned:
+        return None, ""
+    match = re.match(r"^([^:：]{3,80})\s*[:：]\s*(.*)$", cleaned)
+    if not match:
+        return _canonical_business_coverage_heading(cleaned), ""
+    heading = _canonical_business_coverage_heading(match.group(1))
+    if not heading:
+        return None, ""
+    return heading, match.group(2).strip()
+
+
 def _looks_like_section_boundary(line: str) -> bool:
     cleaned = re.sub(r"\s+", " ", str(line or "").strip(" :•✓-–—\t"))
-    return bool(cleaned and (_SECTION_BOUNDARY_RE.match(cleaned) or _canonical_business_coverage_heading(cleaned)))
+    return bool(
+        cleaned
+        and (
+            _SECTION_BOUNDARY_RE.match(cleaned)
+            or _canonical_business_coverage_heading(cleaned)
+            or _split_business_coverage_inline_heading(cleaned)[0]
+            or _is_experience_start_line(cleaned)
+            or _EXPERIENCE_COVERAGE_HEADING_RE.match(cleaned)
+        )
+    )
 
 
 def _is_allowed_source_coverage_exclusion(line: str) -> bool:
@@ -985,6 +1070,36 @@ def _is_allowed_source_coverage_exclusion(line: str) -> bool:
         or "données personnelles" in lower
         or "donnees personnelles" in lower
     )
+
+
+def _is_business_relevant_source_coverage_fact(section: str, fact: str) -> bool:
+    normalized_section = _normalize_for_fidelity(section)
+    normalized_fact = _normalize_for_fidelity(fact)
+    if not normalized_fact:
+        return False
+    if normalized_section in {
+        "realisations",
+        "realisations professionnelles",
+        "exemples de realisations professionnelles",
+        "projets",
+        "projets significatifs",
+        "certifications",
+        "competences",
+        "competences techniques",
+        "competences et outils",
+        "langues",
+        "languages",
+    }:
+        return True
+    if normalized_section == "autres":
+        # 'Autres' is ambiguous: preserve business facts, but do not turn hobbies
+        # like Moto/Cuisine into coverage blockers.
+        return bool(re.search(
+            r"\b(?:projet|realisation|certification|formation|langue|anglais|espagnol|allemand|italien|java|python|react|angular|node|aws|azure|gcp|docker|kubernetes|sql|agile|agiles|scrum|itil|erp|crm|si|rpa|api|devops|cloud|data|bi|cyber|management|pilotage|moa|moe|recette|migration|deploiement|déploiement)\b",
+            normalized_fact,
+            re.I,
+        ))
+    return False
 
 
 def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, str]]:
@@ -1007,6 +1122,8 @@ def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, s
         current_item = []
         if len(_normalize_for_fidelity(fact)) < 12 or _is_allowed_source_coverage_exclusion(fact):
             return
+        if not _is_business_relevant_source_coverage_fact(current_section, fact):
+            return
         if not any(existing["section"] == current_section and existing["fact"] == fact for existing in facts):
             facts.append({"section": current_section, "fact": fact})
 
@@ -1014,10 +1131,13 @@ def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, s
         line = raw_line.strip()
         if not line:
             continue
-        heading = _canonical_business_coverage_heading(line)
+        heading, inline_value = _split_business_coverage_inline_heading(line)
         if heading:
             flush_item()
             current_section = heading
+            if inline_value and not _is_allowed_source_coverage_exclusion(inline_value):
+                current_item = [inline_value]
+                flush_item()
             continue
         if current_section and _looks_like_section_boundary(line):
             flush_item()
@@ -1041,6 +1161,73 @@ def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, s
             current_item = [cleaned]
     flush_item()
     return facts
+
+
+def extract_source_experience_coverage_items(source_text: str) -> list[dict[str, str]]:
+    """Return explicit source experience items that must not be omitted.
+
+    This records bullet/list items and conservative non-bulleted mission lines
+    under ordinary experience headings such as Missions, Responsabilités,
+    Réalisations or Livrables. The goal is to catch the dangerous false-GO where
+    the JSON keeps one exact source item, invents nothing, but silently drops a
+    second business-relevant mission item.
+    """
+    items: list[dict[str, str]] = []
+    current_heading: str | None = None
+    current_item: list[str] = []
+
+    def flush_item() -> None:
+        nonlocal current_item
+        if not current_heading or not current_item:
+            current_item = []
+            return
+        item = re.sub(r"\s+", " ", " ".join(current_item)).strip(" :•✓-–—\t")
+        current_item = []
+        if len(_normalize_for_fidelity(item)) < 18 or _is_allowed_source_coverage_exclusion(item):
+            return
+        if not any(existing["heading"] == current_heading and existing["item"] == item for existing in items):
+            items.append({"heading": current_heading, "item": item})
+
+    def starts_continuation_line(line: str) -> bool:
+        return bool(re.match(r"^(?:[a-zàâçéèêëîïôûùüÿñæœ]|[,;:.)])", line.strip()))
+
+    def current_item_looks_complete() -> bool:
+        if not current_item:
+            return False
+        return bool(re.search(r"[.!?…]\s*$", current_item[-1].strip()))
+
+    for raw_line in compact_extracted_text(source_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            flush_item()
+            continue
+        cleaned_heading = re.sub(r"\s+", " ", line.strip(" :•✓-–—\t"))
+        if _EXPERIENCE_COVERAGE_HEADING_RE.match(cleaned_heading):
+            flush_item()
+            current_heading = cleaned_heading.rstrip(":")
+            continue
+        if current_heading and _looks_like_section_boundary(line):
+            flush_item()
+            current_heading = None
+            continue
+        if not current_heading:
+            continue
+        starts_new_item = bool(re.match(r"^[✓•\-*]\s*\S", line))
+        cleaned = line.strip("✓•-* ")
+        if not cleaned or _is_allowed_source_coverage_exclusion(cleaned):
+            continue
+        if starts_new_item:
+            flush_item()
+            current_item = [cleaned]
+        elif not current_item:
+            current_item = [cleaned]
+        elif current_item_looks_complete() and not starts_continuation_line(cleaned):
+            flush_item()
+            current_item = [cleaned]
+        else:
+            current_item.append(cleaned)
+    flush_item()
+    return items
 
 
 def _business_coverage_section_for_item(source_text: str, item: str) -> str | None:
@@ -1339,6 +1526,15 @@ def _hermes_prompt(
     prompt_text = compacted_text[:MAX_PROMPT_CV_CHARS]
     comments_text = "\n".join(f"- {c.get('comment_type', 'comment')}: {c.get('body', '')}" for c in comments if c.get("body"))
     first_name_rule = candidate_first_name.strip() if candidate_first_name else "le prénom du candidat si identifiable"
+    instruction_intent = classify_user_instruction_intent(instructions, comments)
+    if instruction_intent == "explicit_short_version":
+        intent_rule = "Instruction classée explicit_short_version: une condensation est autorisée seulement si nécessaire, avec faits strictement source-backed, aucune invention, et conservation des faits métier importants."
+    elif instruction_intent == "explicit_rewrite":
+        intent_rule = "Instruction classée explicit_rewrite: réécriture autorisée uniquement sur la section explicitement demandée par l'utilisateur; les expériences, dates, entreprises, missions, stacks et formations restent en copier-coller fidèle sauf mention contraire ciblée."
+    elif instruction_intent == "targeted_edit":
+        intent_rule = "Instruction classée targeted_edit: applique uniquement la modification ciblée demandée; ne transforme pas le reste du CV et ne condense pas les expériences."
+    else:
+        intent_rule = "Instruction classée complete_faithful: toute consigne vague de type CV standard, format W hub ou faire propre signifie mise en page fidèle uniquement, sans reformulation, synthèse, condensation ni omission métier."
     block_rule = f"\nMode CV long: tu structures uniquement ce bloc ({block_context}). Retourne le même schéma complet, avec listes vides pour les sections absentes du bloc. Ne résume pas arbitrairement." if block_context else ""
     return f"""
 Tu es le moteur de structuration du portail interne W hub CV Factory.
@@ -1355,13 +1551,19 @@ Règles non négociables:
 - Préserve les dates, entreprises, missions, stacks et diplômes présents dans le CV.
 - Ne corrige pas les typos, noms d’écoles, accents ou formulations du CV source. Normalise seulement les espaces et les retours ligne nécessaires au JSON.
 - Fidélité copier-coller: chaque élément visible dans `experiences[].sections[].content` doit être un extrait exact du CV source après normalisation des espaces/retours ligne. Ne remplace pas un mot source par un synonyme, même évident.
+- Couverture source: ne supprime aucun élément métier d'expérience (missions, réalisations, responsabilités, livrables, contexte, outils explicitement listés) pour faire plus court. Une mise en page difficile se résout par pagination/regroupement, jamais par omission.
 - Structure les compétences en catégories lisibles, hiérarchisées et client-facing quand elles proviennent d'une section compétences source; ne transforme pas des outils cités dans une expérience en compétences globales inventées.
-- Évite les pavés par la mise en page et les retours ligne JSON, pas par synthèse du contenu source.
+- Évite les pavés par la mise en page, les retours ligne JSON et la pagination, pas par synthèse, condensation ou raccourcissement du contenu source.
 - Structure les expériences sans inventer de sous-sections. Tu peux utiliser `Missions clés` comme conteneur neutre uniquement pour regrouper des phrases source exactes sans heading visible.
 - N’utilise `Environnement technique`, `Stack technique` ou équivalent que si ce heading existe explicitement dans le CV source pour cette expérience.
 - Ne déduis jamais un environnement technique à partir d’outils cités dans un paragraphe. Ne découpe pas un paragraphe source en liste de technologies.
 - Conserve les headings source pertinents quand ils existent dans l'expérience, par exemple `Périmètre applicatif`, au lieu de les renommer.
 - Pour un CV très long: conserve toutes les expériences et informations source; ne synthétise/condense que si la consigne utilisateur demande explicitement une version courte, synthèse ou condensée.
+- Classification des consignes: {intent_rule}
+- Les consignes vagues (`CV standard`, `mettre au format W hub`, `faire propre`, `intégrable à la base`) ne sont jamais une autorisation de réécriture, synthèse, condensation ou omission métier.
+- `Raccourcis à 2 pages`, `version courte`, `synthèse`, `condense` autorisent seulement une version courte source-backed: aucun fait inventé, aucune compétence/date/entreprise ajoutée, et les faits visibles doivent rester exacts.
+- `Réécris la présentation` ou équivalent autorise seulement la réécriture de la présentation/profil demandé; le reste du CV reste fidèle sauf consigne ciblée explicite.
+- Les modifications ciblées (`corrige la date`, `remplace le titre`, `ajoute cette compétence`) s'appliquent uniquement à la cible nommée, sans transformation globale du CV.
 - Regroupe les longues listes de certifications/technologies proprement par familles seulement hors expériences et seulement si chaque item reste source-backed.
 - Ne mets jamais `@`, `linkedin`, `http`, `github.com`, `+33`, téléphone mobile français dans le JSON.
 

@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from src.structuring import (
     StructuringError,
     REQUIRED_TOP_LEVEL_KEYS,
     normalize_candidate_first_name,
+    classify_user_instruction_intent,
     resolve_synthesis_mode,
     infer_forbidden_candidate_identity_terms,
     apply_client_synthesis_policy,
@@ -20,7 +22,42 @@ from src.structuring import (
     _source_gate_structured_data,
     split_cv_text_into_blocks,
     find_numbered_placeholder_repetitions,
+    extract_source_business_coverage_facts,
+    extract_source_experience_coverage_items,
 )
+
+
+def _load_fidelity_regression_cases() -> list[dict]:
+    fixture_path = Path(__file__).parent / "fixtures" / "fidelity_regression_cases.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+def _remove_first_matching_string(value, target: str) -> tuple[object, bool]:
+    if isinstance(value, str):
+        return ("", True) if value == target else (value, False)
+    if isinstance(value, list):
+        result = []
+        removed = False
+        for item in value:
+            if not removed:
+                new_item, removed = _remove_first_matching_string(item, target)
+                if removed and new_item == "":
+                    continue
+                result.append(new_item)
+            else:
+                result.append(item)
+        return result, removed
+    if isinstance(value, dict):
+        result = {}
+        removed = False
+        for key, item in value.items():
+            if not removed:
+                new_item, removed = _remove_first_matching_string(item, target)
+                result[key] = new_item
+            else:
+                result[key] = item
+        return result, removed
+    return value, False
 
 
 class TestCompactExtractedText:
@@ -330,9 +367,130 @@ Piloter le projet.
         assert infer_forbidden_candidate_identity_terms(source, "Jean") == []
         validate_source_fidelity(source, data, forbidden_identity_terms=[])
 
+    def test_classifies_vague_formatting_as_complete_faithful(self):
+        vague_instructions = [
+            "CV standard",
+            "mettre au format W hub",
+            "faire propre",
+            "Rendre le CV intégrable à la base",
+            "Mise en page uniquement avec la charte W hub",
+        ]
+
+        for instruction in vague_instructions:
+            assert classify_user_instruction_intent(instruction, []) == "complete_faithful"
+            assert resolve_synthesis_mode("standard", instruction, []) == "complete"
+
+    def test_classifies_explicit_short_version_only_for_clear_condensation_request(self):
+        explicit_short = [
+            "raccourcis à 2 pages",
+            "Faire une version courte client",
+            "Synthèse CV en trois pages max",
+            "Condense les expériences anciennes",
+            "Résumer le CV pour une version client",
+        ]
+
+        for instruction in explicit_short:
+            assert classify_user_instruction_intent(instruction, []) == "explicit_short_version"
+            assert resolve_synthesis_mode("complete", instruction, []) == "standard"
+
+    def test_profile_summary_instructions_do_not_allow_global_condensation(self):
+        scoped_summary_cases = {
+            "améliore le résumé du profil sans toucher aux expériences": "explicit_rewrite",
+            "corrige le résumé de profil": "targeted_edit",
+            "conserve le résumé existant et mets au format W hub": "complete_faithful",
+            "ajoute un résumé de profil": "targeted_edit",
+        }
+
+        for instruction, expected_intent in scoped_summary_cases.items():
+            assert classify_user_instruction_intent(instruction, []) == expected_intent
+            assert resolve_synthesis_mode("standard", instruction, []) == "complete"
+
+    def test_classifies_rewrite_and_targeted_edit_without_global_condensation(self):
+        assert classify_user_instruction_intent("réécris la présentation", []) == "explicit_rewrite"
+        assert resolve_synthesis_mode("standard", "réécris la présentation", []) == "complete"
+
+        instruction = "corrige la date de la mission BNP Paribas"
+        assert classify_user_instruction_intent(instruction, []) == "targeted_edit"
+        assert resolve_synthesis_mode("urgent", instruction, []) == "complete"
+
+    def test_no_compaction_instruction_overrides_short_words(self):
+        instruction = "CV complet sans synthèse ni condensation, conserver tout le contenu métier."
+
+        assert classify_user_instruction_intent(instruction, []) == "complete_faithful"
+        assert resolve_synthesis_mode("standard", instruction, []) == "complete"
+
     def test_resolve_synthesis_mode_ignores_standard_without_explicit_short_instruction(self):
         assert resolve_synthesis_mode("standard", "", []) == "complete"
         assert resolve_synthesis_mode("urgent", "Mettre en avant la mission cible", []) == "complete"
+
+    def test_portal_faithful_intentions_stay_complete_except_short_client(self):
+        standard = "CV W hub fidèle — mise en page uniquement : conserver tout le contenu métier source sans reformulation, synthèse, condensation ni omission. Retirer seulement les coordonnées, nom de famille, adresse et liens personnels."
+        highlight_stack = "Mettre en avant la stack technique uniquement par la mise en page quand elle est présente dans le CV source, sans inventer, reformuler, synthétiser, condenser ni omettre les expériences."
+        recent_experience = "Mettre en avant l'expérience récente par la mise en page et l'ordre source, sans réécrire, synthétiser, condenser ni omettre les missions du CV fourni."
+        senior_target = "Profil senior / mission cible : valoriser lisiblement par la mise en page les éléments source existants, sans ajout, reformulation, synthèse, condensation ni omission métier."
+        short_client = "Exception CV court client : l'utilisateur autorise explicitement une version courte/synthétique. Condenser seulement si nécessaire."
+
+        for instruction in [standard, highlight_stack, recent_experience, senior_target]:
+            assert resolve_synthesis_mode("standard", instruction, []) == "complete"
+
+        assert resolve_synthesis_mode("complete", short_client, []) == "standard"
+
+    def test_rejects_missing_source_experience_bullet_even_without_hallucination(self):
+        source = """
+Jean MARTIN
+Développeur Java
+2022 - 2024 Développeur Java chez ACME
+Missions :
+- Concevoir les API REST Spring Boot pour le portail de souscription.
+- Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
+"""
+        data = {
+            "name": "JEAN",
+            "title": "Développeur Java",
+            "formations": [],
+            "skills": [],
+            "experiences": [{
+                "date": "2022 - 2024",
+                "role": "Développeur Java chez ACME",
+                "company_highlight": "ACME",
+                "sections": [{"heading": "Missions clés", "content": [
+                    "Concevoir les API REST Spring Boot pour le portail de souscription.",
+                ]}],
+            }],
+        }
+
+        with pytest.raises(StructuringError, match="source_coverage_missing_experience_item|Élément d'expérience source absent"):
+            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+    def test_explicit_short_version_allows_omission_but_not_hallucination(self):
+        source = """
+Jean MARTIN
+Développeur Java
+2022 - 2024 Développeur Java chez ACME
+Missions :
+- Concevoir les API REST Spring Boot pour le portail de souscription.
+- Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
+"""
+        shortened = {
+            "name": "JEAN",
+            "title": "Développeur Java",
+            "formations": [],
+            "skills": [],
+            "experiences": [{
+                "date": "2022 - 2024",
+                "role": "Développeur Java chez ACME",
+                "company_highlight": "ACME",
+                "sections": [{"heading": "Missions clés", "content": [
+                    "Concevoir les API REST Spring Boot pour le portail de souscription.",
+                ]}],
+            }],
+        }
+        validate_source_fidelity(source, shortened, allow_synthesis=True, forbidden_identity_terms=[])
+
+        hallucinated = deepcopy(shortened)
+        hallucinated["experiences"][0]["sections"][0]["content"] = ["Piloter la migration Kubernetes du portail de souscription."]
+        with pytest.raises(StructuringError, match="reformulation|copier-coller|source"):
+            validate_source_fidelity(source, hallucinated, allow_synthesis=True, forbidden_identity_terms=[])
 
     def test_apply_client_synthesis_policy_does_not_condense_standard_without_explicit_flag(self):
         data = {
@@ -504,12 +662,133 @@ Loisirs :
         assert "Point Of Control Vilogia" in rendered
         assert "Moto" not in rendered
 
+    def test_rejects_missing_source_business_sections_beyond_realisations(self):
+        source = """
+Nicolas THOREZ
+Responsable applicatif
+nicolas.thorez@example.com
+06 66 44 13 14
+https://www.linkedin.com/in/nicolas-thorez
+12 rue des Lilas 75000 Paris
+Compétences techniques :
+✓Python, SQL, Power BI
+Certifications :
+✓AWS Certified Cloud Practitioner
+Langues : Anglais courant
+Autres : Animation d'ateliers agiles avec les métiers
+"""
+        data = {
+            "name": "NICOLAS",
+            "title": "Responsable applicatif",
+            "formations": [],
+            "skills": [{"category": "Compétences techniques", "items": ["Python, SQL, Power BI"]}],
+            "experiences": [],
+        }
+
+        with pytest.raises(StructuringError) as exc_info:
+            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+        message = str(exc_info.value)
+        assert "source_coverage_missing_section" in message
+        assert "AWS Certified Cloud Practitioner" in message
+        assert "Anglais courant" in message
+        assert "Animation d'ateliers agiles" in message
+        assert "nicolas.thorez@example.com" not in message
+        assert "linkedin" not in message.lower()
+        assert "12 rue des Lilas" not in message
+
+    def test_source_coverage_allows_contact_only_omissions(self):
+        source = """
+Nicolas THOREZ
+Responsable applicatif
+nicolas.thorez@example.com
+06 66 44 13 14
+https://www.linkedin.com/in/nicolas-thorez
+12 rue des Lilas 75000 Paris
+Compétences techniques :
+✓Python, SQL, Power BI
+Langues : Anglais courant
+"""
+        data = {
+            "name": "NICOLAS",
+            "title": "Responsable applicatif",
+            "formations": [],
+            "skills": [
+                {"category": "Compétences techniques", "items": ["Python, SQL, Power BI"]},
+                {"category": "Langues", "items": ["Anglais courant"]},
+            ],
+            "experiences": [],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+    def test_inline_autres_section_stops_before_following_dated_experience(self):
+        source = """
+Jean MARTIN
+Autres : Animation d'ateliers agiles avec les métiers
+2022 - 2024 Développeur Java chez ACME
+Missions :
+- Concevoir les API REST Spring Boot pour le portail de souscription.
+"""
+
+        facts = extract_source_business_coverage_facts(source)
+
+        assert facts == [{"section": "Autres", "fact": "Animation d'ateliers agiles avec les métiers"}]
+
+    def test_source_experience_coverage_extracts_non_bulleted_mission_lines(self):
+        source = """
+Jean MARTIN
+2022 - 2024 Développeur Java chez ACME
+Missions :
+Concevoir les API REST Spring Boot pour le portail de souscription.
+Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
+Formation :
+Licence informatique
+"""
+
+        items = extract_source_experience_coverage_items(source)
+
+        assert items == [
+            {"heading": "Missions", "item": "Concevoir les API REST Spring Boot pour le portail de souscription."},
+            {"heading": "Missions", "item": "Automatiser les contrôles de qualité avec GitLab CI et SonarQube."},
+        ]
+
+    def test_rejects_missing_non_bulleted_source_mission_under_explicit_heading(self):
+        source = """
+Jean MARTIN
+2022 - 2024 Développeur Java chez ACME
+Missions :
+Concevoir les API REST Spring Boot pour le portail de souscription.
+Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
+"""
+        data = {
+            "name": "JEAN",
+            "title": "Développeur Java",
+            "formations": [],
+            "skills": [],
+            "experiences": [{
+                "date": "2022 - 2024",
+                "role": "Développeur Java chez ACME",
+                "company_highlight": "ACME",
+                "sections": [{"heading": "Missions clés", "content": [
+                    "Concevoir les API REST Spring Boot pour le portail de souscription.",
+                ]}],
+            }],
+        }
+
+        with pytest.raises(StructuringError, match="source_coverage_missing_experience_item|Automatiser"):
+            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+
     def test_hermes_prompt_forbids_synthetic_technical_environment_and_typo_fixes(self):
         prompt = _hermes_prompt("CV source", "", [], "Nicolas")
 
         assert "Ne déduis jamais un environnement technique" in prompt
         assert "N’utilise `Environnement technique`" in prompt
         assert "Ne corrige pas les typos" in prompt
+        assert "ne supprime aucun élément métier d'expérience" in prompt
+        assert "jamais par omission" in prompt
+        assert "pas par synthèse, condensation ou raccourcissement" in prompt
         assert "Environnement technique` quand l'information existe" not in prompt
         assert "Corrige seulement les erreurs évidentes" not in prompt
 
@@ -566,6 +845,29 @@ Participer activement aux réunions avec les parties prenantes, fournissant des 
         data = json.loads((fixture_dir / "oussama_structured_faithful.json").read_text(encoding="utf-8"))
 
         validate_source_fidelity(source, data)
+
+    @pytest.mark.parametrize("case", _load_fidelity_regression_cases(), ids=lambda case: case["id"])
+    def test_real_anonymized_regression_fixtures_preserve_required_facts_and_strip_contacts(self, case):
+        data = case["structured"]
+        rendered_json = json.dumps(data, ensure_ascii=False)
+
+        assert_no_contact_in_json(data)
+        validate_source_fidelity(case["source"], data, forbidden_identity_terms=[])
+
+        for expected in case["must_keep"]:
+            assert expected in rendered_json
+        for forbidden in case["must_drop"]:
+            assert forbidden not in rendered_json
+
+    @pytest.mark.parametrize("case", _load_fidelity_regression_cases(), ids=lambda case: case["id"])
+    def test_real_anonymized_regression_fixtures_fail_when_business_fact_is_omitted(self, case):
+        mandatory_fact = case.get("must_fail_if_removed", case["must_keep"][0])
+        mutated, removed = _remove_first_matching_string(deepcopy(case["structured"]), mandatory_fact)
+        assert removed, f"fixture invariant is not represented in structured JSON: {case['id']}"
+        assert isinstance(mutated, dict)
+
+        with pytest.raises(StructuringError, match="source_coverage_missing|missing|absent|fidelit|fidélit|source"):
+            validate_source_fidelity(case["source"], mutated, forbidden_identity_terms=[])
 
     def test_build_whub_json_default_does_not_condense_or_rewrite_source_content(self):
         source = """

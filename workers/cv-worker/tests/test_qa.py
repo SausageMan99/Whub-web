@@ -190,6 +190,54 @@ Compétences et outils :
         assert any(issue["code"] == "source_coverage_missing_section" for issue in issues)
         assert any("Exemples de réalisations professionnelles" in issue.get("section", "") for issue in issues)
 
+    def test_pdf_source_coverage_allows_contact_address_link_omissions_only(self):
+        source_text = """
+THOREZ Nicolas
+06 66 44 13 14
+nicolas.thorez@example.com
+https://www.linkedin.com/in/nicolas-thorez
+12 rue des Lilas 75000 Paris
+Compétences techniques :
+✓Python, SQL, Power BI
+Langues : Anglais courant
+"""
+        pdf_text = "NICOLAS\nCompétences techniques\nPython, SQL, Power BI\nLangues\nAnglais courant"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert not [issue for issue in issues if issue["code"] == "source_coverage_missing_section"]
+
+    def test_pdf_source_coverage_rejects_missing_language_certification_and_autres_business_facts(self):
+        source_text = """
+THOREZ Nicolas
+Certifications :
+✓AWS Certified Cloud Practitioner
+Langues : Anglais courant
+Autres : Animation d'ateliers agiles avec les métiers
+"""
+        pdf_text = "NICOLAS\nCertifications"
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        missing = [issue for issue in issues if issue["code"] == "source_coverage_missing_section"]
+        assert any(issue.get("section") == "Certifications" and "AWS Certified" in issue.get("fact", "") for issue in missing)
+        assert any(issue.get("section") == "Langues" and "Anglais courant" in issue.get("fact", "") for issue in missing)
+        assert any(issue.get("section") == "Autres" and "ateliers agiles" in issue.get("fact", "") for issue in missing)
+
+    def test_pdf_source_coverage_does_not_require_following_experience_under_inline_autres(self):
+        source_text = """
+THOREZ Nicolas
+Autres : Animation d'ateliers agiles avec les métiers
+2022 - 2024 Développeur Java chez ACME
+Missions :
+- Concevoir les API REST Spring Boot pour le portail de souscription.
+"""
+        pdf_text = "NICOLAS\nAnimation d'ateliers agiles avec les métiers\n2022 - 2024 Développeur Java chez ACME\nConcevoir les API REST Spring Boot pour le portail de souscription."
+
+        issues = find_pdf_source_fidelity_issues(pdf_text, source_text=source_text)
+
+        assert not [issue for issue in issues if issue["code"] == "source_coverage_missing_section"]
+
     def test_forbidden_name_does_not_match_inside_city_name(self):
         path, tmp = self._make_pdf("ESAM School, Paris")
 

@@ -129,7 +129,7 @@ export default function NewRequestForm({ initialError }: { initialError?: string
       <fieldset className="rounded-[1.75rem] border border-ink/8 bg-white/70 p-5">
         <legend className="px-1 text-sm font-black text-ink">Intention du CV</legend>
         <p className="mt-1 text-xs font-semibold leading-5 text-ink/45">
-          Optionnel : coche une ou deux intentions. Le worker gardera le jugement W hub et les faits du CV.
+          Par défaut : CV W hub fidèle, mise en page uniquement. Le worker retire les contacts/nom/adresse/liens, mais ne reformule pas, ne synthétise pas et n’omet pas le contenu métier sauf consigne explicite de CV court.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {guidedCvIntentions.map((intention) => (
@@ -148,7 +148,7 @@ export default function NewRequestForm({ initialError }: { initialError?: string
 
       <label className="block">
         <span className="text-sm font-black text-ink">Consignes de génération</span>
-        <textarea name="instructions" rows={6} className="mt-2 w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Mission cible, stack à pousser, contexte client, éléments à raccourcir..." />
+        <textarea name="instructions" rows={6} className="mt-2 w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Par défaut : mise en page W hub fidèle sans reformulation. Précise ici seulement les exceptions explicites : mission cible, stack à mettre en avant, ou autorisation de raccourcir." />
       </label>
 
       <div className="flex flex-col items-start justify-between gap-4 border-t border-ink/8 pt-6 sm:flex-row sm:items-center">

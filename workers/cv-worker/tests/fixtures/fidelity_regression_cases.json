@@ -1,0 +1,201 @@
+[
+  {
+    "id": "oussama_like_rpa_copy_preservation",
+    "source": "Oussama A.\nTechnical Leader RPA/IA\noussama.a@example.com\n+33 6 00 00 00 00\nhttps://www.linkedin.com/in/oussama-a\n\n01/2024 – Aujourd’hui Software Engineer - CDI chez EDF - France\nMissions :\n- Piloter le cadrage technique des automatisations RPA et IA.\nConceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.\n\n07/2022 – 01/2024 Software Engineer - CDI chez BNP Paribas - France\nMissions :\n- Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration.\nEnvironnement technique: Blue Prism, UiPath, SQL, Python.",
+    "structured": {
+      "name": "OUSSAMA",
+      "title": "Technical Leader RPA/IA",
+      "formations": [],
+      "skills": [
+        {
+          "category": "RPA",
+          "items": [
+            "Blue Prism",
+            "UiPath"
+          ]
+        }
+      ],
+      "experiences": [
+        {
+          "date": "01/2024 – Aujourd’hui",
+          "role": "Software Engineer - CDI chez EDF - France",
+          "company_highlight": "EDF - France",
+          "sections": [
+            {
+              "heading": "Missions clés",
+              "content": [
+                "Piloter le cadrage technique des automatisations RPA et IA.",
+                "Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés."
+              ]
+            }
+          ]
+        },
+        {
+          "date": "07/2022 – 01/2024",
+          "role": "Software Engineer - CDI chez BNP Paribas - France",
+          "company_highlight": "BNP Paribas - France",
+          "sections": [
+            {
+              "heading": "Missions clés",
+              "content": [
+                "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration."
+              ]
+            },
+            {
+              "heading": "Environnement technique",
+              "content": "Blue Prism, UiPath, SQL, Python."
+            }
+          ]
+        }
+      ]
+    },
+    "must_keep": [
+      "Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.",
+      "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration."
+    ],
+    "must_drop": [
+      "oussama.a@example.com",
+      "+33 6 00 00 00 00",
+      "linkedin.com/in/oussama-a",
+      "Oussama A."
+    ],
+    "must_fail_if_removed": "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration."
+  },
+  {
+    "id": "zahia_like_location_and_role_facts",
+    "source": "Zahia A.\nzahia.a@example.com\n06 00 00 00 00\nhttps://www.linkedin.com/in/zahia-a\nJouy-Le-Moutier\n\nGROUPE KLESIA 📌 Montreuil (93)\n📆 Juin 2023 – A ce jour\nCHEF DE PROJET | Protection sociale\nMissions :\n- Pilotage de la recette métier et coordination des corrections avec les équipes IT.\n- Organisation des ateliers avec les métiers prévoyance et retraite complémentaire.",
+    "structured": {
+      "name": "ZAHIA",
+      "title": "Chef de projet",
+      "formations": [],
+      "skills": [],
+      "experiences": [
+        {
+          "date": "Juin 2023 – A ce jour",
+          "role": "GROUPE KLESIA — Montreuil (93) — CHEF DE PROJET | Protection sociale",
+          "company_highlight": "GROUPE KLESIA",
+          "sections": [
+            {
+              "heading": "Missions clés",
+              "content": [
+                "Pilotage de la recette métier et coordination des corrections avec les équipes IT.",
+                "Organisation des ateliers avec les métiers prévoyance et retraite complémentaire."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "must_keep": [
+      "Montreuil (93)",
+      "Pilotage de la recette métier et coordination des corrections avec les équipes IT.",
+      "Organisation des ateliers avec les métiers prévoyance et retraite complémentaire."
+    ],
+    "must_drop": [
+      "zahia.a@example.com",
+      "06 00 00 00 00",
+      "linkedin.com/in/zahia-a",
+      "Jouy-Le-Moutier",
+      "Mutuelle GSMC"
+    ],
+    "must_fail_if_removed": "Pilotage de la recette métier et coordination des corrections avec les équipes IT."
+  },
+  {
+    "id": "thorez_like_realizations_and_tools_coverage",
+    "source": "Nicolas T.\nnicolas.t@example.com\n06 00 00 00 00\nhttps://www.linkedin.com/in/nicolas-t\n\nResponsable du Domaine Applicatif SI Groupe\nNovembre 2024 - Aujourd'hui - TEXDECOR GROUP\nGestion de l'ERP D365 Microsoft, WMS Sage, TMS, interapplicatif, data et alimentation web, PDP facture...\n\nCompétences et outils :\n✓Management d'équipe\n✓Office, Excel (VBA), MS Project, Visio, AutoCAD, Catia\n✓ERP - AS400 DB2 – SAP - ORACLE - D365\n\nProcessus métiers :\n✓Gestion de projets informatiques\n✓Supply chain\n\nExemples de réalisations professionnelles\n:\n✓Gestion d'un SI d'une usine pharmaceutique (+500 employés)\n✓Conception, développement et mise en place d’une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]\n\nLoisirs :\n✓Moto",
+    "structured": {
+      "name": "NICOLAS",
+      "title": "Responsable du Domaine Applicatif SI Groupe",
+      "formations": [],
+      "skills": [
+        {
+          "category": "Compétences et outils",
+          "items": [
+            "Management d'équipe",
+            "Office, Excel (VBA), MS Project, Visio, AutoCAD, Catia",
+            "ERP - AS400 DB2 – SAP - ORACLE - D365"
+          ]
+        },
+        {
+          "category": "Processus métiers",
+          "items": [
+            "Gestion de projets informatiques",
+            "Supply chain"
+          ]
+        },
+        {
+          "category": "Exemples de réalisations professionnelles",
+          "items": [
+            "Gestion d'un SI d'une usine pharmaceutique (+500 employés)",
+            "Conception, développement et mise en place d’une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]"
+          ]
+        }
+      ],
+      "experiences": [
+        {
+          "date": "Novembre 2024 - Aujourd'hui",
+          "role": "Responsable du Domaine Applicatif SI Groupe - TEXDECOR GROUP",
+          "company_highlight": "TEXDECOR GROUP",
+          "sections": [
+            {
+              "heading": "Missions clés",
+              "content": [
+                "Gestion de l'ERP D365 Microsoft, WMS Sage, TMS, interapplicatif, data et alimentation web, PDP facture..."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "must_keep": [
+      "ERP - AS400 DB2 – SAP - ORACLE - D365",
+      "Gestion d'un SI d'une usine pharmaceutique (+500 employés)",
+      "Point Of Control Vilogia",
+      "Gestion de l'ERP D365 Microsoft, WMS Sage, TMS, interapplicatif, data et alimentation web, PDP facture..."
+    ],
+    "must_drop": [
+      "nicolas.t@example.com",
+      "06 00 00 00 00",
+      "linkedin.com/in/nicolas-t",
+      "Moto"
+    ],
+    "must_fail_if_removed": "Gestion d'un SI d'une usine pharmaceutique (+500 employés)"
+  },
+  {
+    "id": "gael_like_linkedin_page_marker_normalization",
+    "source": "Gaël D.\ngael.d@example.com\n06 00 00 00 00\nhttps://www.linkedin.com/in/gael-d\nUI - UX Designer\n\nDIGITAL SEEDER\nmars 2020 - mars 2021\nMissions :\n- Pour un client dans le domaine du football, j'ai travaillé sur la conception d'une application mobile de type réseau social axée autour du football. Le projet a nécessité la création de plus de 100 écrans, y compris des wireframes détaillés et des maquettes haute-fidélité. J'ai également été responsable de Page 2 of 4 l'identité visuelle complète du produit et de l'accompagnement client pour définition du besoin.",
+    "structured": {
+      "name": "GAËL",
+      "title": "UI - UX Designer",
+      "formations": [],
+      "skills": [],
+      "experiences": [
+        {
+          "date": "mars 2020 - mars 2021",
+          "role": "UI - UX Designer chez DIGITAL SEEDER",
+          "company_highlight": "DIGITAL SEEDER",
+          "sections": [
+            {
+              "heading": "Missions clés",
+              "content": [
+                "Pour un client dans le domaine du football, j'ai travaillé sur la conception d'une application mobile de type réseau social axée autour du football. Le projet a nécessité la création de plus de 100 écrans, y compris des wireframes détaillés et des maquettes haute-fidélité. J'ai également été responsable de l'identité visuelle complète du produit et de l'accompagnement client pour définition du besoin."
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "must_keep": [
+      "Pour un client dans le domaine du football, j'ai travaillé sur la conception d'une application mobile de type réseau social axée autour du football.",
+      "J'ai également été responsable de l'identité visuelle complète du produit et de l'accompagnement client pour définition du besoin."
+    ],
+    "must_drop": [
+      "gael.d@example.com",
+      "06 00 00 00 00",
+      "linkedin.com/in/gael-d",
+      "Page 2 of 4",
+      "Gaël D."
+    ],
+    "must_fail_if_removed": "Pour un client dans le domaine du football, j'ai travaillé sur la conception d'une application mobile de type réseau social axée autour du football. Le projet a nécessité la création de plus de 100 écrans, y compris des wireframes détaillés et des maquettes haute-fidélité. J'ai également été responsable de l'identité visuelle complète du produit et de l'accompagnement client pour définition du besoin."
+  }
+]

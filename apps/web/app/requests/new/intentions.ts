@@ -3,28 +3,28 @@ export type CvIntentionKey = "standard" | "short_client" | "highlight_stack" | "
 export const guidedCvIntentions: { key: CvIntentionKey; label: string; instruction: string }[] = [
   {
     key: "standard",
-    label: "CV standard W hub",
-    instruction: "CV standard W hub : conserver fidèlement le contenu source, sans synthèse ni reformulation, et améliorer uniquement la mise en page W hub.",
+    label: "CV W hub fidèle — mise en page uniquement",
+    instruction: "CV W hub fidèle — mise en page uniquement : conserver tout le contenu métier source sans reformulation, synthèse, condensation ni omission. Retirer seulement les coordonnées, nom de famille, adresse et liens personnels.",
   },
   {
     key: "short_client",
-    label: "CV court client",
-    instruction: "CV court client : privilégier une synthèse plus concise, sans supprimer de fait important.",
+    label: "Exception : CV court client (autorise une synthèse)",
+    instruction: "Exception CV court client : l'utilisateur autorise explicitement une version courte/synthétique. Condenser seulement si nécessaire, sans inventer de fait ni supprimer de fait métier important.",
   },
   {
     key: "highlight_stack",
     label: "Mettre en avant la stack",
-    instruction: "Mettre en avant la stack technique uniquement quand elle est présente dans le CV source, sans inventer ni reformuler les expériences.",
+    instruction: "Mettre en avant la stack technique uniquement par la mise en page quand elle est présente dans le CV source, sans inventer, reformuler, synthétiser, condenser ni omettre les expériences.",
   },
   {
     key: "recent_experience",
     label: "Mettre en avant l'expérience récente",
-    instruction: "Mettre en avant l'expérience récente par la mise en page et l'ordre source, sans détailler ni réécrire les missions au-delà du CV fourni.",
+    instruction: "Mettre en avant l'expérience récente par la mise en page et l'ordre source, sans réécrire, synthétiser, condenser ni omettre les missions du CV fourni.",
   },
   {
     key: "senior_target",
     label: "Profil senior / mission cible",
-    instruction: "Profil senior / mission cible : valoriser lisiblement par la mise en page les éléments source existants (leadership, architecture, autonomie), sans ajout ni reformulation.",
+    instruction: "Profil senior / mission cible : valoriser lisiblement par la mise en page les éléments source existants (leadership, architecture, autonomie), sans ajout, reformulation, synthèse, condensation ni omission métier.",
   },
 ];
 

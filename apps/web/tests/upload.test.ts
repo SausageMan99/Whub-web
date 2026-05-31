@@ -267,22 +267,46 @@ test('guided CV intentions — enrich free-text instructions without replacing t
   const result = buildGuidedInstructions(['short_client', 'highlight_stack', 'recent_experience', 'unknown'], 'Mission Stago, insister sur Java/AWS.');
 
   assert.match(result, /^Intentions guidées W hub :/);
-  assert.match(result, /CV court client/);
+  assert.match(result, /Exception CV court client/);
+  assert.match(result, /autorise explicitement une version courte\/synthétique/);
   assert.match(result, /stack technique/);
   assert.match(result, /expérience récente/);
   assert.match(result, /Consignes libres :\nMission Stago, insister sur Java\/AWS\./);
   assert.doesNotMatch(result, /unknown/);
 });
 
-test('new request form — exposes light guided intention options and keeps free instructions textarea', () => {
+test('new request form — exposes faithful default copy and keeps free instructions textarea', () => {
   const formSource = readFileSync(join(process.cwd(), 'app/requests/new/NewRequestForm.tsx'), 'utf8');
   const intentionSource = readFileSync(join(process.cwd(), 'app/requests/new/intentions.ts'), 'utf8');
 
   for (const value of ['standard', 'short_client', 'highlight_stack', 'recent_experience', 'senior_target']) {
     assert.match(intentionSource, new RegExp(`key: \\"${value}\\"`));
   }
+  assert.match(intentionSource, /CV W hub fidèle — mise en page uniquement/);
+  assert.match(intentionSource, /conserver tout le contenu métier source sans reformulation, synthèse, condensation ni omission/);
+  assert.match(intentionSource, /Retirer seulement les coordonnées, nom de famille, adresse et liens personnels/);
+  assert.match(intentionSource, /Exception CV court client/);
+  assert.match(intentionSource, /autorise explicitement une version courte\/synthétique/);
+  assert.match(formSource, /Par défaut : CV W hub fidèle, mise en page uniquement/);
+  assert.match(formSource, /ne reformule pas, ne synthétise pas et n’omet pas le contenu métier/);
+  assert.match(formSource, /Par défaut : mise en page W hub fidèle sans reformulation/);
   assert.match(formSource, /name="cv_intentions"/);
   assert.match(formSource, /value=\{intention\.key\}/);
   assert.match(formSource, /name="instructions"/);
   assert.match(formSource, /buildGuidedInstructions/);
+});
+
+test('guided CV intentions — standard/default remains faithful layout-only, short client is explicit exception', () => {
+  const standard = buildGuidedInstructions(['standard'], '');
+  const nonShort = buildGuidedInstructions(['highlight_stack', 'recent_experience', 'senior_target'], 'Mission cible Java.');
+  const short = buildGuidedInstructions(['short_client'], '');
+
+  assert.match(standard, /mise en page uniquement/);
+  assert.match(standard, /sans reformulation, synthèse, condensation ni omission/);
+  assert.match(standard, /Retirer seulement les coordonnées, nom de famille, adresse et liens personnels/);
+  assert.match(nonShort, /sans inventer, reformuler, synthétiser, condenser ni omettre/);
+  assert.match(nonShort, /Consignes libres :\nMission cible Java\./);
+  assert.doesNotMatch(nonShort, /autorise explicitement une version courte/);
+  assert.match(short, /Exception CV court client/);
+  assert.match(short, /autorise explicitement une version courte\/synthétique/);
 });
