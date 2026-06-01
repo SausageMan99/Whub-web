@@ -424,6 +424,18 @@ _IDENTITY_LINE_REJECT_TOKENS = {
     "objectif",
     "projet",
     "projets",
+    "sql",
+    "server",
+    "edi",
+    "transact",
+    "ssis",
+    "api",
+    "sftp",
+    "postgre",
+    "postgresql",
+    "data",
+    "analyst",
+    "engineer",
 }
 
 
@@ -434,7 +446,7 @@ def _token_starts_with_uppercase_letter(token: str) -> bool:
 
 def _looks_like_standalone_identity_line(line: str) -> bool:
     """Avoid treating business sentences as candidate identities when first name is missing."""
-    if not line or re.search(r"@|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b|\d", line, re.I):
+    if not line or re.search(r"@|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b|\d|&", line, re.I):
         return False
     tokens = _identity_tokens(line)
     if not (2 <= len(tokens) <= 4):
@@ -456,7 +468,7 @@ def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_n
     identity_line = ""
     if allowed_first:
         candidates: list[tuple[int, int, int, str]] = []
-        for line in (source_text or "").splitlines()[:12]:
+        for line in (source_text or "").splitlines()[:250]:
             stripped = line.strip()
             if not stripped:
                 continue
@@ -477,7 +489,10 @@ def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_n
         else:
             return []
     else:
-        for line in (source_text or "").splitlines():
+        # Without a trusted first name, only inspect the document header zone. Scanning
+        # the full CV turns stack labels such as "SQL Server" or language rows into
+        # fake identity terms and blocks legitimate content.
+        for line in (source_text or "").splitlines()[:12]:
             stripped = line.strip()
             if not stripped:
                 continue

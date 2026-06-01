@@ -436,7 +436,19 @@ Piloter le projet.
     def test_missing_first_name_does_not_treat_business_sentence_as_identity_terms(self):
         source = """
 Production et gestion des flux de données et de fichiers :
+DATA Analyst/Engineer
+B&D Université
+SQL Server
+EDI Transact SQL
 À la suite de l’expansion considérable de son activité, le groupe pour lequel je travaille
+Ligne métier 1
+Ligne métier 2
+Ligne métier 3
+Ligne métier 4
+Ligne métier 5
+Ligne métier 6
+Ligne métier 7
+Ligne métier 8
 
 Malik BESSAADIA
 """
@@ -446,7 +458,13 @@ Malik BESSAADIA
         assert "gestion" not in terms
         assert "données" not in terms
         assert "fichiers" not in terms
-        assert "BESSAADIA" in terms
+        assert "SQL" not in terms
+        assert "Server" not in terms
+        assert "EDI" not in terms
+        assert "Analyst/Engineer" not in terms
+        assert "Université" not in terms
+        assert "BESSAADIA" not in terms
+        assert terms == []
 
     def test_missing_first_name_business_sentence_without_identity_returns_no_terms(self):
         source = """
