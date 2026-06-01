@@ -31,6 +31,8 @@ LAST_PAGE_UNDERFILLED_USED_RATIO = 0.35
 EXPERIENCE_ORPHAN_BOTTOM_ZONE_PT = 150
 SKILL_DENSE_CHAR_THRESHOLD = 700
 SKILL_DENSE_SEPARATOR_THRESHOLD = 18
+HUMAN_TASTE_GOOD_SCORE = 86
+HUMAN_TASTE_DRAFT_SCORE = 70
 
 SKILL_HEADING_RE = re.compile(r"comp[ée]tences|cloud|devops|backend|frontend|outils|m[ée]thodes|data", re.I)
 EXPERIENCE_SECTION_RE = re.compile(r"exp[ée]riences?|missions?|prestations?|r[ée]alis[ée]e?s?|activit[ée]s?|environnement", re.I)
@@ -50,6 +52,21 @@ SOFT_LAYOUT_CODES = {
     "page_too_sparse",
     "experience_split_mid_block",
     "page_underfilled_with_next_experience_fit",
+}
+
+HUMAN_TASTE_ISSUE_WEIGHTS = {
+    "page_too_dense": 22,
+    "page_dense_but_acceptable": 6,
+    "last_page_sparse": 16,
+    "page_too_sparse": 18,
+    "page_underfilled_with_next_experience_fit": 14,
+    "bad_page_break": 20,
+    "experience_orphan_heading": 24,
+    "experience_section_orphan_heading": 22,
+    "skill_block_too_long": 12,
+    "skills_too_dense": 14,
+    "skill_overflow_page_created": 10,
+    "experience_split_mid_block": 16,
 }
 
 
@@ -179,6 +196,100 @@ def collect_page_layout_metrics(doc: fitz.Document) -> list[dict[str, Any]]:
     return metrics
 
 
+def public_page_layout_metrics(metrics: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return page-level PyMuPDF evidence safe to persist in QA reports.
+
+    collect_page_layout_metrics keeps raw text blocks for layout checks. This
+    projection strips heavy internals while preserving the measurements needed
+    to audit human-taste decisions page by page.
+    """
+    public: list[dict[str, Any]] = []
+    for metric in metrics:
+        public.append({
+            "page": int(metric["page"]),
+            "char_count": int(metric["char_count"]),
+            "block_count": int(metric["block_count"]),
+            "used_ratio": round(float(metric["used_ratio"]), 3),
+            "blank_after_pt": round(float(metric["blank_after_pt"]), 1),
+            "starts_with_suite": bool(metric["starts_with_suite"]),
+            "has_experience_heading": bool(metric["has_experience_heading"]),
+            "used_top": round(float(metric["used_top"]), 1),
+            "used_bottom": round(float(metric["used_bottom"]), 1),
+        })
+    return public
+
+
+def score_human_taste(
+    page_metrics: list[dict[str, Any]],
+    layout_issues: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Compute a deterministic, non-destructive human-taste score.
+
+    The score only reads PyMuPDF metrics and explicit layout QA codes. It is
+    actionable for placement/rerender choices, but it never edits CV content.
+    """
+    issues = [issue for issue in (layout_issues or []) if isinstance(issue, dict)]
+    penalties: list[dict[str, Any]] = []
+
+    for issue in issues:
+        code = str(issue.get("code") or "unknown_layout_issue")
+        weight = int(HUMAN_TASTE_ISSUE_WEIGHTS.get(code, 10))
+        penalties.append({
+            "code": code,
+            "page": issue.get("page"),
+            "points": weight,
+            "reason": issue.get("message") or code,
+        })
+
+    public_metrics = public_page_layout_metrics(page_metrics)
+    useful_pages = [metric for metric in public_metrics if metric["char_count"] > 0]
+    for metric in useful_pages:
+        if metric["starts_with_suite"] and metric["char_count"] <= 900 and metric["used_ratio"] <= 0.48:
+            penalties.append({
+                "code": "continuation_tail_page",
+                "page": metric["page"],
+                "points": 12,
+                "reason": "Page de suite courte avec grand blanc après contenu",
+            })
+
+    balance: dict[str, Any] = {"spread": 0.0, "min_used_ratio": 0.0, "max_used_ratio": 0.0}
+    if len(useful_pages) >= 3:
+        balanced_pages = useful_pages[1:] if len(useful_pages) > 3 else useful_pages
+        used_ratios = [float(metric["used_ratio"]) for metric in balanced_pages]
+        min_ratio = min(used_ratios)
+        max_ratio = max(used_ratios)
+        spread = max_ratio - min_ratio
+        balance = {
+            "spread": round(spread, 3),
+            "min_used_ratio": round(min_ratio, 3),
+            "max_used_ratio": round(max_ratio, 3),
+        }
+        if spread >= 0.48:
+            penalties.append({
+                "code": "page_balance_unbalanced",
+                "page": None,
+                "points": 10,
+                "reason": f"Équilibre de pagination irrégulier: spread hauteur utilisée {spread:.0%}",
+            })
+
+    score = max(0, min(100, 100 - sum(int(penalty["points"]) for penalty in penalties)))
+    if score >= HUMAN_TASTE_GOOD_SCORE:
+        verdict = "good"
+    elif score >= HUMAN_TASTE_DRAFT_SCORE:
+        verdict = "acceptable_draft"
+    else:
+        verdict = "poor"
+
+    return {
+        "score": score,
+        "verdict": verdict,
+        "thresholds": {"good": HUMAN_TASTE_GOOD_SCORE, "draft": HUMAN_TASTE_DRAFT_SCORE},
+        "penalties": penalties,
+        "page_balance": balance,
+        "page_metrics": public_metrics,
+    }
+
+
 def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
     """Detect visually ugly but technically valid CV layouts.
 
@@ -223,7 +334,7 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
 
         sparse_last_page = page_count > 1 and page_index == page_count and char_count <= LAST_PAGE_SPARSE_CHAR_THRESHOLD and block_count <= LAST_PAGE_SPARSE_BLOCK_THRESHOLD
         underfilled_last_page = (
-            page_count >= 3
+            page_count > 1
             and page_index == page_count
             and char_count <= LAST_PAGE_UNDERFILLED_CHAR_THRESHOLD
             and used_ratio <= LAST_PAGE_UNDERFILLED_USED_RATIO
@@ -517,6 +628,8 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
     content_integrity_issues.extend(find_pdf_source_fidelity_issues(text, source_text=source_text, structured_data=structured_data))
     overflow_hits = find_text_overflow(doc)
     layout_issues = find_layout_issues(doc)
+    page_layout_metrics = collect_page_layout_metrics(doc)
+    human_taste = score_human_taste(page_layout_metrics, layout_issues)
     image_sizes = []
     for page in doc:
         for img in page.get_images(full=True):
@@ -532,6 +645,8 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
         "content_integrity_issues": content_integrity_issues,
         "text_overflow_hits": overflow_hits,
         "layout_issues": layout_issues,
+        "layout_metrics": human_taste["page_metrics"],
+        "human_taste": human_taste,
         "has_logo": has_logo,
         "has_watermark": has_watermark,
     }

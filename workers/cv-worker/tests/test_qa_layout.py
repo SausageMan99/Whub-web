@@ -107,6 +107,26 @@ class QALayoutTest(unittest.TestCase):
         self.assertIn('last_page_sparse', codes)
         self.assertIn('page_too_sparse', codes)
 
+    def test_detects_sparse_last_page_even_on_two_page_pdf(self):
+        def draw(doc):
+            page = self.add_page(doc)
+            for i in range(30):
+                page.insert_text((54, 70 + i * 18), f'Première page ligne {i:02d} avec contenu expérience détaillé et utile', fontsize=9)
+            last = self.add_page(doc)
+            last.insert_text((54, 90), 'Octobre 2012 - Octobre 2015', fontsize=9)
+            last.insert_text((54, 120), 'Apprenti ingénieur Méthodes/Bureau d’Etudes / SI LESAFFRE', fontsize=10)
+            last.insert_textbox(
+                fitz.Rect(67, 155, 535, 245),
+                '• Assistance suivi de chantier, gestion de projet industriel, étude et mise en place d’une GED.\n'
+                '• Pilotage ponctuel de l’analyse AMDEC maintenance.',
+                fontsize=8,
+            )
+
+        codes = self.issue_codes(self.write_pdf(draw))
+
+        self.assertIn('last_page_sparse', codes)
+        self.assertIn('page_too_sparse', codes)
+
     def test_detects_sparse_non_final_continuation_page_with_large_blank(self):
         def draw(doc):
             page1 = self.add_page(doc)
@@ -172,6 +192,9 @@ class QALayoutTest(unittest.TestCase):
         report = ctx.exception.report
         self.assertFalse(report['passed'])
         self.assertIn('layout_issues', report)
+        self.assertIn('human_taste', report)
+        self.assertIn('layout_metrics', report)
+        self.assertLess(report['human_taste']['score'], 100)
         self.assertIn('skills_too_dense', [issue['code'] for issue in report['layout_issues']])
 
     def test_does_not_classify_experience_bullets_as_skills_after_experience_heading(self):

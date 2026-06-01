@@ -149,6 +149,44 @@ class RendererOverflowTest(unittest.TestCase):
         pdf_path = self.render(data)
         self.assertTrue(pdf_path.exists())
 
+    def test_two_short_experiences_stay_grouped_instead_of_sparse_tail_page(self):
+        data = {
+            'name': 'OUSSAMA',
+            'title': 'Technical Leader RPA/IA',
+            'formations': [],
+            'skills': [{'category': 'RPA', 'items': ['Blue Prism', 'UiPath']}],
+            'experiences': [
+                {
+                    'date': '01/2024 – Aujourd’hui',
+                    'role': 'Software Engineer - CDI chez EDF - France',
+                    'company_highlight': 'EDF - France',
+                    'sections': [{'heading': 'Missions clés', 'content': [
+                        'Piloter le cadrage technique des automatisations RPA et IA.',
+                        'Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.',
+                    ]}],
+                },
+                {
+                    'date': '07/2022 – 01/2024',
+                    'role': 'Software Engineer - CDI chez BNP Paribas - France',
+                    'company_highlight': 'BNP Paribas - France',
+                    'sections': [
+                        {'heading': 'Missions clés', 'content': [
+                            "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration.",
+                        ]},
+                        {'heading': 'Environnement technique', 'content': 'Blue Prism, UiPath, SQL, Python.'},
+                    ],
+                },
+            ],
+        }
+
+        pdf_path = self.render(data)
+        doc = fitz.open(str(pdf_path))
+        text = '\n'.join(str(doc[page_index].get_text()) for page_index in range(doc.page_count))
+
+        self.assertEqual(doc.page_count, 1)
+        self.assertIn('BNP Paribas', text)
+        self.assert_no_text_below_margin(pdf_path)
+
     def test_renderer_normalizes_unsupported_symbols_without_nul_glyphs(self):
         data = {
             'name': 'ZAHIA',
@@ -397,6 +435,101 @@ class RendererOverflowTest(unittest.TestCase):
         for item in bullets + environment + ['Cadrage fonctionnel', 'Support recette métier']:
             self.assertIn(' '.join(item.split()), normalized_retry_text)
         self.assert_no_text_below_margin(retry_pdf)
+
+    def test_experience_opener_reserves_date_role_heading_and_two_source_lines(self):
+        renderer_module = load_renderer_module()
+        renderer_module.prep_assets()
+        renderer_module.register_fonts(renderer_module.ensure_poppins())
+        exp = {
+            'date': '2024',
+            'role': 'CONSULTANT SI CHEZ CLIENT',
+            'sections': [{
+                'heading': 'Missions clés',
+                'content': [
+                    'Première ligne source à conserver avec le titre',
+                    'Deuxième ligne source à conserver avec le titre',
+                    'Troisième ligne peut continuer après saut de page',
+                ],
+            }],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            one_line = renderer_module.Renderer(
+                str(Path(tmp) / 'one-line.pdf'),
+                {'min_experience_opener_bullets': 1},
+            )
+            two_lines = renderer_module.Renderer(
+                str(Path(tmp) / 'two-lines.pdf'),
+                {'min_experience_opener_bullets': 2},
+            )
+            one_height = one_line.estimate_experience_opener_height(exp)
+            two_height = two_lines.estimate_experience_opener_height(exp)
+
+        self.assertGreater(two_height, one_height)
+        self.assertLess(two_height, one_height + 35)
+
+    def test_forced_break_is_skipped_when_it_would_create_sparse_experience_page(self):
+        renderer_module = load_renderer_module()
+        renderer_module.prep_assets()
+        renderer_module.register_fonts(renderer_module.ensure_poppins())
+        with tempfile.TemporaryDirectory() as tmp:
+            renderer = renderer_module.Renderer(
+                str(Path(tmp) / 'sparse-skip.pdf'),
+                {
+                    'anti_crowding': True,
+                    'allow_grouping': True,
+                    'force_page_break_before_experience_indexes': [1],
+                },
+            )
+            renderer.current_name = 'LINO'
+            renderer.new_page(False, 'LINO')
+            renderer.flow(renderer.left, renderer.y, renderer.right - renderer.left)
+            renderer.current_page_chars = 180
+            renderer.y = renderer.page_start_y + 95
+            page_before = renderer.page
+            moved = renderer.maybe_break_before_experience(
+                {
+                    'date': '2023',
+                    'role': 'EXPÉRIENCE COURTE SUIVANTE CHEZ CLIENT',
+                    'sections': [{'heading': 'Missions clés', 'content': ['Cadrage', 'Recette']}],
+                },
+                index=1,
+                total=3,
+            )
+
+        self.assertFalse(moved)
+        self.assertEqual(renderer.page, page_before)
+
+    def test_forced_break_is_kept_when_current_experience_page_is_loaded(self):
+        renderer_module = load_renderer_module()
+        renderer_module.prep_assets()
+        renderer_module.register_fonts(renderer_module.ensure_poppins())
+        with tempfile.TemporaryDirectory() as tmp:
+            renderer = renderer_module.Renderer(
+                str(Path(tmp) / 'loaded-break.pdf'),
+                {
+                    'anti_crowding': True,
+                    'allow_grouping': True,
+                    'force_page_break_before_experience_indexes': [1],
+                },
+            )
+            renderer.current_name = 'LINO'
+            renderer.new_page(False, 'LINO')
+            renderer.flow(renderer.left, renderer.y, renderer.right - renderer.left)
+            renderer.current_page_chars = 2100
+            renderer.y = renderer.page_start_y + 380
+            page_before = renderer.page
+            moved = renderer.maybe_break_before_experience(
+                {
+                    'date': '2023',
+                    'role': 'EXPÉRIENCE SUIVANTE CHEZ CLIENT',
+                    'sections': [{'heading': 'Missions clés', 'content': ['Cadrage', 'Recette']}],
+                },
+                index=1,
+                total=3,
+            )
+
+        self.assertTrue(moved)
+        self.assertEqual(renderer.page, page_before + 1)
 
 
 if __name__ == '__main__':

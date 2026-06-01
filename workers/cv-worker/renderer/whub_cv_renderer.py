@@ -201,6 +201,98 @@ def has_forbidden_identity(value, forbidden_terms=None) -> bool:
     return False
 
 
+SKILL_ITEM_SPLIT_RE = re.compile(r"\s*[;,]\s*")
+DEFAULT_MAX_SKILL_ITEM_CHARS = 125
+DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK = 8
+DEFAULT_MAX_SKILL_BLOCK_CHARS = 470
+
+
+def _compact_skill_chunk(parts: list[str], max_chars: int) -> list[str]:
+    chunks: list[str] = []
+    current = ""
+    for part in parts:
+        cleaned = str(part).strip(" \t\n;,•")
+        if not cleaned:
+            continue
+        candidate = cleaned if not current else f"{current}, {cleaned}"
+        if current and len(candidate) > max_chars:
+            chunks.append(current)
+            current = cleaned
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def split_skill_item_non_destructively(item, max_chars: int = DEFAULT_MAX_SKILL_ITEM_CHARS) -> list[str]:
+    """Split separator-heavy skill bullets into readable chunks without dropping terms.
+
+    The renderer may improve layout density, but it must not rewrite the stack or
+    silently remove technologies. If a long text has no safe separators, keep it
+    intact so QA can still flag it instead of inventing a rewrite.
+    """
+    text = normalize_render_text(str(item)).strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+    if text.count(";") + text.count(",") < 2:
+        return [text]
+    pieces = [piece for piece in SKILL_ITEM_SPLIT_RE.split(text) if piece.strip()]
+    chunks = _compact_skill_chunk(pieces, max_chars)
+    return chunks or [text]
+
+
+def prepare_readable_skill_categories(
+    skills,
+    *,
+    max_item_chars: int = DEFAULT_MAX_SKILL_ITEM_CHARS,
+    max_items_per_block: int = DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK,
+    max_block_chars: int = DEFAULT_MAX_SKILL_BLOCK_CHARS,
+):
+    """Return renderer-only skill chunks for readable columns/pages.
+
+    This is intentionally non-destructive: source order inside each category is
+    preserved, duplicates are not removed, and continuation blocks are labelled
+    `(suite)` rather than hiding overflow. Only layout shape changes.
+    """
+    prepared = []
+    for raw_cat in skills or []:
+        if not isinstance(raw_cat, dict):
+            continue
+        category = str(raw_cat.get('category', '')).strip()
+        expanded_items: list[str] = []
+        for item in raw_cat.get('items') or []:
+            expanded_items.extend(split_skill_item_non_destructively(item, max_chars=max_item_chars))
+        if not category and not expanded_items:
+            continue
+        if not expanded_items:
+            prepared.append({'category': category, 'items': []})
+            continue
+
+        chunks: list[list[str]] = []
+        current: list[str] = []
+        current_chars = 0
+        for item in expanded_items:
+            item_chars = len(item)
+            would_exceed_items = len(current) >= max_items_per_block
+            would_exceed_chars = bool(current) and current_chars + item_chars > max_block_chars
+            if would_exceed_items or would_exceed_chars:
+                chunks.append(current)
+                current = []
+                current_chars = 0
+            current.append(item)
+            current_chars += item_chars
+        if current:
+            chunks.append(current)
+
+        for idx, chunk in enumerate(chunks):
+            label = category if idx == 0 else f"{category} (suite)"
+            prepared.append({'category': label, 'items': chunk})
+    return prepared
+
+
 class Renderer:
     def __init__(self, out: str, layout_options: dict | None = None):
         self.c = canvas.Canvas(out, pagesize=A4)
@@ -215,6 +307,8 @@ class Renderer:
         self.page_dense_char_threshold = int(self.layout_options.get('page_dense_char_threshold', 3000))
         self.max_used_ratio = float(self.layout_options.get('max_used_ratio', 0.82))
         self.readability_reserve = float(self.layout_options.get('readability_reserve', 155))
+        self.allow_grouping = bool(self.layout_options.get('allow_grouping', True))
+        self.min_experience_opener_bullets = int(self.layout_options.get('min_experience_opener_bullets', 2))
         self.current_page_chars = 0
         self.page_start_y = 55
         self.left = 59.5
@@ -305,6 +399,13 @@ class Renderer:
 
     def _current_used_ratio(self) -> float:
         return max(0.0, self.y - self.page_start_y) / H
+
+    def _current_page_is_sparse(self) -> bool:
+        return (
+            self.y > self.page_start_y + 28
+            and self._current_used_ratio() <= 0.42
+            and self.current_page_chars <= 1200
+        )
 
     def drawp(self, html_text, style):
         """Draw a paragraph in the current flow, splitting across pages if needed."""
@@ -524,7 +625,12 @@ class Renderer:
         sx1, sx2 = lx, lx + 174
         sw1, sw2 = 156, 152
         y1 = y2 = skill_top + 25
-        skills = data.get('skills', [])
+        skills = prepare_readable_skill_categories(
+            data.get('skills', []),
+            max_item_chars=int(self.layout_options.get('max_skill_item_chars', DEFAULT_MAX_SKILL_ITEM_CHARS)),
+            max_items_per_block=int(self.layout_options.get('max_skill_items_per_block', DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK)),
+            max_block_chars=int(self.layout_options.get('max_skill_block_chars', DEFAULT_MAX_SKILL_BLOCK_CHARS)),
+        )
         fitted_skills, skill_overflow = self.split_skill_columns_for_page(skills, y1, self.content_bottom - 12)
         y1 = self.draw_skill_column(fitted_skills[0], sx1, y1, sw1)
         y2 = self.draw_skill_column(fitted_skills[1], sx2, y2, sw2)
@@ -558,10 +664,11 @@ class Renderer:
         exps = data.get('experiences', [])
         if exps:
             for idx, exp in enumerate(exps):
-                if idx == 1 and self.page == 1:
-                    # Keep the page-1 experience area readable: the first/current
-                    # experience may stay under the skills when it fits, but following
-                    # experiences should start in the full-width continuation flow.
+                if idx == 1 and self.page == 1 and not self._current_page_is_sparse():
+                    # Keep a genuinely loaded page-1 experience area readable by
+                    # moving following experiences into the full-width continuation
+                    # flow. If page 1 is still sparse, keep grouping enabled so short
+                    # / medium faithful CVs do not create a false sparse tail page.
                     self.new_page(False, data['name'])
                     self.flow(self.left, self.y, self.right - self.left)
                 self.render_experience(exp, index=idx, total=len(exps))
@@ -596,7 +703,10 @@ class Renderer:
             self.subhead(heading)
 
     def estimate_experience_opener_height(self, exp):
-        # Keep each experience opening together; full section can continue, but never title alone at page bottom.
+        # Keep each experience opening together: date + role + heading + first
+        # source lines. The renderer may split the full section later, but it
+        # must not leave a date/title opener or a single first bullet stranded at
+        # the bottom of a page.
         opener_height = self.measure_text(exp.get('date', ''), self.date) + self.measurep(self.role_html(exp), self.role) + 24
         sections = exp.get('sections', [])
         if sections:
@@ -605,23 +715,33 @@ class Renderer:
             if first.get('heading'):
                 opener_height += self.measure_text(first.get('heading', ''), self.sub)
             if isinstance(content, list) and content:
-                opener_height += self.measure_text('• ' + str(content[0]), self.bul)
+                kept_items = content[:max(1, self.min_experience_opener_bullets)]
+                for item in kept_items:
+                    opener_height += self.measure_text('• ' + str(item), self.bul)
             elif content:
                 opener_height += min(self.measure_text(str(content), self.body), self.body.leading * 3)
         return opener_height
 
+    def _forced_break_would_create_sparse_page(self, opener_height):
+        if not self.allow_grouping or not self._current_page_is_sparse():
+            return False
+        remaining = self.content_bottom - self.y
+        return remaining >= opener_height + self.body.leading * 2
+
     def maybe_break_before_experience(self, exp, index=0, total=0):
+        opener_height = self.estimate_experience_opener_height(exp)
         if index in self.force_page_break_before_experience_indexes and self.y > self.page_start_y + 28:
-            self.new_page(False, self.current_name)
-            self.flow(self.left, self.y, self.right - self.left)
-            return True
+            if not self._forced_break_would_create_sparse_page(opener_height):
+                self.new_page(False, self.current_name)
+                self.flow(self.left, self.y, self.right - self.left)
+                return True
+            return False
         if not self.anti_crowding or index <= 0:
             return False
         # Non-destructive anti-crowding: move only the next experience opener/body
         # to a fresh page when the current one is already visually loaded.
         if self.y <= self.page_start_y + 28:
             return False
-        opener_height = self.estimate_experience_opener_height(exp)
         remaining = self.content_bottom - self.y
         dense_by_text = self.current_page_chars >= self.page_dense_char_threshold
         dense_by_height = self._current_used_ratio() >= self.max_used_ratio

@@ -10,11 +10,10 @@ from .events import emit_event
 from .extraction import download_source, extract_pdf_text
 from .structuring import build_whub_json, assert_no_contact_in_json, enforce_client_first_name, normalize_candidate_first_name, infer_forbidden_candidate_identity_terms
 from .rendering import render_pdf
-from .qa import run_qa, QAError, classify_qa_report
+from .qa import run_qa, classify_qa_report
 from .storage import next_version_number, save_version
-from .layout_retry import is_safe_layout_retry_report
 from .layout_packing import build_layout_packing_options
-from .layout_intelligence import build_layout_retry_options
+from .layout_variants import run_bounded_layout_variant_loop
 from .preflight import run_startup_preflight
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
@@ -82,40 +81,41 @@ def process_job(job: dict) -> None:
     assert_no_contact_in_json(structured)
     version_number = next_version_number(request_id)
     layout_options = build_layout_packing_options(structured)
-    pdf = render_pdf(structured, workdir, layout_options=layout_options)
-    timings["render_pdf"] = perf_counter() - stage_start
-
     forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
-    try:
-        stage_start = perf_counter()
-        qa_report = run_qa(pdf, forbidden_names=forbidden_names, source_text=text, structured_data=structured)
-        timings["qa"] = perf_counter() - stage_start
-    except QAError as e:
-        qa_status, layout_warnings = classify_qa_report(e.report)
-        if qa_status == "failed":
-            fail_job(job, str(e.report), "qa_failed")
-            return
-        qa_report = e.report
-        if is_safe_layout_retry_report(e.report):
-            emit_event(request_id, "layout_retry", {"reason": "soft_layout_warning", "layout_issues": layout_warnings})
-            stage_start = perf_counter()
-            pdf = render_pdf(
-                structured,
-                workdir,
-                layout_options=build_layout_retry_options(layout_options, e.report),
-                output_name="output_layout_retry.pdf",
-            )
-            timings["render_pdf_layout_retry"] = perf_counter() - stage_start
-            try:
-                stage_start = perf_counter()
-                qa_report = run_qa(pdf, forbidden_names=forbidden_names, source_text=text, structured_data=structured)
-                timings["qa_layout_retry"] = perf_counter() - stage_start
-            except QAError as retry_error:
-                retry_status, _retry_warnings = classify_qa_report(retry_error.report)
-                if retry_status == "failed":
-                    fail_job(job, str(retry_error.report), "qa_failed")
-                    return
-                qa_report = retry_error.report
+    variant_selection = run_bounded_layout_variant_loop(
+        structured=structured,
+        workdir=workdir,
+        base_options=layout_options,
+        render_pdf=render_pdf,
+        run_qa=run_qa,
+        forbidden_names=forbidden_names,
+        source_text=text,
+    )
+    timings["render_pdf_qa_layout_variants"] = perf_counter() - stage_start
+    if variant_selection.hard_failure is not None:
+        fail_job(job, str(variant_selection.hard_failure.qa_report), "qa_failed")
+        return
+    if variant_selection.selected is None or variant_selection.selected_pdf is None or variant_selection.selected_report is None:
+        fail_job(job, "No layout variant produced a QA report", "failed")
+        return
+    pdf = variant_selection.selected_pdf
+    qa_report = variant_selection.selected_report
+    if len(variant_selection.attempts) > 1:
+        emit_event(
+            request_id,
+            "layout_variant_selected",
+            {
+                "selected": variant_selection.selected.name,
+                "attempts": [
+                    {
+                        "name": attempt.name,
+                        "status": attempt.status,
+                        "score": attempt.score,
+                    }
+                    for attempt in variant_selection.attempts
+                ],
+            },
+        )
 
     final_qa_status, layout_warnings = classify_qa_report(qa_report)
     if final_qa_status == "failed":
