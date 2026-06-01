@@ -10,5 +10,7 @@ insert into public.allowed_users (email, role) values
   ('ccattiauxleconte@wrecruiter.com', 'member'),
   ('mfrappa@whub.fr', 'member'),
   ('lbronzini@whub.fr', 'member'),
-  ('mdray@wrecruiter.com', 'member')
+  ('mdray@wrecruiter.com', 'member'),
+  ('ojaubert@whub.fr', 'member'),
+  ('tpochard@whub.fr', 'member')
 on conflict (email) do update set role = excluded.role;
