@@ -52,8 +52,9 @@ LOGO = Path('/tmp/whub_logo_renderer.png')
 WM = Path('/tmp/whub_watermark_renderer.png')
 
 CONTACT_PATTERNS = [
-    # Email or explicit URL schemes are always direct contact markers in this renderer input.
-    re.compile(r'@'),
+    # Email or explicit URL schemes are direct contact markers in this renderer input.
+    # Do not block every '@': project/product names such as "Th@Bot" are valid CV content.
+    re.compile(r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b', re.I),
     re.compile(r'https?://'),
     # Candidate profile URLs often arrive without protocol after LLM structuring.
     re.compile(r'\b(?:www\.)?github\.com\b'),

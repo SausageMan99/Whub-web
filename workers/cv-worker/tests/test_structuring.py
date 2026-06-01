@@ -160,6 +160,12 @@ class TestAssertNoContactInJson:
         }
         assert_no_contact_in_json(data)  # no raise
 
+    def test_thabot_project_name_is_not_treated_as_email_contact(self):
+        data = {"name": "SABRINA", "title": "RPA", "formations": [], "skills": [], "experiences": []}
+        data["experiences"] = [{"date": "2024", "role": "RPA", "sections": [{"heading": "Programme", "content": ["Pilotage du programme Th@Bot (RPA & AI Center of Excellence)"]}]}]
+
+        assert_no_contact_in_json(data)
+
 
 class TestSourceFidelity:
     def test_rejects_oussama_style_structural_fragments_before_render(self):
@@ -426,6 +432,45 @@ Piloter le projet.
 
         assert infer_forbidden_candidate_identity_terms(source, "Jean") == []
         validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+    def test_missing_first_name_does_not_treat_business_sentence_as_identity_terms(self):
+        source = """
+Production et gestion des flux de données et de fichiers :
+À la suite de l’expansion considérable de son activité, le groupe pour lequel je travaille
+
+Malik BESSAADIA
+"""
+
+        terms = infer_forbidden_candidate_identity_terms(source, None)
+
+        assert "gestion" not in terms
+        assert "données" not in terms
+        assert "fichiers" not in terms
+        assert "BESSAADIA" in terms
+
+    def test_missing_first_name_business_sentence_without_identity_returns_no_terms(self):
+        source = """
+Production et gestion des flux de données et de fichiers :
+À la suite de l’expansion considérable de son activité, le groupe pour lequel je travaille
+"""
+
+        assert infer_forbidden_candidate_identity_terms(source, None) == []
+
+    def test_malik_gestion_skill_is_not_blocked_as_identity(self):
+        source = """
+Production et gestion des flux de données et de fichiers :
+Malik BESSAADIA
+Gestion de bases de données (SQL)
+"""
+        data = {
+            "name": "MALIK",
+            "title": "Production et gestion des flux de données",
+            "formations": [],
+            "skills": [{"category": "Data", "items": ["Gestion de bases de données (SQL)"]}],
+            "experiences": [],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, None))
 
     def test_classifies_vague_formatting_as_complete_faithful(self):
         vague_instructions = [

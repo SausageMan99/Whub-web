@@ -14,7 +14,15 @@ from .config import settings
 
 log = logging.getLogger("whub-cv-worker.structuring")
 
-CONTACT_PATTERNS = [r"@", r"linkedin", r"github\.com", r"https?://", r"\+33", r"\b0[67](?:[ .-]?\d{2}){4}\b"]
+CONTACT_PATTERNS = [
+    # Do not block every '@': project/product names such as "Th@Bot" are valid CV content.
+    r"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b",
+    r"linkedin",
+    r"github\.com",
+    r"https?://",
+    r"\+33",
+    r"\b0[67](?:[ .-]?\d{2}){4}\b",
+]
 
 REQUIRED_TOP_LEVEL_KEYS = {"name", "title", "formations", "skills", "experiences"}
 MAX_PROMPT_CV_CHARS = 45000
@@ -389,9 +397,52 @@ def _identity_line_from_document_header(line: str) -> str:
         tokens = _identity_tokens(cleaned)
         while tokens and _is_document_identity_token(tokens[0]):
             tokens = tokens[1:]
-        if len(tokens) >= 2:
+        if _looks_like_standalone_identity_line(" ".join(tokens)):
             return " ".join(tokens[:2])
     return ""
+
+
+_IDENTITY_LINE_REJECT_TOKENS = {
+    "production",
+    "gestion",
+    "flux",
+    "donnees",
+    "donnee",
+    "fichiers",
+    "fichier",
+    "competences",
+    "experiences",
+    "experience",
+    "professionnelles",
+    "professionnelle",
+    "formation",
+    "formations",
+    "missions",
+    "mission",
+    "profil",
+    "resume",
+    "objectif",
+    "projet",
+    "projets",
+}
+
+
+def _token_starts_with_uppercase_letter(token: str) -> bool:
+    stripped = token.strip(" ,;:/\\()[]{}")
+    return bool(stripped and stripped[0].isalpha() and stripped[0].upper() == stripped[0])
+
+
+def _looks_like_standalone_identity_line(line: str) -> bool:
+    """Avoid treating business sentences as candidate identities when first name is missing."""
+    if not line or re.search(r"@|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b|\d", line, re.I):
+        return False
+    tokens = _identity_tokens(line)
+    if not (2 <= len(tokens) <= 4):
+        return False
+    normalized_tokens = [_normalize_for_fidelity(token) for token in tokens]
+    if any(not token or token in _IDENTITY_LINE_REJECT_TOKENS for token in normalized_tokens):
+        return False
+    return all(_token_starts_with_uppercase_letter(token) for token in tokens[:2])
 
 
 def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_name: str | None = None) -> list[str]:
@@ -435,8 +486,11 @@ def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_n
                 if identity_line:
                     break
                 continue
-            identity_line = stripped
-            break
+            if _looks_like_standalone_identity_line(stripped):
+                identity_line = stripped
+                break
+        if not identity_line:
+            return []
 
     tokens = _identity_tokens(identity_line)
     if len(tokens) < 2:

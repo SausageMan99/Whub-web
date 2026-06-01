@@ -14,7 +14,7 @@ from .structuring import (
 )
 
 CONTACT_PATTERNS = {
-    "email": r"@",
+    "email": r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
     "linkedin": r"linkedin",
     "url": r"https?://|github\.com|\.com\b",
     "phone_fr": r"(?:\+33|\b0[67])(?:[ .-]?\d{2}){4}\b",
