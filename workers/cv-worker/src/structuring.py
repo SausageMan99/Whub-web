@@ -345,36 +345,124 @@ def _identity_tokens(value: str) -> list[str]:
     return [token.strip(" ,;:/\\()[]{}") for token in re.split(r"\s+", value or "") if re.search(r"[A-Za-zÀ-ÿ]", token)]
 
 
+_DOCUMENT_IDENTITY_TOKENS = {
+    "dossier",
+    "competences",
+    "cv",
+    "curriculum",
+    "vitae",
+    "page",
+    "profil",
+    "consultant",
+    "consultante",
+}
+_DOCUMENT_PAGE_RE = re.compile(r"\bpage\s+\d+\s*(?:/|sur|of)?\s*\d*\b", re.I)
+
+
+def _is_document_identity_header(line: str) -> bool:
+    normalized = _normalize_for_fidelity(line)
+    if not normalized:
+        return True
+    if _DOCUMENT_PAGE_RE.search(line) and any(term in normalized.split() for term in {"dossier", "competences", "cv", "curriculum", "vitae", "page"}):
+        return True
+    if "dossier" in normalized.split() and "competences" in normalized.split():
+        return True
+    if "curriculum vitae" in normalized or normalized in {"cv", "page"}:
+        return True
+    if "|" in line and any(term in normalized.split() for term in {"dossier", "competences", "cv", "curriculum", "vitae", "page"}):
+        return True
+    return False
+
+
+def _is_document_identity_token(token: str) -> bool:
+    return _normalize_for_fidelity(token) in _DOCUMENT_IDENTITY_TOKENS
+
+
+def _identity_line_from_document_header(line: str) -> str:
+    """Extract the likely first-name/surname pair from a document header line."""
+    candidate_segments = line.split("|") if "|" in line else [line]
+    for segment in candidate_segments:
+        normalized_segment = _normalize_for_fidelity(segment)
+        if "dossier" in normalized_segment.split() and "competences" in normalized_segment.split():
+            continue
+        cleaned = _DOCUMENT_PAGE_RE.sub("", segment)
+        tokens = _identity_tokens(cleaned)
+        while tokens and _is_document_identity_token(tokens[0]):
+            tokens = tokens[1:]
+        if len(tokens) >= 2:
+            return " ".join(tokens[:2])
+    return ""
+
+
 def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_name: str | None = None) -> list[str]:
     """Infer surname/full-name tokens that must not appear in client-facing JSON/PDF.
 
     The source CV first non-empty line is usually the candidate identity. W hub
     keeps the first name only, so subsequent identity tokens become forbidden.
+    Document headers/pagination near the top of extracted PDFs are ignored.
     """
     allowed_first = normalize_candidate_first_name(candidate_first_name)
     identity_line = ""
     if allowed_first:
-        for line in (source_text or "").splitlines()[:8]:
-            tokens = _identity_tokens(line.strip())
-            if len(tokens) >= 2 and any(normalize_candidate_first_name(token) == allowed_first for token in tokens):
-                identity_line = line.strip()
-                break
-        if not identity_line:
+        candidates: list[tuple[int, int, int, str]] = []
+        for line in (source_text or "").splitlines()[:12]:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            tokens = _identity_tokens(stripped)
+            contains_allowed_first = any(normalize_candidate_first_name(token) == allowed_first for token in tokens)
+            if _is_document_identity_header(stripped) and not contains_allowed_first:
+                continue
+            # A documentary header can be the only place where the full identity
+            # appears (e.g. "CV | Jean Dupont" or "DOSSIER ... | Rachid ...").
+            # Do not drop such lines wholesale: downstream filtering removes the
+            # documentary/pagination tokens while preserving probable surname(s).
+            if len(tokens) >= 2 and contains_allowed_first:
+                meaningful_tokens = [token for token in tokens if not _is_document_identity_token(token)]
+                separator_penalty = 1 if re.search(r"[|•]", stripped) else 0
+                candidates.append((separator_penalty, abs(len(meaningful_tokens) - 2), len(tokens), stripped))
+        if candidates:
+            identity_line = sorted(candidates, key=lambda item: (item[0], item[1], item[2]))[0][3]
+        else:
             return []
     else:
-        identity_line = next((line.strip() for line in (source_text or "").splitlines() if line.strip()), "")
+        for line in (source_text or "").splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if _is_document_identity_header(stripped):
+                identity_line = _identity_line_from_document_header(stripped)
+                if identity_line:
+                    break
+                continue
+            identity_line = stripped
+            break
 
     tokens = _identity_tokens(identity_line)
     if len(tokens) < 2:
         return []
     allowed_first = allowed_first or normalize_candidate_first_name(tokens[0])
+    identity_line_is_header = _is_document_identity_header(identity_line)
+    seen_allowed_first = False
+    kept_post_first_token = False
     forbidden: list[str] = []
     for token in tokens:
         normalized = normalize_candidate_first_name(token)
-        if not normalized or normalized == allowed_first:
+        if not normalized:
+            continue
+        if normalized == allowed_first:
+            seen_allowed_first = True
+            continue
+        # Only suppress generic document words when the selected line actually
+        # looks like a document header. Even then, keep the first token after the
+        # candidate first name as a probable surname, so real surnames such as
+        # "Page" are not silently whitelisted in "CV | Jean Page".
+        if identity_line_is_header and _is_document_identity_token(token) and (not seen_allowed_first or kept_post_first_token):
             continue
         if len(_normalize_for_fidelity(token)) < 3:
             continue
+        if seen_allowed_first:
+            kept_post_first_token = True
         if token not in forbidden:
             forbidden.append(token)
     return forbidden

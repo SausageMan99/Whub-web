@@ -349,6 +349,66 @@ Piloter le projet.
         assert infer_forbidden_candidate_identity_terms(source, "Jean") == ["Dupont"]
         validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Jean"))
 
+    def test_rachid_document_header_does_not_poison_identity_terms(self):
+        source = """DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5
+
+Rachid AGOUARANE
+Consultant Esker | Business Analyst IT (Run/Build)
+"""
+
+        terms = infer_forbidden_candidate_identity_terms(source, "Rachid")
+
+        assert "AGOUARANE" in terms
+        assert "DOSSIER" not in terms
+        assert "COMPETENCES" not in terms
+        assert "Page" not in terms
+
+    @pytest.mark.parametrize(
+        ("source", "first_name", "expected_surname", "excluded_terms"),
+        [
+            ("DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5", "Rachid", "AGOUARANE", {"DOSSIER", "COMPETENCES", "Page"}),
+            ("Rachid AGOUARANE | CV Consultant", "Rachid", "AGOUARANE", {"CV", "Consultant"}),
+            ("CV | Rachid AGOUARANE", "Rachid", "AGOUARANE", {"CV"}),
+            ("Curriculum Vitae | Jean Dupont", "Jean", "Dupont", {"Curriculum", "Vitae"}),
+            ("Jean Page", "Jean", "Page", set()),
+            ("CV | Jean Page", "Jean", "Page", {"CV"}),
+            ("CV | Jean Page", None, "Page", {"CV"}),
+            ("DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5", None, "AGOUARANE", {"DOSSIER", "COMPETENCES"}),
+        ],
+    )
+    def test_document_header_only_identity_keeps_surname_forbidden(self, source, first_name, expected_surname, excluded_terms):
+        terms = infer_forbidden_candidate_identity_terms(source, first_name)
+
+        assert expected_surname in terms
+        for term in excluded_terms:
+            assert term not in terms
+
+    def test_rachid_competences_word_is_not_blocked_when_only_surname_is_forbidden(self):
+        source = "DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5"
+        data = {
+            "name": "RACHID",
+            "title": "Consultant",
+            "formations": [],
+            "skills": [{"category": "Compétences", "items": ["Business Analyst IT"]}],
+            "experiences": [],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Rachid"))
+
+    def test_rachid_surname_still_blocks_visible_json_identity(self):
+        source = "DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5"
+        data = {
+            "name": "RACHID",
+            "title": "Consultant Esker | Business Analyst IT (Run/Build)",
+            "description": "Rachid AGOUARANE accompagne les métiers.",
+            "formations": [],
+            "skills": [],
+            "experiences": [],
+        }
+
+        with pytest.raises(StructuringError, match="AGOUARANE|identity|identité"):
+            validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Rachid"))
+
     def test_empty_forbidden_identity_terms_do_not_fallback_to_company_header(self):
         source = """
 Orange Business
