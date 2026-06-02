@@ -8,7 +8,14 @@ from .config import settings
 from .supabase_client import client
 from .events import emit_event
 from .extraction import download_source, extract_pdf_text
-from .structuring import build_whub_json, assert_no_contact_in_json, enforce_client_first_name, normalize_candidate_first_name, infer_forbidden_candidate_identity_terms
+from .structuring import (
+    build_whub_json,
+    assert_no_contact_in_json,
+    enforce_client_first_name,
+    normalize_candidate_first_name,
+    infer_forbidden_candidate_identity_terms,
+    classify_structuring_error,
+)
 from .rendering import render_pdf
 from .qa import run_qa, classify_qa_report
 from .storage import next_version_number, save_version
@@ -23,14 +30,15 @@ def claim_next_job() -> dict | None:
     res = client.rpc("claim_next_cv_request", {"worker_name": settings.worker_name}).execute()
     return res.data[0] if res.data else None
 
-def fail_job(job: dict, error: str, status: str = "failed") -> None:
-    safe_error = error[:500]
+def fail_job(job: dict, error: str | Exception, status: str = "failed") -> None:
+    classified = classify_structuring_error(error)
+    safe_error = classified["message"][:500]
     client.table("cv_requests").update({
         "status": status,
         "last_error": safe_error,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", job["id"]).execute()
-    emit_event(job["id"], status, {"error": safe_error})
+    emit_event(job["id"], status, {"error": safe_error, "error_category": classified["category"]})
 
 
 def forbidden_candidate_name_parts(candidate_first_name: str | None, source_text: str | None = None) -> list[str]:
@@ -162,8 +170,9 @@ def main() -> None:
         try:
             process_job(job)
         except Exception as exc:
-            log.exception("job failed request_id=%s", job.get("id"))
-            fail_job(job, str(exc), "failed")
+            classified = classify_structuring_error(exc)
+            log.error("job failed request_id=%s category=%s", job.get("id"), classified["category"])
+            fail_job(job, exc, "failed")
 
 if __name__ == "__main__":
     main()

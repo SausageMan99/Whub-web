@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     cv_artifacts_bucket: str = "cv-artifacts"
     hermes_cli_path: str = "hermes"
     hermes_profile: str = "default"
+    whub_fallback_model: str = ""
+    whub_fallback_provider: str = ""
     whub_renderer_path: str = str(DEFAULT_WHUB_RENDERER_PATH)
     whub_assets_dir: str = str(DEFAULT_WHUB_ASSETS_DIR)
     whub_fonts_dir: str = str(DEFAULT_WHUB_FONTS_DIR)

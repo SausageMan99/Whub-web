@@ -65,6 +65,55 @@ class StructuringError(Exception):
     pass
 
 
+STRUCTURING_ERROR_PUBLIC_MESSAGES = {
+    "contact_leak": "Coordonnées détectées dans la structuration du CV.",
+    "identity_leak": "Identité candidat détectée dans une zone non autorisée.",
+    "source_fidelity": "Fidélité au CV source insuffisante.",
+    "structuring_invalid_json": "Réponse de structuration JSON invalide ou incomplète.",
+    "layout_density": "Problème de densité ou de pagination détecté.",
+    "renderer_asset": "Ressource renderer manquante ou invalide.",
+    "transient_model_failure": "Échec temporaire du modèle de structuration.",
+}
+
+
+def classify_structuring_error(error: Exception | str) -> dict[str, str]:
+    """Classify worker structuring/QA errors into safe public buckets.
+
+    The classifier is intentionally pure and conservative: it only returns a
+    stable category plus a short canned message, never the raw error text, since
+    raw Hermes/QA diagnostics can include candidate contact data or source text.
+    """
+    message = str(error or "")
+    normalized = _normalize_for_error_taxonomy(message)
+
+    if re.search(r"\b(json hermes invalide|json renderer invalide|json renderer incomplet|sans json exploitable|cles manquantes|cl[eé]s manquantes|objet racine attendu|doit etre une liste)\b", normalized):
+        category = "structuring_invalid_json"
+    elif re.search(r"\b(coordonnees|contact_hits|contact leak|email|linkedin|github|phone_fr|telephone)\b", normalized):
+        category = "contact_leak"
+    elif re.search(r"\b(identity|identite|forbidden_name|nom complet|full_name|nom de famille|surname)\b", normalized):
+        category = "identity_leak"
+    elif re.search(r"\b(page_too_dense|page_dense|last_page_sparse|page_too_sparse|layout|pagination|densite|dense|overflow|orphan)\b", normalized):
+        category = "layout_density"
+    elif re.search(r"\b(renderer_asset|logo|watermark|filigrane|asset|ressource renderer|has_logo|has_watermark)\b", normalized):
+        category = "renderer_asset"
+    elif re.search(r"\b(timeout|hermes crashed|model|fallback|primary|returncode|echec structuration|structuration echouee|failed|crashed)\b", normalized):
+        category = "transient_model_failure"
+    elif re.search(r"\b(fidelite|source_fidelity|source_coverage|source|reformulation|copier-coller|hallucination|absent du cv source|fait pdf absent)\b", normalized):
+        category = "source_fidelity"
+    else:
+        category = "transient_model_failure"
+
+    return {"category": category, "message": STRUCTURING_ERROR_PUBLIC_MESSAGES[category]}
+
+
+def _normalize_for_error_taxonomy(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text or "")
+    without_accents = "".join(char for char in normalized if not unicodedata.combining(char))
+    folded = without_accents.lower().replace("’", "'")
+    folded = re.sub(r"[^\w]+", " ", folded)
+    return re.sub(r"\s+", " ", folded).strip()
+
+
 _FIRST_NAME_SUFFIXES = {"jr", "sr"}
 
 
@@ -436,6 +485,30 @@ _IDENTITY_LINE_REJECT_TOKENS = {
     "data",
     "analyst",
     "engineer",
+    "responsable",
+    "applicatif",
+    "applicative",
+    "developpeur",
+    "developpeuse",
+    "architecte",
+    "senior",
+    "niveau",
+    "langue",
+    "langues",
+    "universite",
+}
+
+_KNOWN_FIRST_IDENTITY_BOUNDARY_TOKENS = {
+    "est",
+    "base",
+    "a",
+    "au",
+    "aux",
+    "de",
+    "du",
+    "des",
+    "chez",
+    "specialise",
 }
 
 
@@ -455,6 +528,42 @@ def _looks_like_standalone_identity_line(line: str) -> bool:
     if any(not token or token in _IDENTITY_LINE_REJECT_TOKENS for token in normalized_tokens):
         return False
     return all(_token_starts_with_uppercase_letter(token) for token in tokens[:2])
+
+
+def _identity_tokens_near_known_first(line: str, allowed_first: str) -> list[str]:
+    """Return the trusted first-name + likely surname tokens, not the whole line.
+
+    LinkedIn/profile PDFs often repeat "Prénom NOM est Titre basé à Ville" in a
+    summary. The surname must remain forbidden, but title/city/skill words must
+    not become identity terms. Keep a tight window after the known first name and
+    stop at documentary/business/sentence boundaries.
+    """
+    tokens = _identity_tokens(line)
+    first_index = next(
+        (index for index, token in enumerate(tokens) if normalize_candidate_first_name(token) == allowed_first),
+        None,
+    )
+    if first_index is None:
+        return tokens
+
+    likely_identity = [tokens[first_index]]
+    standalone_identity = _looks_like_standalone_identity_line(line)
+    for token in tokens[first_index + 1:]:
+        normalized = _normalize_for_fidelity(token)
+        if not normalized or len(normalized) < 3:
+            continue
+        if normalized in _KNOWN_FIRST_IDENTITY_BOUNDARY_TOKENS or normalized in _IDENTITY_LINE_REJECT_TOKENS:
+            break
+        if _is_document_identity_token(token):
+            # Keep true surnames such as "Jean Page" when they are the first
+            # post-first-name token; skip documentary words later in headers.
+            if len(likely_identity) == 1:
+                likely_identity.append(token)
+            continue
+        likely_identity.append(token)
+        if not standalone_identity or len(likely_identity) >= 3:
+            break
+    return likely_identity
 
 
 def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_name: str | None = None) -> list[str]:
@@ -507,7 +616,7 @@ def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_n
         if not identity_line:
             return []
 
-    tokens = _identity_tokens(identity_line)
+    tokens = _identity_tokens_near_known_first(identity_line, allowed_first) if allowed_first else _identity_tokens(identity_line)
     if len(tokens) < 2:
         return []
     allowed_first = allowed_first or normalize_candidate_first_name(tokens[0])
@@ -1776,6 +1885,67 @@ def _default_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def _fallback_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
+    """Retry structuration with fallback model (e.g. GPT-5.5 via Codex subscription) when primary fails."""
+    if not settings.whub_fallback_model:
+        return 1, "", "No fallback model configured (WHUB_FALLBACK_MODEL)"
+    with tempfile.TemporaryDirectory(prefix="whub-hermes-fb-") as tmp:
+        prompt_path = Path(tmp) / "prompt.txt"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        cmd = [
+            settings.hermes_cli_path,
+            "chat",
+            "-Q",
+            "-m", settings.whub_fallback_model,
+            "--provider", settings.whub_fallback_provider,
+            "-s", "whub-client-cv-generator",
+            "-t", "",
+            "--source", "whub-cv-worker",
+            "-q", prompt_path.read_text(encoding="utf-8"),
+        ]
+        if settings.hermes_profile:
+            cmd = [settings.hermes_cli_path, "--profile", settings.hermes_profile] + cmd[1:]
+        log.info("fallback structuring model=%s provider=%s", settings.whub_fallback_model, settings.whub_fallback_provider)
+        result = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
+    return result.returncode, result.stdout, result.stderr
+
+
+def _run_with_fallback(
+    prompt: str,
+    timeout: int,
+    primary_runner: HermesRunner,
+    fallback_runner: HermesRunner,
+    label: str = "single",
+) -> tuple[int, str, str]:
+    """Run structuration with primary, retry on failure with fallback."""
+    start = perf_counter()
+    try:
+        returncode, stdout, stderr = primary_runner(prompt, timeout)
+    except subprocess.TimeoutExpired:
+        duration = perf_counter() - start
+        log.warning("primary timeout %s after %.1fs, trying fallback", label, duration)
+        try:
+            returncode, stdout, stderr = fallback_runner(prompt, timeout)
+        except subprocess.TimeoutExpired as exc:
+            raise StructuringError(f"Timeout structuration Hermes (primary + fallback) après {duration:.2f}s") from exc
+        duration_fb = perf_counter() - start
+        log.info("fallback structuring mode=%s duration=%.1fs returncode=%s", label, duration_fb, returncode)
+        return returncode, stdout, stderr
+
+    duration = perf_counter() - start
+    if returncode != 0:
+        log.warning("primary failed %s returncode=%d after %.1fs, trying fallback", label, returncode, duration)
+        try:
+            returncode_fb, stdout_fb, stderr_fb = fallback_runner(prompt, timeout)
+        except subprocess.TimeoutExpired:
+            raise StructuringError(f"Timeout structuration fallback après {duration:.2f}s")
+        duration_fb = perf_counter() - start
+        log.info("fallback structuring mode=%s duration=%.1fs returncode=%s", label, duration_fb, returncode_fb)
+        return returncode_fb, stdout_fb, stderr_fb
+
+    return returncode, stdout, stderr
+
+
 def _run_block(
     text: str,
     instructions: str,
@@ -1811,61 +1981,120 @@ def build_whub_json(
     long_cv_threshold: int = LONG_CV_CHAR_THRESHOLD,
     synthesis_mode: str = WHUB_CV_SYNTHESIS_MODE,
     hermes_runner: HermesRunner | None = None,
+    fallback_runner: HermesRunner | None = None,
 ) -> dict:
     compacted_text = compact_extracted_text(extracted_text)
-    runner = hermes_runner or _default_hermes_runner
+    primary_runner = hermes_runner or _default_hermes_runner
+    # Keep the production fallback available when the default Hermes runner is used
+    # and a fallback model is configured, while allowing tests/callers to inject a
+    # deterministic fallback. If no fallback is configured, primary errors must stay
+    # visible instead of being overwritten by `_fallback_hermes_runner` diagnostics.
+    effective_fallback_runner = fallback_runner
+    if effective_fallback_runner is None and hermes_runner is None and settings.whub_fallback_model:
+        effective_fallback_runner = _fallback_hermes_runner
 
     use_default_long_threshold = long_cv_threshold == LONG_CV_CHAR_THRESHOLD
     use_single_pass = len(compacted_text) <= long_cv_threshold or (
         use_default_long_threshold and len(compacted_text) <= MEDIUM_CV_SINGLE_PASS_THRESHOLD
     )
 
-    if use_single_pass:
-        prompt = _hermes_prompt(compacted_text, instructions, comments, candidate_first_name)
-        start = perf_counter()
-        try:
-            returncode, stdout, stderr = runner(prompt, HERMES_STRUCTURING_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired as exc:
-            duration = perf_counter() - start
-            raise StructuringError(f"Timeout structuration Hermes après {duration:.2f}s") from exc
-        duration = perf_counter() - start
-        log.info("hermes structuring mode=single chars=%d duration=%.2fs returncode=%s", len(compacted_text), duration, returncode)
-        if returncode != 0:
-            err = (stderr or stdout or "Hermes structuring failed")[:2000]
-            raise StructuringError(err)
-        data = _extract_json(stdout)
-    else:
-        blocks = split_cv_text_into_blocks(compacted_text)
-        if not blocks:
-            raise StructuringError("CV long: texte extrait vide après compactage")
-        log.info("hermes structuring mode=long chars=%d threshold=%d blocks=%d", len(compacted_text), long_cv_threshold, len(blocks))
-        structured_blocks: list[dict] = []
-        for i, block in enumerate(blocks, start=1):
-            label = f"{i}/{len(blocks)} {block['kind']}"
-            if block.get("part"):
-                label += f" part {block['part']}"
-            try:
-                structured_blocks.append(_run_block(block["text"], instructions, comments, candidate_first_name, runner, label))
-            except StructuringError as exc:
-                sample = block["text"].splitlines()[0][:120] if block["text"].splitlines() else "bloc vide"
-                raise StructuringError(f"CV long: échec sur bloc {label} ({sample}): {exc}") from exc
-        data = assemble_structured_blocks(structured_blocks, candidate_first_name)
+    last_error = None
 
-    enforce_client_first_name(data, candidate_first_name)
-    resolved_synthesis_mode = resolve_synthesis_mode(synthesis_mode, instructions, comments)
-    data = _source_gate_structured_data(data, compacted_text)
-    data = apply_client_synthesis_policy(
-        data,
-        resolved_synthesis_mode,
-        allow_condensation=resolved_synthesis_mode != "complete",
-    )
-    data = _source_gate_structured_data(data, compacted_text)
-    enforce_client_first_name(data, candidate_first_name)
-    assert_no_contact_in_json(data)
-    validate_source_fidelity(
-        compacted_text,
-        data,
-        allow_synthesis=resolved_synthesis_mode != "complete",
-        forbidden_identity_terms=infer_forbidden_candidate_identity_terms(compacted_text, candidate_first_name),
-    )
-    return data
+    attempts: list[tuple[str, HermesRunner]] = [("primary", primary_runner)]
+    if effective_fallback_runner is not None:
+        attempts.append(("fallback", effective_fallback_runner))
+
+    for attempt_label, active_runner in attempts:
+        try:
+            if use_single_pass:
+                prompt = _hermes_prompt(compacted_text, instructions, comments, candidate_first_name)
+                start = perf_counter()
+                try:
+                    returncode, stdout, stderr = active_runner(prompt, HERMES_STRUCTURING_TIMEOUT_SECONDS)
+                except subprocess.TimeoutExpired as exc:
+                    duration = perf_counter() - start
+                    if attempt_label == "primary":
+                        log.warning("primary timeout single after %.1fs, will try fallback", duration)
+                        last_error = StructuringError(f"Timeout structuration Hermes après {duration:.2f}s")
+                        continue
+                    raise StructuringError(f"Timeout structuration Hermes (primary + fallback) après {duration:.2f}s") from exc
+                duration = perf_counter() - start
+                log.info("hermes structuring mode=single attempt=%s chars=%d duration=%.2fs returncode=%s", attempt_label, len(compacted_text), duration, returncode)
+                if returncode != 0:
+                    err = (stderr or stdout or "Hermes structuring failed")[:2000]
+                    if attempt_label == "primary":
+                        log.warning("primary failed single returncode=%d, will try fallback", returncode)
+                        last_error = StructuringError(err)
+                        continue
+                    raise StructuringError(err)
+                data = _extract_json(stdout)
+            else:
+                blocks = split_cv_text_into_blocks(compacted_text)
+                if not blocks:
+                    raise StructuringError("CV long: texte extrait vide après compactage")
+                log.info("hermes structuring mode=long attempt=%s chars=%d threshold=%d blocks=%d", attempt_label, len(compacted_text), long_cv_threshold, len(blocks))
+                structured_blocks: list[dict] = []
+                block_failed = False
+                for i, block in enumerate(blocks, start=1):
+                    label = f"{i}/{len(blocks)} {block['kind']}"
+                    if block.get("part"):
+                        label += f" part {block['part']}"
+                    try:
+                        structured_blocks.append(_run_block(block["text"], instructions, comments, candidate_first_name, active_runner, label))
+                    except StructuringError as exc:
+                        sample = block["text"].splitlines()[0][:120] if block["text"].splitlines() else "bloc vide"
+                        block_error = StructuringError(f"CV long: échec sur bloc {label} ({sample}): {exc}")
+                        if attempt_label == "primary":
+                            if effective_fallback_runner is None:
+                                raise block_error from exc
+                            log.warning("primary failed block %s, will try fallback", label)
+                            block_failed = True
+                            last_error = block_error
+                            break
+                        raise block_error from exc
+                if block_failed:
+                    continue
+                data = assemble_structured_blocks(structured_blocks, candidate_first_name)
+
+            enforce_client_first_name(data, candidate_first_name)
+            resolved_synthesis_mode = resolve_synthesis_mode(synthesis_mode, instructions, comments)
+            data = _source_gate_structured_data(data, compacted_text)
+            data = apply_client_synthesis_policy(
+                data,
+                resolved_synthesis_mode,
+                allow_condensation=resolved_synthesis_mode != "complete",
+            )
+            data = _source_gate_structured_data(data, compacted_text)
+            enforce_client_first_name(data, candidate_first_name)
+            assert_no_contact_in_json(data)
+            validate_source_fidelity(
+                compacted_text,
+                data,
+                allow_synthesis=resolved_synthesis_mode != "complete",
+                forbidden_identity_terms=infer_forbidden_candidate_identity_terms(compacted_text, candidate_first_name),
+            )
+            if attempt_label == "fallback":
+                log.info("fallback structuring succeeded after primary failure")
+            return data
+
+        except StructuringError as exc:
+            if attempt_label == "primary":
+                category = classify_structuring_error(exc)["category"]
+                if effective_fallback_runner is not None:
+                    log.warning("primary validation failed category=%s, will try fallback", category)
+                else:
+                    log.warning("primary validation failed category=%s, no fallback configured", category)
+                last_error = exc
+                continue
+            if last_error is not None:
+                primary_category = classify_structuring_error(last_error)["category"]
+                fallback_category = classify_structuring_error(exc)["category"]
+                raise StructuringError(
+                    "Structuration échouée après fallback "
+                    f"(primary_category={primary_category}, fallback_category={fallback_category})"
+                ) from None
+            raise
+
+    if last_error:
+        raise last_error
+    raise StructuringError("Structuration failed: both primary and fallback runners produced no result")

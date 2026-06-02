@@ -20,6 +20,7 @@ from src.structuring import (
     apply_client_synthesis_policy,
     _hermes_prompt,
     _source_gate_structured_data,
+    classify_structuring_error,
     split_cv_text_into_blocks,
     find_numbered_placeholder_repetitions,
     extract_source_business_coverage_facts,
@@ -58,6 +59,47 @@ def _remove_first_matching_string(value, target: str) -> tuple[object, bool]:
                 result[key] = item
         return result, removed
     return value, False
+
+
+class TestStructuringErrorClassification:
+    def test_classifies_contact_leak_without_secret(self):
+        result = classify_structuring_error(StructuringError("Coordonnées détectées dans JSON renderer: jean.dupont@example.com"))
+
+        assert result == {
+            "category": "contact_leak",
+            "message": "Coordonnées détectées dans la structuration du CV.",
+        }
+        assert "jean.dupont@example.com" not in result["message"]
+
+    def test_classifies_identity_leak_without_secret(self):
+        result = classify_structuring_error("Nom de famille interdit détecté: DUPONT dans description")
+
+        assert result["category"] == "identity_leak"
+        assert result["message"] == "Identité candidat détectée dans une zone non autorisée."
+        assert "DUPONT" not in result["message"]
+
+    def test_classifies_invalid_json_without_raw_payload(self):
+        result = classify_structuring_error("JSON Hermes invalide: email=jean@example.com {{{")
+
+        assert result["category"] == "structuring_invalid_json"
+        assert result["message"] == "Réponse de structuration JSON invalide ou incomplète."
+        assert "jean@example.com" not in result["message"]
+
+    def test_classifies_fallback_or_model_failure(self):
+        result = classify_structuring_error("Structuration échouée: erreur primaire: Hermes crashed; erreur fallback: timeout")
+
+        assert result == {
+            "category": "transient_model_failure",
+            "message": "Échec temporaire du modèle de structuration.",
+        }
+
+    def test_classifies_source_fidelity_generic(self):
+        result = classify_structuring_error("Fidélité source insuffisante: source_coverage_missing_experience_item")
+
+        assert result == {
+            "category": "source_fidelity",
+            "message": "Fidélité au CV source insuffisante.",
+        }
 
 
 class TestCompactExtractedText:
@@ -489,6 +531,73 @@ Gestion de bases de données (SQL)
         }
 
         validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, None))
+
+    @pytest.mark.parametrize(
+        "business_line",
+        [
+            "SQL Server",
+            "Gestion de bases de données",
+            "DATA Analyst",
+            "Université Gustave Eiffel",
+            "langue : Anglais courant",
+            "Niveau avancé",
+        ],
+    )
+    def test_known_first_name_identity_scan_does_not_forbid_business_or_document_terms(self, business_line):
+        source = f"""
+Nicolas GONZALEZ est DATA Analyst basé à Lyon.
+{business_line}
+Compétences
+Gestion de bases de données
+"""
+
+        terms = infer_forbidden_candidate_identity_terms(source, "Nicolas")
+
+        assert terms == ["GONZALEZ"]
+        for forbidden_false_positive in ["SQL", "Server", "Gestion", "bases", "données", "DATA", "Analyst", "Université", "langue", "Niveau", "Lyon"]:
+            assert forbidden_false_positive not in terms
+
+    @pytest.mark.parametrize(
+        ("source", "first_name", "expected"),
+        [
+            ("Nicolas GONZALEZ\nResponsable applicatif", "Nicolas", ["GONZALEZ"]),
+            ("Rachid AGOUARANE\nConsultant Esker", "Rachid", ["AGOUARANE"]),
+            ("Jean Page\nDéveloppeur", "Jean", ["Page"]),
+        ],
+    )
+    def test_real_surnames_remain_forbidden_after_identity_hardening(self, source, first_name, expected):
+        assert infer_forbidden_candidate_identity_terms(source, first_name) == expected
+
+    def test_profile_linkedin_summary_only_forbids_surname_not_title_or_city(self):
+        source = """
+Profil LinkedIn
+Nicolas GONZALEZ est DATA Analyst basé à Lyon, spécialisé SQL Server.
+Expérience
+2024 DATA Analyst à Lyon
+Gestion de bases de données SQL Server.
+"""
+        data = {
+            "name": "NICOLAS",
+            "title": "DATA Analyst",
+            "description": "DATA Analyst basé à Lyon, spécialisé SQL Server.",
+            "formations": [],
+            "skills": [{"category": "Data", "items": ["SQL Server", "Gestion de bases de données"]}],
+            "experiences": [{
+                "date": "2024",
+                "role": "DATA Analyst à Lyon",
+                "company_highlight": "",
+                "sections": [{"heading": "Missions clés", "content": ["Gestion de bases de données SQL Server."]}],
+            }],
+        }
+
+        terms = infer_forbidden_candidate_identity_terms(source, "Nicolas")
+
+        assert terms == ["GONZALEZ"]
+        validate_source_fidelity(source, data, forbidden_identity_terms=terms)
+        leaked = deepcopy(data)
+        leaked["description"] = "Nicolas GONZALEZ est DATA Analyst basé à Lyon."
+        with pytest.raises(StructuringError, match="GONZALEZ|identity|identité"):
+            validate_source_fidelity(source, leaked, forbidden_identity_terms=terms)
 
     def test_classifies_vague_formatting_as_complete_faithful(self):
         vague_instructions = [
@@ -1110,11 +1219,101 @@ class TestBuildWHubJson:
         assert result["name"] == "ZAHIA"
 
     def test_build_whub_json_raises_on_hermes_failure(self):
+        calls = {"fallback": 0}
+
         def bad_runner(prompt: str, timeout: int):
             return 1, "", "Hermes crashed"
 
-        with pytest.raises(StructuringError, match="Hermes"):
+        with pytest.raises(StructuringError, match="Hermes crashed"):
             build_whub_json("cv text\n" * 100, "", [], hermes_runner=bad_runner)
+        assert calls["fallback"] == 0
+
+    def test_build_whub_json_fallback_can_repair_contactful_primary_json(self):
+        source = "Jean\nDev\n2024 Dev\nPiloter le développement applicatif.\n"
+        primary_data = {
+            "name": "Jean",
+            "title": "Dev",
+            "formations": [],
+            "skills": [],
+            "experiences": [{"date": "2024", "role": "Dev", "sections": [{"heading": "Contact", "content": ["jean@example.com"]}]}],
+        }
+        fallback_data = {
+            "name": "Jean",
+            "title": "Dev",
+            "formations": [],
+            "skills": [],
+            "experiences": [{"date": "2024", "role": "Dev", "sections": [{"heading": "Missions clés", "content": ["Piloter le développement applicatif."]}]}],
+        }
+        calls = []
+
+        def primary_runner(prompt: str, timeout: int):
+            calls.append("primary")
+            return 0, json.dumps(primary_data, ensure_ascii=False), ""
+
+        def fallback_runner(prompt: str, timeout: int):
+            calls.append("fallback")
+            return 0, json.dumps(fallback_data, ensure_ascii=False), ""
+
+        result = build_whub_json(
+            source,
+            "",
+            [],
+            "Jean",
+            hermes_runner=primary_runner,
+            fallback_runner=fallback_runner,
+        )
+
+        assert calls == ["primary", "fallback"]
+        assert result["name"] == "JEAN"
+        assert result["experiences"][0]["sections"][0]["content"] == ["Piloter le développement applicatif."]
+        assert_no_contact_in_json(result)
+
+    def test_build_whub_json_reports_safe_categories_when_primary_and_fallback_errors_both_fail(self):
+        def primary_runner(prompt: str, timeout: int):
+            return 1, "", "Hermes crashed with jean.dupont@example.com"
+
+        def fallback_runner(prompt: str, timeout: int):
+            return 1, "", "Fallback crashed with linkedin.com/in/jean-dupont"
+
+        with pytest.raises(StructuringError) as exc:
+            build_whub_json(
+                "cv text\n" * 100,
+                "",
+                [],
+                hermes_runner=primary_runner,
+                fallback_runner=fallback_runner,
+            )
+
+        message = str(exc.value)
+        assert "primary_category=" in message
+        assert "fallback_category=" in message
+        assert "jean.dupont@example.com" not in message
+        assert "linkedin.com" not in message
+        assert "Hermes crashed" not in message
+        assert "Fallback crashed" not in message
+        assert exc.value.__cause__ is None
+
+    def test_build_whub_json_does_not_fallback_on_unexpected_application_exception(self):
+        calls = []
+
+        def primary_runner(prompt: str, timeout: int):
+            calls.append("primary")
+            raise TypeError("application bug with jean.dupont@example.com")
+
+        def fallback_runner(prompt: str, timeout: int):
+            calls.append("fallback")
+            return 0, json.dumps({"name": "Jean", "title": "Dev", "formations": [], "skills": [], "experiences": []}), ""
+
+        with pytest.raises(TypeError, match="application bug"):
+            build_whub_json(
+                "cv text\n" * 100,
+                "",
+                [],
+                hermes_runner=primary_runner,
+                fallback_runner=fallback_runner,
+            )
+
+        assert calls == ["primary"]
 
     def test_build_whub_json_raises_on_contact_in_response(self):
         data = {
