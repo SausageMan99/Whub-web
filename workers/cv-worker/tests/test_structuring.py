@@ -468,6 +468,30 @@ Consultant Esker | Business Analyst IT (Run/Build)
         with pytest.raises(StructuringError, match="AGOUARANE|identity|identité"):
             validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Rachid"))
 
+    def test_source_fidelity_allows_project_management_degree_in_formations(self):
+        source = """
+formations
+Master management de projet digital
+Efficom - 2020 - 2022
+Bachelor chef de projet digital
+Efficom - 2019 - 2020
+DUT informatique
+IUT Lille - 2016 - 2018
+"""
+        data = {
+            "name": "RAYAN",
+            "title": "Dev",
+            "formations": [
+                {"date": "2020 - 2022", "degree": "Master management de projet digital", "school": "Efficom"},
+                {"date": "2019 - 2020", "degree": "Bachelor chef de projet digital", "school": "Efficom"},
+                {"date": "2016 - 2018", "degree": "DUT informatique", "school": "IUT Lille"},
+            ],
+            "skills": [],
+            "experiences": [],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
     def test_empty_forbidden_identity_terms_do_not_fallback_to_company_header(self):
         source = """
 Orange Business

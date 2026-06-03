@@ -680,12 +680,20 @@ def _has_experience_sections(exp: dict) -> bool:
     return False
 
 
+_FORMATION_DEGREE_MARKER_RE = re.compile(
+    r"\b(?:bachelor|master|mast[eè]re|licence|dut|bts|mba|doctorat|ing[eé]nieur|dipl[oô]me|certificat|certification|formation)\b",
+    re.I,
+)
+
+
 def _looks_like_experience_formation(formation: dict) -> bool:
     date = str(formation.get("date") or "").strip()
     degree = str(formation.get("degree") or "").strip()
     school = str(formation.get("school") or "").strip()
     text = " ".join(part for part in [date, degree, school] if part)
     if not text:
+        return False
+    if _FORMATION_DEGREE_MARKER_RE.search(degree) and not re.search(r"\b(?:cdi|cdd|freelance|stage)\b", degree, re.I):
         return False
     return bool(_EXPERIENCE_DATE_RANGE_RE.search(date) and _EXPERIENCE_ROLE_MARKER_RE.search(text))
 
