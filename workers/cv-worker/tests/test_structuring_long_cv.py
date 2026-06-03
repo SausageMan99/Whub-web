@@ -7,6 +7,7 @@ from src.structuring import (
     assemble_structured_blocks,
     apply_client_synthesis_policy,
     _hermes_prompt,
+    assert_no_contact_in_json,
     StructuringError,
     LONG_CV_CHAR_THRESHOLD,
     LONG_CV_BLOCK_TARGET_CHARS,
@@ -207,12 +208,14 @@ Environnement technique: Java, Kubernetes
         self.assertIn("client-facing", prompt.lower())
         self.assertIn("pavés", prompt.lower())
 
-    def test_long_cv_rejects_contact_details_after_synthesis(self):
+    def test_long_cv_sanitizes_contact_details_after_synthesis(self):
         def fake_runner(prompt: str, timeout: int):
             return 0, '{"name":"JEAN","title":"Architecte Solution","formations":[],"skills":[],"experiences":[{"date":"2024","role":"Lead","sections":[{"heading":"Missions clés","content":["Contact: jean@example.com"]}]}]}', ""
 
-        with self.assertRaisesRegex(StructuringError, "Coordonnées"):
-            build_whub_json("Jean\n" + ("ligne\n" * 20), "", [], "Jean", long_cv_threshold=10, hermes_runner=fake_runner)
+        result = build_whub_json("Jean\nArchitecte Solution\n2024 Lead\n" + ("ligne\n" * 20), "", [], "Jean", long_cv_threshold=10, hermes_runner=fake_runner)
+
+        self.assertEqual(result["experiences"][0]["sections"][0]["content"], [])
+        assert_no_contact_in_json(result)
 
     def test_long_cv_uses_multiple_hermes_calls_and_reports_block_failures(self):
         calls = []

@@ -8,7 +8,7 @@ import unicodedata
 from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
-from typing import Callable
+from typing import Callable, cast
 
 from .config import settings
 
@@ -20,9 +20,20 @@ CONTACT_PATTERNS = [
     r"linkedin",
     r"github\.com",
     r"https?://",
+    r"\bwww\.",
     r"\+33",
     r"\b0[67](?:[ .-]?\d{2}){4}\b",
 ]
+
+EMAIL_CONTACT_RE = re.compile(r"\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b", re.I)
+PHONE_CONTACT_RE = re.compile(r"(?<!\d)(?:\+33\s?|0[67])(?:[ .\-]?\d{2}){4}\b")
+URL_CONTACT_RE = re.compile(
+    r"(?:https?://\S+|www\.\S+|\b(?:[a-z0-9-]+\.)+(?:com|fr|net|org|io|ai|dev|co)\b(?:/\S*)?)",
+    re.I,
+)
+LINKEDIN_CONTACT_RE = re.compile(r"\b(?:[a-z]{2}\.)?linkedin(?:\.com)?(?:/\S*)?\b|\blinkedin\b", re.I)
+GITHUB_PROFILE_CONTACT_RE = re.compile(r"\bgithub\.com/\S+", re.I)
+CONTACT_LABEL_RE = re.compile(r"\b(?:coordonn[ée]es?|contact|t[ée]l(?:[ée]phone)?|email|mail|e-mail|linkedin|site\s+web)\b\s*:?", re.I)
 
 REQUIRED_TOP_LEVEL_KEYS = {"name", "title", "formations", "skills", "experiences"}
 MAX_PROMPT_CV_CHARS = 45000
@@ -173,6 +184,66 @@ def assert_no_contact_in_json(data: dict) -> None:
     hits = [p for p in CONTACT_PATTERNS if re.search(p, text)]
     if hits:
         raise StructuringError(f"Coordonnées détectées dans JSON renderer: {hits}")
+
+
+def sanitize_contact_in_json(data: dict) -> dict:
+    """Remove direct contact surfaces from structured renderer JSON.
+
+    This is deliberately deterministic and conservative: it strips emails,
+    phones, LinkedIn/profile URLs and bare web URLs while preserving the rest of
+    the source-faithful business sentence. It does not remove arbitrary '@'
+    characters, so project names such as Th@Bot remain valid.
+    """
+    return cast(dict, _sanitize_contact_value(data))
+
+
+def _sanitize_contact_value(data: object) -> object:
+    if isinstance(data, dict):
+        cleaned: dict = {}
+        for key, value in data.items():
+            if CONTACT_LABEL_RE.fullmatch(str(key).strip()):
+                continue
+            sanitized = _sanitize_contact_value(value)
+            if _is_empty_contact_sanitized_value(sanitized) and str(key) not in REQUIRED_TOP_LEVEL_KEYS.union({"sections", "content"}):
+                continue
+            cleaned[key] = sanitized
+        return cleaned
+    if isinstance(data, list):
+        cleaned_items = []
+        for item in data:
+            sanitized = _sanitize_contact_value(item)
+            if not _is_empty_contact_sanitized_value(sanitized):
+                cleaned_items.append(sanitized)
+        return cleaned_items
+    if isinstance(data, str):
+        return _sanitize_contact_text(data)
+    return data
+
+
+def _is_empty_contact_sanitized_value(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip() or CONTACT_LABEL_RE.fullmatch(value.strip()) is not None
+    if isinstance(value, (list, dict)):
+        return len(value) == 0
+    return False
+
+
+def _sanitize_contact_text(text: str) -> str:
+    original = str(text)
+    cleaned = EMAIL_CONTACT_RE.sub("", original)
+    cleaned = PHONE_CONTACT_RE.sub("", cleaned)
+    cleaned = LINKEDIN_CONTACT_RE.sub("", cleaned)
+    cleaned = GITHUB_PROFILE_CONTACT_RE.sub("", cleaned)
+    cleaned = URL_CONTACT_RE.sub("", cleaned)
+    cleaned = CONTACT_LABEL_RE.sub("", cleaned)
+    cleaned = re.sub(r"\(\s*(?:site\s+web|linkedin|contact)\s*\)", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\(\s*\)", "", cleaned)
+    cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"(?:\s*[-–—|•]\s*){2,}", " - ", cleaned)
+    cleaned = re.sub(r"^[\s,;:|•\-–—]+|[\s,;:|•\-–—]+$", "", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _normalize_for_fidelity(text: str) -> str:
@@ -2106,6 +2177,7 @@ def build_whub_json(
             )
             data = _source_gate_structured_data(data, compacted_text)
             enforce_client_first_name(data, candidate_first_name)
+            data = sanitize_contact_in_json(data)
             assert_no_contact_in_json(data)
             validate_source_fidelity(
                 compacted_text,

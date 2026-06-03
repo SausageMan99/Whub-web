@@ -26,6 +26,7 @@ from src.structuring import (
     find_numbered_placeholder_repetitions,
     extract_source_business_coverage_facts,
     extract_source_experience_coverage_items,
+    sanitize_contact_in_json,
 )
 
 
@@ -218,6 +219,48 @@ class TestAssertNoContactInJson:
         data["experiences"] = [{"date": "2024", "role": "RPA", "sections": [{"heading": "Programme", "content": ["Pilotage du programme Th@Bot (RPA & AI Center of Excellence)"]}]}]
 
         assert_no_contact_in_json(data)
+
+
+class TestSanitizeContactInJson:
+    def test_removes_candidate_contact_surfaces_but_keeps_business_text(self):
+        data = {
+            "name": "THOMAS",
+            "title": "Tech Lead",
+            "formations": [],
+            "skills": [{"category": "Projets", "items": ["Th@Bot", "www.digitalis-web.fr (Site web)"]}],
+            "experiences": [
+                {
+                    "date": "2024",
+                    "role": "Tech Lead",
+                    "sections": [
+                        {
+                            "heading": "Coordonnées",
+                            "content": [
+                                "06.60.55.55.88",
+                                "contact@digitalis-web.fr",
+                                "www.linkedin.com/in/developpeur-web-thomas/ (LinkedIn)",
+                                "Développement sur le site du groupe www.engie.com",
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        cleaned = sanitize_contact_in_json(data)
+
+        assert cleaned["skills"] == [{"category": "Projets", "items": ["Th@Bot"]}]
+        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Développement sur le site du groupe"]
+        assert_no_contact_in_json(cleaned)
+
+    def test_removes_real_email_without_blocking_at_sign_project_name(self):
+        data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
+        data["experiences"] = [{"date": "2024", "role": "Dev", "sections": [{"heading": "Projet", "content": ["Th@Bot", "Contact jean@example.com"]}]}]
+
+        cleaned = sanitize_contact_in_json(data)
+
+        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Th@Bot"]
+        assert_no_contact_in_json(cleaned)
 
 
 class TestSourceFidelity:
@@ -1284,7 +1327,7 @@ class TestBuildWHubJson:
             build_whub_json("cv text\n" * 100, "", [], hermes_runner=bad_runner)
         assert calls["fallback"] == 0
 
-    def test_build_whub_json_fallback_can_repair_contactful_primary_json(self):
+    def test_build_whub_json_sanitizes_contactful_primary_json_without_fallback(self):
         source = "Jean\nDev\n2024 Dev\nPiloter le développement applicatif.\n"
         primary_data = {
             "name": "Jean",
@@ -1292,13 +1335,6 @@ class TestBuildWHubJson:
             "formations": [],
             "skills": [],
             "experiences": [{"date": "2024", "role": "Dev", "sections": [{"heading": "Contact", "content": ["jean@example.com"]}]}],
-        }
-        fallback_data = {
-            "name": "Jean",
-            "title": "Dev",
-            "formations": [],
-            "skills": [],
-            "experiences": [{"date": "2024", "role": "Dev", "sections": [{"heading": "Missions clés", "content": ["Piloter le développement applicatif."]}]}],
         }
         calls = []
 
@@ -1308,9 +1344,7 @@ class TestBuildWHubJson:
 
         def fallback_runner(prompt: str, timeout: int):
             calls.append("fallback")
-            assert "RETRY CORRECTIF" in prompt
-            assert "contact_leak" in prompt
-            return 0, json.dumps(fallback_data, ensure_ascii=False), ""
+            return 1, "", "fallback should not be needed for deterministic contact cleanup"
 
         result = build_whub_json(
             source,
@@ -1321,9 +1355,9 @@ class TestBuildWHubJson:
             fallback_runner=fallback_runner,
         )
 
-        assert calls == ["primary", "fallback"]
+        assert calls == ["primary"]
         assert result["name"] == "JEAN"
-        assert result["experiences"][0]["sections"][0]["content"] == ["Piloter le développement applicatif."]
+        assert result["experiences"][0]["sections"][0]["content"] == []
         assert_no_contact_in_json(result)
 
     def test_build_whub_json_reports_safe_categories_when_primary_and_fallback_errors_both_fail(self):
@@ -1373,7 +1407,7 @@ class TestBuildWHubJson:
 
         assert calls == ["primary"]
 
-    def test_build_whub_json_raises_on_contact_in_response(self):
+    def test_build_whub_json_sanitizes_contact_in_response(self):
         data = {
             "name": "Jean",
             "title": "Dev",
@@ -1381,8 +1415,10 @@ class TestBuildWHubJson:
             "skills": [],
             "experiences": [{"date": "2024", "role": "Dev", "sections": [{"heading": "Contact", "content": ["jean@example.com"]}]}],
         }
-        with pytest.raises(StructuringError, match="Coordonnées"):
-            build_whub_json("cv text\n" * 100, "", [], hermes_runner=self._make_runner(data))
+        result = build_whub_json("Jean\nDev\n2024 Dev\ncv text\n" * 100, "", [], hermes_runner=self._make_runner(data))
+
+        assert result["experiences"][0]["sections"][0]["content"] == []
+        assert_no_contact_in_json(result)
 
     def test_build_whub_json_uses_long_cv_mode_when_text_exceeds_threshold(self):
         calls = []
