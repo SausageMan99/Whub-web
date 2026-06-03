@@ -32,13 +32,29 @@ export function buildCvDownloadFilename(candidateName: string | null | undefined
   return `${base}-W-hub-v${version}.pdf`;
 }
 
+export function getCvStatusLabel(status: CvStatus, eventTypes: string[] = []) {
+  const events = new Set(eventTypes);
+
+  if (status === "ready" || events.has("ready")) return "Prêt à télécharger";
+  if (status === "draft_ready") return "Brouillon prêt";
+  if (status === "qa_failed") return "Contrôle qualité";
+  if (status === "failed" || status === "revision_requested") return "À corriger";
+  if (events.has("extraction_done")) return "Mise au format W hub";
+  if (status === "processing" || events.has("worker_claimed")) return "Analyse du CV";
+  if (status === "submitted") return "En attente";
+  if (status === "cancelled") return "Annulé";
+  if (status === "archived") return "Archivé";
+  return "En attente";
+}
+
 export function getCvProgress(status: CvStatus, eventTypes: string[] = []): CvProgress {
   const events = new Set(eventTypes);
+  const label = getCvStatusLabel(status, eventTypes);
 
   if (status === "ready" || events.has("ready")) {
     return {
       percent: 100,
-      label: "CV prêt",
+      label,
       helper: "Le PDF final a passé la QA et peut être téléchargé."
     };
   }
@@ -46,7 +62,7 @@ export function getCvProgress(status: CvStatus, eventTypes: string[] = []): CvPr
   if (status === "draft_ready") {
     return {
       percent: 100,
-      label: "Brouillon prêt",
+      label,
       helper: "Le PDF peut être téléchargé pour relecture, avec des points qualité à corriger avant envoi client."
     };
   }
@@ -54,54 +70,54 @@ export function getCvProgress(status: CvStatus, eventTypes: string[] = []): CvPr
   if (status === "failed") {
     return {
       percent: 100,
-      label: "Erreur",
-      helper: "La génération a échoué. Ouvre la demande pour voir le détail."
+      label,
+      helper: "La génération n’a pas pu aboutir. Corrige la source ou la consigne avant de relancer."
     };
   }
 
   if (status === "qa_failed") {
     return {
       percent: 85,
-      label: "QA à reprendre",
-      helper: "Le PDF a été généré mais n’a pas passé le contrôle qualité."
+      label,
+      helper: "Le PDF a été généré mais un blocage de qualité empêche encore la livraison."
     };
   }
 
   if (events.has("extraction_done")) {
     return {
       percent: 60,
-      label: "Extraction terminée",
-      helper: "Le contenu du CV source est structuré pour le rendu W hub."
+      label,
+      helper: "Le contenu du CV source est structuré et prêt pour le contrôle qualité."
     };
   }
 
   if (status === "processing" || events.has("worker_claimed")) {
     return {
       percent: 35,
-      label: "Traitement lancé",
-      helper: "Le worker W hub a pris la demande en charge."
+      label,
+      helper: "Le worker W hub analyse le CV source et prépare la structuration."
     };
   }
 
   if (status === "revision_requested") {
     return {
       percent: 20,
-      label: "Correction demandée",
-      helper: "La demande est revenue dans la file pour une nouvelle version."
+      label,
+      helper: "Une correction a été demandée pour lancer la prochaine version."
     };
   }
 
   if (status === "cancelled" || status === "archived") {
     return {
       percent: 0,
-      label: status === "cancelled" ? "Annulé" : "Archivé",
+      label,
       helper: "Cette demande n’est plus en production."
     };
   }
 
   return {
     percent: 15,
-    label: "Demande reçue",
-    helper: "Le CV est dans la file de production."
+    label,
+    helper: "Le CV source attend sa prise en charge."
   };
 }

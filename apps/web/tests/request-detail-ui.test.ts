@@ -8,7 +8,7 @@ import {
 } from '../lib/request-detail-ui';
 
 test('request detail UI — draft_ready exposes exact brouillon title', () => {
-  assert.equal(draftReadyTitle('draft_ready'), 'PDF généré en brouillon — points qualité détectés');
+  assert.equal(draftReadyTitle('draft_ready'), 'Brouillon prêt — points qualité détectés');
   assert.equal(draftReadyTitle('ready'), null);
 });
 
@@ -48,7 +48,7 @@ test('request detail UI — completed status has no draft or failure copy', () =
 test('request detail UI — failed statuses get safe blocking copy', () => {
   assert.equal(isHardFailureStatus('qa_failed'), true);
   assert.equal(isHardFailureStatus('failed'), true);
-  assert.match(hardFailureCopy('qa_failed')?.title ?? '', /Erreur bloquante/);
-  assert.match(hardFailureCopy('qa_failed')?.body ?? '', /détail technique interne/);
-  assert.match(hardFailureCopy('failed')?.title ?? '', /Erreur de génération/);
+  assert.match(hardFailureCopy('qa_failed')?.title ?? '', /Contrôle qualité/);
+  assert.match(hardFailureCopy('qa_failed')?.body ?? '', /blocage de qualité/);
+  assert.match(hardFailureCopy('failed')?.title ?? '', /À corriger/);
 });

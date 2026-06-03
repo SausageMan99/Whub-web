@@ -69,7 +69,6 @@ function makeAdminClient() {
 
 let createRequest: (formData: FormData) => Promise<{ ok: boolean; requestId?: string; error?: string }>;
 let prepareUpload: (input: { fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
-let buildGuidedInstructions: (selected: string[], freeText: string) => string;
 
 before(async (t) => {
   t.mock.module('next/navigation', {
@@ -107,8 +106,6 @@ before(async (t) => {
   const mod = await import('../app/requests/new/actions');
   createRequest = mod.createRequest;
   prepareUpload = mod.prepareUpload;
-  const intentions = await import('../app/requests/new/intentions');
-  buildGuidedInstructions = intentions.buildGuidedInstructions;
 });
 
 function reset(user = true) {
@@ -223,6 +220,8 @@ test('createRequest — inserts correct row into cv_requests and returns success
   assert.equal(row.created_by, 'u1');
   assert.equal(row.title, 'Senior Dev');
   assert.equal(row.candidate_first_name, 'Alice');
+  assert.equal(row.origin, 'web_portal');
+  assert.equal(row.workflow, 'telegram_whub_cv_generation');
   assert.equal(row.instructions, 'Do it well');
   assert.equal(row.priority, 'high');
   assert.equal(row.status, 'submitted');
@@ -256,57 +255,44 @@ test('createRequest — catches thrown dependencies and logs unexpected_exceptio
   assertCreateRequestFailureLog(logs, 'unexpected_exception', '11111111-1111-4111-8111-111111111111', 'dependency exploded');
 });
 
-test('new request page — uses the signed-upload client form, not direct createRequest form action', () => {
+test('new request page — exposes single upload/message workflow and no advanced fields', () => {
   const source = readFileSync(join(process.cwd(), 'app/requests/new/page.tsx'), 'utf8');
-  assert.match(source, /import NewRequestForm from "\.\/NewRequestForm"/);
-  assert.match(source, /<NewRequestForm initialError=\{rawError \?\? null\} \/>/);
-  assert.doesNotMatch(source, /<form action=\{createRequest\}/);
-});
-
-test('guided CV intentions — enrich free-text instructions without replacing them', () => {
-  const result = buildGuidedInstructions(['short_client', 'highlight_stack', 'recent_experience', 'unknown'], 'Mission Stago, insister sur Java/AWS.');
-
-  assert.match(result, /^Intentions guidées W hub :/);
-  assert.match(result, /Exception CV court client/);
-  assert.match(result, /autorise explicitement une version courte\/synthétique/);
-  assert.match(result, /stack technique/);
-  assert.match(result, /expérience récente/);
-  assert.match(result, /Consignes libres :\nMission Stago, insister sur Java\/AWS\./);
-  assert.doesNotMatch(result, /unknown/);
-});
-
-test('new request form — exposes faithful default copy and keeps free instructions textarea', () => {
   const formSource = readFileSync(join(process.cwd(), 'app/requests/new/NewRequestForm.tsx'), 'utf8');
-  const intentionSource = readFileSync(join(process.cwd(), 'app/requests/new/intentions.ts'), 'utf8');
 
-  for (const value of ['standard', 'short_client', 'highlight_stack', 'recent_experience', 'senior_target']) {
-    assert.match(intentionSource, new RegExp(`key: \\"${value}\\"`));
-  }
-  assert.match(intentionSource, /CV W hub fidèle — mise en page uniquement/);
-  assert.match(intentionSource, /conserver tout le contenu métier source sans reformulation, synthèse, condensation ni omission/);
-  assert.match(intentionSource, /Retirer seulement les coordonnées, nom de famille, adresse et liens personnels/);
-  assert.match(intentionSource, /Exception CV court client/);
-  assert.match(intentionSource, /autorise explicitement une version courte\/synthétique/);
-  assert.match(formSource, /Par défaut : CV W hub fidèle, mise en page uniquement/);
-  assert.match(formSource, /ne reformule pas, ne synthétise pas et n’omet pas le contenu métier/);
-  assert.match(formSource, /Par défaut : mise en page W hub fidèle sans reformulation/);
-  assert.match(formSource, /name="cv_intentions"/);
-  assert.match(formSource, /value=\{intention\.key\}/);
+  assert.match(source, /Un seul flux: CV source \+ message libre\./);
+  assert.match(source, /Même logique que Telegram Hermes/);
+  assert.match(formSource, /name="file"/);
   assert.match(formSource, /name="instructions"/);
-  assert.match(formSource, /buildGuidedInstructions/);
+  assert.match(formSource, /Générer le CV/);
+  assert.match(formSource, /Message \/ consigne complémentaire/);
+  assert.doesNotMatch(formSource, /name="title"/);
+  assert.doesNotMatch(formSource, /candidate_first_name/);
+  assert.doesNotMatch(formSource, /priority/);
+  assert.doesNotMatch(formSource, /cv_intentions/);
+  assert.doesNotMatch(formSource, /buildGuidedInstructions/);
 });
 
-test('guided CV intentions — standard/default remains faithful layout-only, short client is explicit exception', () => {
-  const standard = buildGuidedInstructions(['standard'], '');
-  const nonShort = buildGuidedInstructions(['highlight_stack', 'recent_experience', 'senior_target'], 'Mission cible Java.');
-  const short = buildGuidedInstructions(['short_client'], '');
+test('createRequest — falls back to a default title when the UI only sends upload metadata and instructions', async () => {
+  reset();
+  const fd = new FormData();
+  fd.set('request_id', '11111111-1111-4111-8111-111111111111');
+  fd.set('source_path', '11111111-1111-4111-8111-111111111111/source/my-cv.pdf');
+  fd.set('source_file_name', 'my-cv.pdf');
+  fd.set('source_file_size', '8');
+  fd.set('source_file_mime', 'application/pdf');
+  fd.set('instructions', 'Garder le CV fidèle.');
 
-  assert.match(standard, /mise en page uniquement/);
-  assert.match(standard, /sans reformulation, synthèse, condensation ni omission/);
-  assert.match(standard, /Retirer seulement les coordonnées, nom de famille, adresse et liens personnels/);
-  assert.match(nonShort, /sans inventer, reformuler, synthétiser, condenser ni omettre/);
-  assert.match(nonShort, /Consignes libres :\nMission cible Java\./);
-  assert.doesNotMatch(nonShort, /autorise explicitement une version courte/);
-  assert.match(short, /Exception CV court client/);
-  assert.match(short, /autorise explicitement une version courte\/synthétique/);
+  assert.deepEqual(await createRequest(fd), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
+
+  const insertCall = recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert');
+  assert.ok(insertCall, 'insert call should exist');
+  const row = insertCall!.payload as Record<string, unknown>;
+
+  assert.equal(row.title, 'CV source');
+  assert.equal(row.candidate_first_name, '');
+  assert.equal(row.instructions, 'Garder le CV fidèle.');
+  assert.equal(row.priority, 'normal');
 });

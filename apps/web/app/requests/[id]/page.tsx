@@ -31,6 +31,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
 
   const eventTypes = (events ?? []).map((event) => event.event_type);
   const latestVersion = versions?.[0] ?? null;
+  const nextVersionNumber = (latestVersion?.version_number ?? 0) + 1;
   const draftTitle = draftReadyTitle(request.status);
   const draftWarnings = draftTitle ? normalizeDraftWarnings(latestVersion?.qa_report) : [];
   const hardFailure = hardFailureCopy(request.status);
@@ -46,7 +47,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           <p className="mt-4 text-base font-semibold text-ink/50">Prénom candidat : <span className="text-ink">{request.candidate_first_name || "—"}</span></p>
         </div>
         <div className="flex flex-col items-start gap-3">
-          <StatusBadge status={request.status} />
+          <StatusBadge status={request.status} events={eventTypes} />
           {["failed", "qa_failed"].includes(request.status) && (
             <form action={retryRequest}>
               <input type="hidden" name="request_id" value={id} />
@@ -64,7 +65,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <h2 className="text-xl font-black tracking-[-0.03em]">Avancement</h2>
             <p className="mt-1 text-sm font-semibold text-ink/42">Actualisation automatique toutes les 5 secondes pendant la génération.</p>
           </div>
-          <StatusBadge status={request.status} />
+          <StatusBadge status={request.status} events={eventTypes} />
         </div>
         <div className="mt-5">
           <CvProgressBar status={request.status} events={eventTypes} />
@@ -78,7 +79,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-700">Brouillon téléchargeable</p>
               <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">{draftTitle}</h2>
               <p className="mt-2 text-sm font-semibold leading-6 text-ink/60">
-                Le PDF est sûr à relire, mais il reste des points de mise en page à corriger avant envoi client.
+                Le PDF est sûr à relire, et la correction ci-dessous recrée la prochaine version sans réuploader le CV source.
               </p>
             </div>
             {latestVersion?.final_pdf_path && canDownloadGeneratedPdf && (
@@ -101,9 +102,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           </div>
           <form action={addComment} className="mt-5 space-y-3 border-t border-amber-200 pt-5">
             <input type="hidden" name="request_id" value={id} />
-            <label className="block text-sm font-black text-ink" htmlFor="draft-feedback">Que veux-tu modifier ?</label>
-            <textarea id="draft-feedback" name="body" rows={4} className="w-full resize-none rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Ex. Aérer la page 2, garder toutes les expériences, réduire seulement le bloc compétences..." />
-            <button className="rounded-2xl bg-whub px-5 py-3 font-black text-white shadow-violet">Demander les modifications</button>
+            <label className="block text-sm font-black text-ink" htmlFor="draft-feedback">Correction post-génération — crée V{nextVersionNumber}</label>
+            <textarea id="draft-feedback" name="body" rows={4} className="w-full resize-none rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder={`Ex. V${nextVersionNumber} : aérer la page 2, garder toutes les expériences, réduire seulement le bloc compétences...`} />
+            <button className="rounded-2xl bg-whub px-5 py-3 font-black text-white shadow-violet">Créer V{nextVersionNumber}</button>
           </form>
         </Panel>
       )}
@@ -130,7 +131,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             <h2 className="text-xl font-black tracking-[-0.03em]">Fichier source</h2>
             <div className="mt-4 rounded-2xl border border-ink/8 bg-white p-4">
               <p className="font-black text-ink">{request.source_file_name || "CV source"}</p>
-              <p className="mt-1 text-sm font-semibold text-ink/42">Stockage privé Supabase · {request.source_file_mime || "PDF"}</p>
+              <p className="mt-1 text-sm font-semibold text-ink/42">Stockage privé Supabase · {request.source_file_mime || "PDF"} · même source pour V2/V3</p>
             </div>
           </Panel>
         </div>
@@ -171,8 +172,8 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
             </div>
             <form action={addComment} className="mt-5 space-y-3 border-t border-ink/8 pt-5">
               <input type="hidden" name="request_id" value={id} />
-              <textarea name="body" rows={4} className="w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Demande de modification pour V2/V3..." />
-              <button className="rounded-2xl bg-whub px-5 py-3 font-black text-white shadow-violet">Demander une modification</button>
+              <textarea name="body" rows={4} className="w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder={`Demande de correction pour V${nextVersionNumber}...`} />
+              <button className="rounded-2xl bg-whub px-5 py-3 font-black text-white shadow-violet">Créer V{nextVersionNumber}</button>
             </form>
           </Panel>
         </div>

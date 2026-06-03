@@ -204,6 +204,51 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
     assert ("draft_ready", {"version_id": "version-1", "version_number": 1, "layout_warnings": report["layout_issues"]}) in events
 
 
+def test_process_job_revision_includes_previous_version_history(monkeypatch, tmp_path):
+    captured = {}
+    pdf_path = tmp_path / "revision.pdf"
+    pdf_path.write_bytes(b"%PDF draft")
+
+    monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: "Zahia source")
+    monkeypatch.setattr(worker_main, "build_whub_json", lambda text, instructions, comments, candidate_first_name: captured.update({"comments": comments, "instructions": instructions}) or {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
+    monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
+    monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
+    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 2)
+    monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
+    monkeypatch.setattr(worker_main, "run_qa", Mock(return_value=_report()))
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: "version-2")
+    monkeypatch.setattr(worker_main, "emit_event", lambda *args, **kwargs: None)
+
+    class _Table:
+        def __init__(self, table: str):
+            self.table = table
+
+        def select(self, *_args):
+            return self
+
+        def eq(self, *_args):
+            return self
+
+        def update(self, *_args, **_kwargs):
+            return self
+
+        def execute(self):
+            if self.table == "cv_comments":
+                return type("Res", (), {"data": [{"body": "Recrée la V2", "comment_type": "revision"}]})()
+            if self.table == "cv_versions":
+                return type("Res", (), {"data": [{"version_number": 1, "qa_status": "draft", "qa_report": {"layout_issues": [{"code": "page_too_dense", "message": "Page dense"}]}}]})()
+            return type("Res", (), {"data": []})()
+
+    monkeypatch.setattr(worker_main.client, "table", lambda table: _Table(table))
+
+    worker_main.process_job({"id": "request-1", "current_version_id": "version-1", "candidate_first_name": "ZAHIA", "instructions": "Corrige la page 2"})
+
+    assert captured["instructions"] == "Corrige la page 2"
+    assert captured["comments"][0]["comment_type"] == "history"
+    assert "Historique utile: version V1 (qa=draft)." in captured["comments"][0]["body"]
+    assert "page_too_dense" in captured["comments"][0]["body"]
 def test_process_job_mixed_hard_and_soft_blocks_as_qa_failed(monkeypatch, tmp_path):
     failures = []
     report = _report(contact_hits=["email"], layout_issues=[{"code": "page_too_dense", "page": 2}])

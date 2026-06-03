@@ -4,6 +4,7 @@ from time import perf_counter
 from pathlib import Path
 from datetime import datetime, timezone
 import shutil
+from typing import cast
 from .config import settings
 from .supabase_client import client
 from .events import emit_event
@@ -57,6 +58,30 @@ def forbidden_candidate_name_parts(candidate_first_name: str | None, source_text
     return forbidden
 
 
+def _build_revision_history_comment(version: dict) -> dict:
+    version_number = version.get("version_number")
+    qa_status = version.get("qa_status") or "unknown"
+    qa_report = version.get("qa_report") if isinstance(version, dict) else None
+    layout_issues = qa_report.get("layout_issues") if isinstance(qa_report, dict) else []
+    issue_summaries: list[str] = []
+    if isinstance(layout_issues, list):
+        for issue in layout_issues:
+            if not isinstance(issue, dict):
+                continue
+            code = str(issue.get("code") or "").strip()
+            message = str(issue.get("message") or issue.get("snippet") or "").strip()
+            summary = code or "point_qualite"
+            if message:
+                summary = f"{summary}: {message}"
+            issue_summaries.append(summary)
+            if len(issue_summaries) >= 3:
+                break
+    body = f"Historique utile: version V{version_number} (qa={qa_status})."
+    if issue_summaries:
+        body += " Points qualité précédents: " + "; ".join(issue_summaries) + "."
+    return {"body": body, "comment_type": "history"}
+
+
 def process_job(job: dict) -> None:
     total_start = perf_counter()
     timings: dict[str, float] = {}
@@ -80,8 +105,16 @@ def process_job(job: dict) -> None:
     comments_res = client.table("cv_comments").select("body,comment_type").eq("request_id", request_id).eq("resolved", False).execute()
     timings["load_comments"] = perf_counter() - stage_start
 
+    history_comments: list[dict] = []
+    current_version_id = job.get("current_version_id")
+    if current_version_id:
+        version_res = client.table("cv_versions").select("version_number,qa_status,qa_report").eq("id", current_version_id).execute()
+        if version_res.data:
+            history_comments.append(_build_revision_history_comment(cast(dict, version_res.data[0])))
+
     stage_start = perf_counter()
-    structured = build_whub_json(text, job.get("instructions") or "", comments_res.data or [], job.get("candidate_first_name"))
+    comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
+    structured = build_whub_json(text, job.get("instructions") or "", comments_for_prompt, job.get("candidate_first_name"))
     enforce_client_first_name(structured, job.get("candidate_first_name"))
     timings["hermes_structuring"] = perf_counter() - stage_start
 

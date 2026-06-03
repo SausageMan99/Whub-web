@@ -33,39 +33,39 @@ test('buildCvDownloadFilename — strips CV/Cv/cv in name', () => {
 test('getCvProgress — submitted', () => {
   assert.deepEqual(getCvProgress('submitted', []), {
     percent: 15,
-    label: 'Demande reçue',
-    helper: 'Le CV est dans la file de production.',
+    label: 'En attente',
+    helper: 'Le CV source attend sa prise en charge.',
   });
 });
 
 test('getCvProgress — processing with worker_claimed', () => {
   assert.deepEqual(getCvProgress('processing', ['worker_claimed']), {
     percent: 35,
-    label: 'Traitement lancé',
-    helper: 'Le worker W hub a pris la demande en charge.',
+    label: 'Analyse du CV',
+    helper: 'Le worker W hub analyse le CV source et prépare la structuration.',
   });
 });
 
 test('getCvProgress — worker_claimed event alone', () => {
   assert.deepEqual(getCvProgress('submitted', ['worker_claimed']), {
     percent: 35,
-    label: 'Traitement lancé',
-    helper: 'Le worker W hub a pris la demande en charge.',
+    label: 'Analyse du CV',
+    helper: 'Le worker W hub analyse le CV source et prépare la structuration.',
   });
 });
 
 test('getCvProgress — extraction_done event', () => {
   assert.deepEqual(getCvProgress('processing', ['extraction_done']), {
     percent: 60,
-    label: 'Extraction terminée',
-    helper: 'Le contenu du CV source est structuré pour le rendu W hub.',
+    label: 'Mise au format W hub',
+    helper: 'Le contenu du CV source est structuré et prêt pour le contrôle qualité.',
   });
 });
 
 test('getCvProgress — ready status', () => {
   assert.deepEqual(getCvProgress('ready', []), {
     percent: 100,
-    label: 'CV prêt',
+    label: 'Prêt à télécharger',
     helper: 'Le PDF final a passé la QA et peut être téléchargé.',
   });
 });
@@ -73,7 +73,7 @@ test('getCvProgress — ready status', () => {
 test('getCvProgress — ready event overrides status', () => {
   assert.deepEqual(getCvProgress('submitted', ['ready']), {
     percent: 100,
-    label: 'CV prêt',
+    label: 'Prêt à télécharger',
     helper: 'Le PDF final a passé la QA et peut être téléchargé.',
   });
 });
@@ -89,24 +89,24 @@ test('getCvProgress — draft_ready', () => {
 test('getCvProgress — failed', () => {
   assert.deepEqual(getCvProgress('failed', []), {
     percent: 100,
-    label: 'Erreur',
-    helper: 'La génération a échoué. Ouvre la demande pour voir le détail.',
+    label: 'À corriger',
+    helper: 'La génération n’a pas pu aboutir. Corrige la source ou la consigne avant de relancer.',
   });
 });
 
 test('getCvProgress — qa_failed', () => {
   assert.deepEqual(getCvProgress('qa_failed', []), {
     percent: 85,
-    label: 'QA à reprendre',
-    helper: 'Le PDF a été généré mais n\u2019a pas passé le contrôle qualité.',
+    label: 'Contrôle qualité',
+    helper: 'Le PDF a été généré mais un blocage de qualité empêche encore la livraison.',
   });
 });
 
 test('getCvProgress — revision_requested', () => {
   assert.deepEqual(getCvProgress('revision_requested', []), {
     percent: 20,
-    label: 'Correction demandée',
-    helper: 'La demande est revenue dans la file pour une nouvelle version.',
+    label: 'À corriger',
+    helper: 'Une correction a été demandée pour lancer la prochaine version.',
   });
 });
 

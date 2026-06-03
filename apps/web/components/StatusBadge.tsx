@@ -1,14 +1,4 @@
-const labels: Record<string, string> = {
-  submitted: "En attente",
-  processing: "En génération",
-  qa_failed: "QA échouée",
-  ready: "Prêt",
-  draft_ready: "Brouillon prêt",
-  revision_requested: "Correction demandée",
-  failed: "Erreur",
-  cancelled: "Annulé",
-  archived: "Archivé"
-};
+import { getCvStatusLabel } from "@/lib/cv-ui";
 
 const styles: Record<string, string> = {
   submitted: "bg-amber-100 text-amber-800 ring-amber-200",
@@ -22,6 +12,6 @@ const styles: Record<string, string> = {
   archived: "bg-stone-100 text-stone-500 ring-stone-200"
 };
 
-export function StatusBadge({ status }: { status: string }) {
-  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1 ${styles[status] ?? "bg-whub/10 text-whub ring-whub/15"}`}>{labels[status] ?? status}</span>;
+export function StatusBadge({ status, events = [] }: { status: string; events?: string[] }) {
+  return <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-black ring-1 ${styles[status] ?? "bg-whub/10 text-whub ring-whub/15"}`}>{getCvStatusLabel(status, events)}</span>;
 }

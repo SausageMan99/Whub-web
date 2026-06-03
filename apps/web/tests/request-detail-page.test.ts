@@ -92,19 +92,22 @@ test('request detail page — renders draft_ready, completed and hard failure st
   const draftHtml = await render('draft_ready', {
     layout_issues: [{ code: 'page_too_dense', page: 2, message: 'Page 2 anormalement dense' }],
   });
-  assert.match(draftHtml, /PDF généré en brouillon — points qualité détectés/);
+  assert.match(draftHtml, /Brouillon prêt — points qualité détectés/);
   assert.match(draftHtml, /Télécharger le brouillon/);
   assert.match(draftHtml, /Page 2 · Page trop dense — Page 2 anormalement dense/);
-  assert.match(draftHtml, /Que veux-tu modifier \?/);
+  assert.match(draftHtml, /Correction post-génération/);
+  assert.match(draftHtml, /Créer V/);
 
   const readyHtml = await render('ready');
-  assert.match(readyHtml, /CV prêt/);
+  assert.match(readyHtml, /Prêt à télécharger/);
   assert.match(readyHtml, /Télécharger/);
-  assert.doesNotMatch(readyHtml, /PDF généré en brouillon/);
+  assert.match(readyHtml, /Créer V/);
+  assert.match(readyHtml, /même source pour V2\/V3/);
+  assert.doesNotMatch(readyHtml, /Brouillon prêt/);
   assert.doesNotMatch(readyHtml, /PDF bloqué/);
 
   const failedHtml = await render('qa_failed');
-  assert.match(failedHtml, /Erreur bloquante — PDF non livrable/);
+  assert.match(failedHtml, /Contrôle qualité — PDF non livrable/);
   assert.match(failedHtml, /Relancer la génération/);
   assert.match(failedHtml, /PDF bloqué/);
   assert.doesNotMatch(failedHtml, /Télécharger le brouillon/);

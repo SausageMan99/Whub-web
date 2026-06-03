@@ -49,7 +49,7 @@ export function normalizeDraftWarnings(qaReport: unknown): string[] {
 }
 
 export function draftReadyTitle(status: string) {
-  return status === "draft_ready" ? "PDF généré en brouillon — points qualité détectés" : null;
+  return status === "draft_ready" ? "Brouillon prêt — points qualité détectés" : null;
 }
 
 export function isHardFailureStatus(status: string) {
@@ -59,15 +59,15 @@ export function isHardFailureStatus(status: string) {
 export function hardFailureCopy(status: string) {
   if (status === "qa_failed") {
     return {
-      title: "Erreur bloquante — PDF non livrable",
-      body: "Le contrôle qualité a détecté un problème qui bloque la diffusion du PDF. Relance la génération après correction ; aucun détail technique interne n’est affiché ici.",
+      title: "Contrôle qualité — PDF non livrable",
+      body: "Le PDF est généré, mais un blocage de qualité empêche la livraison. Corrige la source ou la consigne puis relance ; aucun détail interne n’est affiché ici.",
     };
   }
 
   if (status === "failed") {
     return {
-      title: "Erreur de génération",
-      body: "La génération n’a pas pu aboutir. Relance la demande si le fichier source et les consignes sont corrects ; les détails internes restent masqués.",
+      title: "À corriger — génération impossible",
+      body: "La génération n’a pas pu aboutir. Vérifie le PDF source et la consigne avant de relancer ; les détails internes restent masqués.",
     };
   }
 

@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { prepareUpload, createRequest } from "./actions";
-import { buildGuidedInstructions, guidedCvIntentions } from "./intentions";
 
 const errorMessages: Record<string, string> = {
   file_required: "Ajoute un PDF source avant de créer la demande.",
@@ -17,6 +16,7 @@ export default function NewRequestForm({ initialError }: { initialError?: string
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(initialError ?? null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -63,19 +63,13 @@ export default function NewRequestForm({ initialError }: { initialError?: string
         return;
       }
 
-      const guidedIntentions = form.getAll("cv_intentions").map(String);
-      const instructions = buildGuidedInstructions(guidedIntentions, String(form.get("instructions") || ""));
-
       const meta = new FormData();
       meta.set("request_id", requestId);
       meta.set("source_path", sourcePath);
       meta.set("source_file_name", file.name);
       meta.set("source_file_size", String(file.size));
       meta.set("source_file_mime", file.type);
-      meta.set("title", String(form.get("title") || ""));
-      meta.set("candidate_first_name", String(form.get("candidate_first_name") || ""));
-      meta.set("instructions", instructions);
-      meta.set("priority", String(form.get("priority") || "normal"));
+      meta.set("instructions", String(form.get("instructions") || ""));
 
       const result = await createRequest(meta);
       if (!result.ok) {
@@ -91,6 +85,10 @@ export default function NewRequestForm({ initialError }: { initialError?: string
     }
   }
 
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setSelectedFileName(event.currentTarget.files?.[0]?.name ?? null);
+  }
+
   const errorMessage = errorCode ? errorMessages[errorCode] || `Erreur : ${errorCode}` : null;
 
   return (
@@ -101,67 +99,60 @@ export default function NewRequestForm({ initialError }: { initialError?: string
         </p>
       ) : null}
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <label className="block sm:col-span-2">
-          <span className="text-sm font-black text-ink">Titre interne</span>
-          <input name="title" className="mt-2 w-full rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold placeholder:text-ink/28" placeholder="CV Architecte Cloud Azure" />
-        </label>
-        <label className="block">
-          <span className="text-sm font-black text-ink">Prénom affiché</span>
-          <input name="candidate_first_name" className="mt-2 w-full rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold placeholder:text-ink/28" placeholder="Habib" />
-        </label>
-        <label className="block">
-          <span className="text-sm font-black text-ink">Priorité</span>
-          <select name="priority" className="mt-2 w-full rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-black text-ink">
-            <option value="normal">Normal</option>
-            <option value="high">Prioritaire</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </label>
+      <div className="rounded-[2rem] border border-white/80 bg-gradient-to-br from-ink to-ink/92 p-6 text-white shadow-[0_24px_80px_rgba(17,17,16,0.18)]">
+        <p className="text-xs font-black uppercase tracking-[0.34em] text-white/48">Workflow unique</p>
+        <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] sm:text-3xl">CV source + message libre</h2>
+        <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-white/72">
+          Pas de formulaire candidat séparé. Tu envoies un PDF source, tu ajoutes ta consigne, puis on redirige vers le statut de génération.
+        </p>
       </div>
 
       <label className="block rounded-[1.75rem] border border-dashed border-whub/28 bg-whub/[0.035] p-5">
         <span className="text-sm font-black text-ink">CV source PDF</span>
-        <input name="file" type="file" accept="application/pdf" required className="mt-3 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink/65 file:mr-4 file:rounded-xl file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-black file:text-white" />
-        <span className="mt-3 block text-xs font-semibold text-ink/45">PDF uniquement. Les coordonnées seront retirées du rendu client.</span>
+        <input
+          name="file"
+          type="file"
+          accept="application/pdf"
+          required
+          onChange={handleFileChange}
+          className="mt-3 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink/65 file:mr-4 file:rounded-xl file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-black file:text-white"
+        />
+        <span className="mt-3 block text-xs font-semibold text-ink/45">
+          PDF uniquement. Les coordonnées sont retirées du rendu client, le CV reste fidèle au source.
+        </span>
+        <div className="mt-4 rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold text-ink/65">
+          {selectedFileName ? (
+            <span>Fichier sélectionné : <span className="font-black text-ink">{selectedFileName}</span></span>
+          ) : (
+            <span>Dépose un PDF ou clique pour choisir ton CV source.</span>
+          )}
+        </div>
       </label>
 
-      <fieldset className="rounded-[1.75rem] border border-ink/8 bg-white/70 p-5">
-        <legend className="px-1 text-sm font-black text-ink">Intention du CV</legend>
-        <p className="mt-1 text-xs font-semibold leading-5 text-ink/45">
-          Par défaut : CV W hub fidèle, mise en page uniquement. Le worker retire les contacts/nom/adresse/liens, mais ne reformule pas, ne synthétise pas et n’omet pas le contenu métier sauf consigne explicite de CV court.
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {guidedCvIntentions.map((intention) => (
-            <label key={intention.key} className="flex cursor-pointer items-start gap-3 rounded-2xl border border-ink/8 bg-porcelain/60 px-4 py-3 transition hover:border-whub/35 hover:bg-whub/[0.04]">
-              <input
-                type="checkbox"
-                name="cv_intentions"
-                value={intention.key}
-                className="mt-1 h-4 w-4 rounded border-ink/20 accent-whub"
-              />
-              <span className="text-sm font-black leading-5 text-ink/72">{intention.label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
       <label className="block">
-        <span className="text-sm font-black text-ink">Consignes de génération</span>
-        <textarea name="instructions" rows={6} className="mt-2 w-full resize-none rounded-2xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder="Par défaut : mise en page W hub fidèle sans reformulation. Précise ici seulement les exceptions explicites : mission cible, stack à mettre en avant, ou autorisation de raccourcir." />
+        <span className="text-sm font-black text-ink">Message / consigne complémentaire</span>
+        <textarea
+          name="instructions"
+          rows={7}
+          className="mt-2 w-full resize-none rounded-3xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28"
+          placeholder="Ex : garde le contenu source tel quel, retire les coordonnées, mets l’accent sur Java/AWS et redirige-moi vers une version client propre."
+        />
+        <p className="mt-2 text-xs font-semibold leading-5 text-ink/45">
+          N’écris ici que les exceptions utiles. Par défaut, le workflow reste fidèle au CV source et masque les coordonnées.
+        </p>
       </label>
 
       <div className="flex flex-col items-start justify-between gap-4 border-t border-ink/8 pt-6 sm:flex-row sm:items-center">
         <p className="max-w-md text-xs font-semibold leading-5 text-ink/42">
           {isSubmitting
-            ? "Upload en cours… Ne ferme pas la page."
-            : "La demande sera visible dans le dashboard une fois créée."}
+            ? "Génération en cours… Ne ferme pas la page."
+            : "Une fois envoyé, tu seras redirigé vers le statut de la demande."}
         </p>
         <button
           disabled={isSubmitting}
           className="w-full rounded-2xl bg-whub px-6 py-4 font-black text-white shadow-violet transition hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto"
         >
-          {isSubmitting ? "Création en cours…" : "Créer la demande"}
+          {isSubmitting ? "Envoi en cours…" : "Générer le CV"}
         </button>
       </div>
     </form>

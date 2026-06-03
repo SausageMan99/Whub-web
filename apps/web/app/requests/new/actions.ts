@@ -30,6 +30,13 @@ async function assertUser(admin: ReturnType<typeof createSupabaseAdminClient>, e
   return allowed.role ?? "member";
 }
 
+function buildDefaultTitle(_fileName: string) {
+  return "CV source";
+}
+
+const PORTAL_ORIGIN = "web_portal";
+const PORTAL_WORKFLOW = "telegram_whub_cv_generation";
+
 export async function prepareUpload({ fileName, fileType }: { fileName: string; fileType: string }) {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -72,6 +79,10 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
     const fileName = String(formData.get("source_file_name") || "");
     const fileSize = Number(formData.get("source_file_size") || 0);
     const fileMime = String(formData.get("source_file_mime") || "application/pdf");
+    const title = String(formData.get("title") || "").trim() || buildDefaultTitle(fileName);
+    const candidateFirstName = String(formData.get("candidate_first_name") || "").trim();
+    const priority = String(formData.get("priority") || "normal").trim() || "normal";
+    const instructions = String(formData.get("instructions") || "").trim();
 
     if (!requestId || !sourcePath) {
       logCreateRequestFailure("missing_upload_metadata", requestId || null);
@@ -92,14 +103,16 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
     const { error } = await admin.from("cv_requests").insert({
       id: requestId,
       created_by: user.id,
-      title: String(formData.get("title") || "").trim(),
-      candidate_first_name: String(formData.get("candidate_first_name") || "").trim(),
+      title,
+      candidate_first_name: candidateFirstName,
+      origin: PORTAL_ORIGIN,
+      workflow: PORTAL_WORKFLOW,
       source_file_path: sourcePath,
       source_file_name: fileName,
       source_file_mime: fileMime,
       source_file_size: fileSize,
-      instructions: String(formData.get("instructions") || "").trim(),
-      priority: String(formData.get("priority") || "normal"),
+      instructions,
+      priority,
       status: "submitted",
     });
 
