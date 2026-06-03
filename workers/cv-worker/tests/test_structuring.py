@@ -1,7 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import pytest
 
@@ -11,6 +11,7 @@ from src.structuring import (
     validate_source_fidelity,
     build_whub_json,
     _extract_json,
+    _default_hermes_runner,
     StructuringError,
     REQUIRED_TOP_LEVEL_KEYS,
     normalize_candidate_first_name,
@@ -95,6 +96,16 @@ class TestStructuringErrorClassification:
 
     def test_classifies_source_fidelity_generic(self):
         result = classify_structuring_error("Fidélité source insuffisante: source_coverage_missing_experience_item")
+
+        assert result == {
+            "category": "source_fidelity",
+            "message": "Fidélité au CV source insuffisante.",
+        }
+
+    def test_preserves_source_fidelity_when_primary_and_fallback_both_fail_fidelity(self):
+        result = classify_structuring_error(
+            "Structuration échouée après fallback (primary_category=source_fidelity, fallback_category=source_fidelity)"
+        )
 
         assert result == {
             "category": "source_fidelity",
@@ -1174,6 +1185,27 @@ class TestExtractJson:
 
 
 class TestBuildWHubJson:
+    def test_default_runner_pins_configured_cv_primary_model(self, monkeypatch):
+        completed = Mock(returncode=0, stdout="{}", stderr="")
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return completed
+
+        monkeypatch.setattr("src.structuring.subprocess.run", fake_run)
+        monkeypatch.setattr("src.structuring.settings.hermes_profile", "default")
+        monkeypatch.setattr("src.structuring.settings.whub_primary_model", "gpt-5.5")
+        monkeypatch.setattr("src.structuring.settings.whub_primary_provider", "openai-codex")
+
+        _default_hermes_runner("{}", 30)
+
+        cmd = captured["cmd"]
+        assert "-m" in cmd
+        assert cmd[cmd.index("-m") + 1] == "gpt-5.5"
+        assert "--provider" in cmd
+        assert cmd[cmd.index("--provider") + 1] == "openai-codex"
+
     def _make_runner(self, data: dict):
         def runner(prompt: str, timeout: int):
             return 0, json.dumps(data, ensure_ascii=False), ""
@@ -1252,6 +1284,8 @@ class TestBuildWHubJson:
 
         def fallback_runner(prompt: str, timeout: int):
             calls.append("fallback")
+            assert "RETRY CORRECTIF" in prompt
+            assert "contact_leak" in prompt
             return 0, json.dumps(fallback_data, ensure_ascii=False), ""
 
         result = build_whub_json(

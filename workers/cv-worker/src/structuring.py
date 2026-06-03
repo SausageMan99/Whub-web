@@ -85,8 +85,12 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
     """
     message = str(error or "")
     normalized = _normalize_for_error_taxonomy(message)
+    category_matches = re.findall(r"(?:primary|fallback)_category_?([a-z_]+)|(?:primary|fallback)_category\s*([a-z_]+)", normalized)
+    flattened_categories = [a or b for a, b in category_matches]
 
-    if re.search(r"\b(json hermes invalide|json renderer invalide|json renderer incomplet|sans json exploitable|cles manquantes|cl[eé]s manquantes|objet racine attendu|doit etre une liste)\b", normalized):
+    if flattened_categories and all(category == "source_fidelity" for category in flattened_categories):
+        category = "source_fidelity"
+    elif re.search(r"\b(json hermes invalide|json renderer invalide|json renderer incomplet|sans json exploitable|cles manquantes|cl[eé]s manquantes|objet racine attendu|doit etre une liste)\b", normalized):
         category = "structuring_invalid_json"
     elif re.search(r"\b(coordonnees|contact_hits|contact leak|email|linkedin|github|phone_fr|telephone)\b", normalized):
         category = "contact_leak"
@@ -96,10 +100,10 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
         category = "layout_density"
     elif re.search(r"\b(renderer_asset|logo|watermark|filigrane|asset|ressource renderer|has_logo|has_watermark)\b", normalized):
         category = "renderer_asset"
-    elif re.search(r"\b(timeout|hermes crashed|model|fallback|primary|returncode|echec structuration|structuration echouee|failed|crashed)\b", normalized):
-        category = "transient_model_failure"
     elif re.search(r"\b(fidelite|source_fidelity|source_coverage|source|reformulation|copier-coller|hallucination|absent du cv source|fait pdf absent)\b", normalized):
         category = "source_fidelity"
+    elif re.search(r"\b(timeout|hermes crashed|model|fallback|primary|returncode|echec structuration|structuration echouee|failed|crashed)\b", normalized):
+        category = "transient_model_failure"
     else:
         category = "transient_model_failure"
 
@@ -1879,8 +1883,14 @@ def _default_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
             "--source", "whub-cv-worker",
             "-q", prompt_path.read_text(encoding="utf-8"),
         ]
+        if settings.whub_primary_model:
+            cmd[3:3] = ["-m", settings.whub_primary_model]
+        if settings.whub_primary_provider:
+            provider_insert_at = 5 if settings.whub_primary_model else 3
+            cmd[provider_insert_at:provider_insert_at] = ["--provider", settings.whub_primary_provider]
         if settings.hermes_profile:
             cmd = [settings.hermes_cli_path, "--profile", settings.hermes_profile] + cmd[1:]
+        log.info("primary structuring model=%s provider=%s", settings.whub_primary_model or "profile-default", settings.whub_primary_provider or "profile-default")
         result = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
     return result.returncode, result.stdout, result.stderr
 
@@ -1972,6 +1982,26 @@ def _run_block(
         raise StructuringError(f"CV long: réponse invalide bloc {block_label}: {exc}") from exc
 
 
+def _corrective_retry_prompt(base_prompt: str, failed_error: Exception | str) -> str:
+    taxonomy = classify_structuring_error(failed_error)
+    raw_error = str(failed_error or "")[:4000]
+    return f"""{base_prompt}
+
+---RETRY CORRECTIF W HUB---
+La passe précédente a été rejetée par la validation `{taxonomy['category']}`.
+Tu dois corriger la sortie JSON, pas refaire une version plus courte.
+Diagnostic interne de validation, à utiliser seulement pour réparer la fidélité/structure sans recopier de coordonnées candidat:
+{raw_error}
+
+Règles du retry:
+- Repars du CV source ci-dessus.
+- Corrige précisément les faits, sections, contacts ou identités signalés.
+- Si le diagnostic mentionne `source_fidelity` ou `source_coverage`, restaure les éléments source manquants en formulations source exactes.
+- Ne synthétise pas, ne reformule pas, ne remplace pas les mots source par des synonymes.
+- Réponds uniquement avec l'objet JSON final valide.
+---FIN RETRY CORRECTIF---""".strip()
+
+
 def build_whub_json(
     extracted_text: str,
     instructions: str,
@@ -2008,6 +2038,8 @@ def build_whub_json(
         try:
             if use_single_pass:
                 prompt = _hermes_prompt(compacted_text, instructions, comments, candidate_first_name)
+                if attempt_label == "fallback" and last_error is not None:
+                    prompt = _corrective_retry_prompt(prompt, last_error)
                 start = perf_counter()
                 try:
                     returncode, stdout, stderr = active_runner(prompt, HERMES_STRUCTURING_TIMEOUT_SECONDS)
