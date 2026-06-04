@@ -12,7 +12,7 @@
 --   2. Grants USAGE on schema public
 --   3. Grants SELECT, INSERT, UPDATE on cv_requests, cv_versions, cv_comments, cv_events
 --      (worker never needs DELETE or DDL)
---   4. Grants USAGE on all sequences in public (for serial/bigserial columns)
+--   4. Grants USAGE only on sequences owned by the CV tables (if any)
 --   5. Grants EXECUTE only on claim_next_cv_request(), the only RPC the worker calls.
 --   6. Storage remains behind Supabase Storage REST + anon key/RLS;
 --      whub_worker is not granted direct storage schema/table access.
@@ -57,28 +57,39 @@ grant select, insert, update on public.cv_versions    to whub_worker;
 grant select, insert, update on public.cv_comments    to whub_worker;
 grant select, insert, update on public.cv_events      to whub_worker;
 
--- ── 4. Sequence usage (for tables with serial/bigserial columns) ──
-grant usage, select on all sequences in schema public to whub_worker;
+-- ── 4. Sequence usage (only sequences owned by CV tables, if any) ──
+do $$
+declare
+  seq regclass;
+begin
+  for seq in
+    select pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname)::regclass
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_attribute a on a.attrelid = c.oid
+    where n.nspname = 'public'
+      and c.relname in ('cv_requests', 'cv_versions', 'cv_comments', 'cv_events')
+      and a.attnum > 0
+      and not a.attisdropped
+      and pg_get_serial_sequence(format('%I.%I', n.nspname, c.relname), a.attname) is not null
+  loop
+    execute format('grant usage, select on sequence %s to whub_worker', seq);
+  end loop;
+end
+$$;
 
--- ── 5. Default permissions for future tables created in public ──
-alter default privileges in schema public
-  grant select, insert, update on tables to whub_worker;
-
-alter default privileges in schema public
-  grant usage, select on sequences to whub_worker;
-
--- ── 6. RPC function execution ──
+-- ── 5. RPC function execution ──
 -- claim_next_cv_request is SECURITY DEFINER (owned by postgres/superuser),
 -- and is the only RPC function the worker calls.
 grant execute on function public.claim_next_cv_request(worker_name text) to whub_worker;
 
--- ── 7. Storage bucket permissions ──
+-- ── 6. Storage bucket permissions ──
 -- The worker downloads/uploads files through the Supabase Storage REST API
 -- using SUPABASE_ANON_KEY.  Do not grant the direct PostgreSQL whub_worker
 -- role storage schema/table privileges here; Storage access remains governed
 -- by storage RLS policies.
 
--- ── 8. Row-level security bypass ──
+-- ── 7. Row-level security bypass ──
 -- whub_worker is NOT a Supabase-authenticated user, so RLS policies that
 -- depend on auth.uid() or auth.jwt() will block it.  We explicitly bypass
 -- RLS for whub_worker by granting the BYPASSRLS attribute.  This is safe
@@ -86,7 +97,7 @@ grant execute on function public.claim_next_cv_request(worker_name text) to whub
 -- no DELETE, no system catalogs.
 alter role whub_worker bypassrls;
 
--- ── 9. Verify the role has no dangerous permissions ──
+-- ── 8. Verify the role has no dangerous permissions ──
 -- Run this after migration:
 --   select * from information_schema.role_table_grants
 --   where grantee = 'whub_worker' and privilege_type in ('DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER');
