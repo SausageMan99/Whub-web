@@ -535,6 +535,47 @@ IUT Lille - 2016 - 2018
 
         validate_source_fidelity(source, data, forbidden_identity_terms=[])
 
+    def test_source_fidelity_allows_developer_degree_in_formations(self):
+        source = """
+2019 — 2020
+Titre professionnel Développeur web et web mobile - Programmation informatique, applications spécifiques
+Simplon Grand Ouest
+"""
+        data = {
+            "name": "GUILLAUME",
+            "title": "Développeur",
+            "formations": [
+                {"date": "2019 — 2020", "degree": "Titre professionnel Développeur web et web mobile - Programmation informatique, applications spécifiques", "school": "Simplon Grand Ouest"},
+            ],
+            "skills": [],
+            "experiences": [],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+
+    def test_company_highlight_does_not_trigger_identity_leak(self):
+        source = """
+Guillaume Guibet
+GUIBET TECH | Développeur indépendant Angular
+Je poursuis mon activité comme travailleur indépendant.
+"""
+        data = {
+            "name": "GUILLAUME",
+            "title": "Développeur indépendant Angular",
+            "formations": [],
+            "skills": [],
+            "experiences": [
+                {
+                    "date": "2024-09 — Présent",
+                    "role": "GUIBET TECH | Développeur indépendant Angular",
+                    "company_highlight": "GUIBET TECH",
+                    "sections": [{"heading": "Missions clés", "content": ["Je poursuis mon activité comme travailleur indépendant."]}],
+                }
+            ],
+        }
+
+        validate_source_fidelity(source, data, forbidden_identity_terms=["Guibet"])
+
     def test_empty_forbidden_identity_terms_do_not_fallback_to_company_header(self):
         source = """
 Orange Business

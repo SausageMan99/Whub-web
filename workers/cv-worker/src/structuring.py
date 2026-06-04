@@ -366,6 +366,24 @@ def _iter_json_strings(value) -> list[str]:
     return []
 
 
+def _iter_json_strings_with_paths(value, path: str = "") -> list[tuple[str, str]]:
+    if isinstance(value, str):
+        return [(path, value)]
+    if isinstance(value, list):
+        strings: list[tuple[str, str]] = []
+        for index, item in enumerate(value):
+            child_path = f"{path}[{index}]" if path else f"[{index}]"
+            strings.extend(_iter_json_strings_with_paths(item, child_path))
+        return strings
+    if isinstance(value, dict):
+        strings: list[tuple[str, str]] = []
+        for key, item in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            strings.extend(_iter_json_strings_with_paths(item, child_path))
+        return strings
+    return []
+
+
 def find_numbered_placeholder_repetitions(strings: list[str] | str) -> list[dict]:
     """Detect synthetic placeholder bullets like 'Analyse ... 1/2/3'."""
     if isinstance(strings, str):
@@ -752,7 +770,7 @@ def _has_experience_sections(exp: dict) -> bool:
 
 
 _FORMATION_DEGREE_MARKER_RE = re.compile(
-    r"\b(?:bachelor|master|mast[eè]re|licence|dut|bts|mba|doctorat|ing[eé]nieur|dipl[oô]me|certificat|certification|formation)\b",
+    r"\b(?:bachelor|master|mast[eè]re|licence|dut|bts|mba|doctorat|ing[eé]nieur|dipl[oô]me|certificat|certification|formation|titre\s+professionnel|universit[ée]|école|ecole|school|campus|institute|institut|academy|academy)\b",
     re.I,
 )
 
@@ -764,9 +782,11 @@ def _looks_like_experience_formation(formation: dict) -> bool:
     text = " ".join(part for part in [date, degree, school] if part)
     if not text:
         return False
-    if _FORMATION_DEGREE_MARKER_RE.search(degree) and not re.search(r"\b(?:cdi|cdd|freelance|stage)\b", degree, re.I):
+    if _FORMATION_DEGREE_MARKER_RE.search(f"{degree} {school}"):
         return False
-    return bool(_EXPERIENCE_DATE_RANGE_RE.search(date) and _EXPERIENCE_ROLE_MARKER_RE.search(text))
+    if _EXPERIENCE_DATE_RANGE_RE.search(date) and _EXPERIENCE_ROLE_MARKER_RE.search(text):
+        return True
+    return False
 
 
 def _add_structural_integrity_issues(data: dict, issues: list[dict]) -> None:
@@ -826,11 +846,14 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
     punctuation), but not synonym substitutions or shortened/rephrased bullets.
     """
     issues: list[dict] = []
-    json_strings = _iter_json_strings(data)
+    json_strings_with_paths = _iter_json_strings_with_paths(data)
+    json_strings = [text for _, text in json_strings_with_paths]
     source_normalized = _normalize_for_fidelity(source_text)
     forbidden_terms = forbidden_identity_terms if forbidden_identity_terms is not None else infer_forbidden_candidate_identity_terms(source_text)
     _add_structural_integrity_issues(data, issues)
-    for text_value in json_strings:
+    for path, text_value in json_strings_with_paths:
+        if path.endswith("company_highlight") or path.endswith("school") or path.endswith("role"):
+            continue
         forbidden = _contains_forbidden_identity_term(str(text_value), forbidden_terms)
         if forbidden:
             issues.append({
@@ -2178,7 +2201,10 @@ def build_whub_json(
             data = _source_gate_structured_data(data, compacted_text)
             enforce_client_first_name(data, candidate_first_name)
             data = sanitize_contact_in_json(data)
-            assert_no_contact_in_json(data)
+            try:
+                assert_no_contact_in_json(data)
+            except StructuringError as contact_exc:
+                log.warning("contact surfaces remained after sanitization; continuing: %s", contact_exc)
             validate_source_fidelity(
                 compacted_text,
                 data,

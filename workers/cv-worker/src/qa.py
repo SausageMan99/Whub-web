@@ -15,8 +15,8 @@ from .structuring import (
 
 CONTACT_PATTERNS = {
     "email": r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
-    "linkedin": r"linkedin",
-    "url": r"https?://|github\.com|\.com\b",
+    "linkedin": r"(?:https?://)?(?:www\.)?(?:[a-z]{2}\.)?linkedin\.com/\S+|lnkd\.in/\S+",
+    "url": r"https?://\S+|www\.\S+|(?:https?://)?(?:www\.)?github\.com/\S+|(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)+(?:com|fr|net|org|io|ai|dev|co)/\S+",
     "phone_fr": r"(?:\+33|\b0[67])(?:[ .-]?\d{2}){4}\b",
 }
 

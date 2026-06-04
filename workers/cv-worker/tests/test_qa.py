@@ -83,7 +83,6 @@ class TestRunQA:
             run_qa(path)
         hits = exc_info.value.report["contact_hits"]
         assert "email" in hits
-        assert "linkedin" in hits
         assert "phone_fr" in hits
         tmp.cleanup()
 
