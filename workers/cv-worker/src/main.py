@@ -221,120 +221,124 @@ def process_job(job: dict) -> None:
     if workdir.exists():
         shutil.rmtree(workdir)
     workdir.mkdir(parents=True, exist_ok=True)
-    emit_event(request_id, "worker_claimed")
-
-    stage_start = perf_counter()
-    source = download_source(job, workdir)
-    timings["download_source"] = perf_counter() - stage_start
-
-    stage_start = perf_counter()
-    text = extract_pdf_text(source)
-    timings["extract_text"] = perf_counter() - stage_start
-    emit_event(request_id, "extraction_done", {"chars": len(text)})
-
     try:
-        sanitization = sanitize_source_text(text, job.get("candidate_first_name"))
-    except SourceSanitizationError as exc:
-        fail_job(job, exc, "failed")
-        return
-    sanitized_text = sanitization.text
-    emit_event(request_id, "source_sanitized", _build_safe_sanitization_event_payload(sanitization.report))
+        emit_event(request_id, "worker_claimed")
 
-    stage_start = perf_counter()
-    comments_res = client.table("cv_comments").select("body,comment_type").eq("request_id", request_id).eq("resolved", False).execute()
-    timings["load_comments"] = perf_counter() - stage_start
+        stage_start = perf_counter()
+        source = download_source(job, workdir)
+        timings["download_source"] = perf_counter() - stage_start
 
-    history_comments: list[dict] = []
-    current_version_id = job.get("current_version_id")
-    if current_version_id:
-        version_res = client.table("cv_versions").select("version_number,qa_status,qa_report").eq("id", current_version_id).execute()
-        if version_res.data:
-            history_comments.append(_build_revision_history_comment(cast(dict, version_res.data[0])))
+        stage_start = perf_counter()
+        text = extract_pdf_text(source)
+        timings["extract_text"] = perf_counter() - stage_start
+        emit_event(request_id, "extraction_done", {"chars": len(text)})
 
-    stage_start = perf_counter()
-    comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
-    effective_first_name = job.get("candidate_first_name") or None
-    if not effective_first_name:
         try:
-            inferred_first, _ = _infer_first_name_from_source(text)
-            if inferred_first:
-                effective_first_name = inferred_first
-        except _CandidateFirstNameInferenceError:
-            pass
-        if not effective_first_name:
-            fail_job(
-                job,
-                StructuringError("missing_candidate_first_name: no Prénom NOM pattern inferable from source"),
-                "failed",
-            )
+            sanitization = sanitize_source_text(text, job.get("candidate_first_name"))
+        except SourceSanitizationError as exc:
+            fail_job(job, exc, "failed")
             return
-    structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name)
-    enforce_client_first_name(structured, effective_first_name)
-    timings["hermes_structuring"] = perf_counter() - stage_start
+        sanitized_text = sanitization.text
+        emit_event(request_id, "source_sanitized", _build_safe_sanitization_event_payload(sanitization.report))
 
-    stage_start = perf_counter()
-    assert_no_contact_in_json(structured)
-    layout_options = build_layout_packing_options(structured)
-    forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
-    variant_selection = run_bounded_layout_variant_loop(
-        structured=structured,
-        workdir=workdir,
-        base_options=layout_options,
-        render_pdf=render_pdf,
-        run_qa=run_qa,
-        forbidden_names=forbidden_names,
-        source_text=sanitized_text,
-    )
-    timings["render_pdf_qa_layout_variants"] = perf_counter() - stage_start
-    if variant_selection.hard_failure is not None:
-        fail_job(job, str(variant_selection.hard_failure.qa_report), "qa_failed")
-        return
-    if variant_selection.selected is None or variant_selection.selected_pdf is None or variant_selection.selected_report is None:
-        fail_job(job, "No layout variant produced a QA report", "failed")
-        return
-    pdf = variant_selection.selected_pdf
-    qa_report = variant_selection.selected_report
-    if len(variant_selection.attempts) > 1:
-        emit_event(
-            request_id,
-            "layout_variant_selected",
-            {
-                "selected": variant_selection.selected.name,
-                "attempts": [
-                    {
-                        "name": attempt.name,
-                        "status": attempt.status,
-                        "score": attempt.score,
-                    }
-                    for attempt in variant_selection.attempts
-                ],
-            },
+        stage_start = perf_counter()
+        comments_res = client.table("cv_comments").select("body,comment_type").eq("request_id", request_id).eq("resolved", False).execute()
+        timings["load_comments"] = perf_counter() - stage_start
+
+        history_comments: list[dict] = []
+        current_version_id = job.get("current_version_id")
+        if current_version_id:
+            version_res = client.table("cv_versions").select("version_number,qa_status,qa_report").eq("id", current_version_id).execute()
+            if version_res.data:
+                history_comments.append(_build_revision_history_comment(cast(dict, version_res.data[0])))
+
+        stage_start = perf_counter()
+        comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
+        effective_first_name = job.get("candidate_first_name") or None
+        if not effective_first_name:
+            try:
+                inferred_first, _ = _infer_first_name_from_source(text)
+                if inferred_first:
+                    effective_first_name = inferred_first
+            except _CandidateFirstNameInferenceError:
+                pass
+            if not effective_first_name:
+                fail_job(
+                    job,
+                    StructuringError("missing_candidate_first_name: no Prénom NOM pattern inferable from source"),
+                    "failed",
+                )
+                return
+        structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name)
+        enforce_client_first_name(structured, effective_first_name)
+        timings["hermes_structuring"] = perf_counter() - stage_start
+
+        stage_start = perf_counter()
+        assert_no_contact_in_json(structured)
+        layout_options = build_layout_packing_options(structured)
+        forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
+        variant_selection = run_bounded_layout_variant_loop(
+            structured=structured,
+            workdir=workdir,
+            base_options=layout_options,
+            render_pdf=render_pdf,
+            run_qa=run_qa,
+            forbidden_names=forbidden_names,
+            source_text=sanitized_text,
         )
+        timings["render_pdf_qa_layout_variants"] = perf_counter() - stage_start
+        if variant_selection.hard_failure is not None:
+            fail_job(job, str(variant_selection.hard_failure.qa_report), "qa_failed")
+            return
+        if variant_selection.selected is None or variant_selection.selected_pdf is None or variant_selection.selected_report is None:
+            fail_job(job, "No layout variant produced a QA report", "failed")
+            return
+        pdf = variant_selection.selected_pdf
+        qa_report = variant_selection.selected_report
+        if len(variant_selection.attempts) > 1:
+            emit_event(
+                request_id,
+                "layout_variant_selected",
+                {
+                    "selected": variant_selection.selected.name,
+                    "attempts": [
+                        {
+                            "name": attempt.name,
+                            "status": attempt.status,
+                            "score": attempt.score,
+                        }
+                        for attempt in variant_selection.attempts
+                    ],
+                },
+            )
 
-    final_qa_status, layout_warnings = classify_qa_report(qa_report)
-    if final_qa_status == "failed":
-        fail_job(job, str(qa_report), "qa_failed")
-        return
-    request_status = "draft_ready" if final_qa_status == "draft" else "ready"
-    version_qa_status = "draft" if final_qa_status == "draft" else "passed"
+        final_qa_status, layout_warnings = classify_qa_report(qa_report)
+        if final_qa_status == "failed":
+            fail_job(job, str(qa_report), "qa_failed")
+            return
+        request_status = "draft_ready" if final_qa_status == "draft" else "ready"
+        version_qa_status = "draft" if final_qa_status == "draft" else "passed"
 
-    stage_start = perf_counter()
-    saved_version = save_version(
-        request_id,
-        structured,
-        pdf,
-        qa_report,
-        request_status=request_status,
-        qa_status=version_qa_status,
-    )
-    client.table("cv_comments").update({"resolved": True}).eq("request_id", request_id).eq("comment_type", "revision").execute()
-    event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
-    if request_status == "draft_ready":
-        event_payload["layout_warnings"] = layout_warnings
-    emit_event(request_id, request_status, event_payload)
-    timings["upload_and_finalize"] = perf_counter() - stage_start
-    timings["total"] = perf_counter() - total_start
-    log.info("job timings request_id=%s %s", request_id, " ".join(f"{key}={value:.2f}s" for key, value in timings.items()))
+        stage_start = perf_counter()
+        saved_version = save_version(
+            request_id,
+            structured,
+            pdf,
+            qa_report,
+            request_status=request_status,
+            qa_status=version_qa_status,
+        )
+        client.table("cv_comments").update({"resolved": True}).eq("request_id", request_id).eq("comment_type", "revision").execute()
+        event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
+        if request_status == "draft_ready":
+            event_payload["layout_warnings"] = layout_warnings
+        emit_event(request_id, request_status, event_payload)
+        timings["upload_and_finalize"] = perf_counter() - stage_start
+        timings["total"] = perf_counter() - total_start
+        log.info("job timings request_id=%s %s", request_id, " ".join(f"{key}={value:.2f}s" for key, value in timings.items()))
+    finally:
+        if workdir.exists():
+            shutil.rmtree(workdir, ignore_errors=True)
 
 def main() -> None:
     log.info("starting worker %s", settings.worker_name)
