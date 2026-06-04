@@ -162,7 +162,6 @@ class TestWorkerRoleConfinement:
 
         result = client.table("cv_versions").insert({
             "request_id": "req-1",
-            "version_number": 1,
         }).execute()
 
         assert hasattr(result, "data")

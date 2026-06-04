@@ -118,7 +118,7 @@ class _FakeQuery:
             "filters": self.filters,
         })
         if self.table == "cv_versions" and self.operation == "insert":
-            return type("Res", (), {"data": [{"id": "version-1"}]})()
+            return type("Res", (), {"data": [{"id": "version-1", "version_number": 3}]})()
         return type("Res", (), {"data": []})()
 
 
@@ -151,9 +151,8 @@ def test_save_version_persists_draft_status_and_full_qa_report(monkeypatch, tmp_
     pdf_path.write_bytes(b"%PDF draft")
     qa_report = _report(layout_issues=[{"code": "page_too_dense", "page": 2, "message": "Page dense"}])
 
-    version_id = storage.save_version(
+    version = storage.save_version(
         "request-1",
-        3,
         {"name": "ZAHIA", "experiences": []},
         pdf_path,
         qa_report,
@@ -161,9 +160,10 @@ def test_save_version_persists_draft_status_and_full_qa_report(monkeypatch, tmp_
         qa_status="draft",
     )
 
-    assert version_id == "version-1"
+    assert version == {"id": "version-1", "version_number": 3}
     version_insert = next(op for op in fake_client.operations if op["table"] == "cv_versions")
     request_update = next(op for op in fake_client.operations if op["table"] == "cv_requests")
+    assert "version_number" not in version_insert["payload"]
     assert version_insert["payload"]["qa_status"] == "draft"
     assert version_insert["payload"]["qa_report"] == qa_report
     assert request_update["payload"]["status"] == "draft_ready"
@@ -180,7 +180,7 @@ def test_save_version_rejects_unsafe_status_pairs(tmp_path, request_status, qa_s
     pdf_path.write_bytes(b"%PDF draft")
 
     with pytest.raises(ValueError):
-        storage.save_version("request-1", 1, {}, pdf_path, _report(), request_status=request_status, qa_status=qa_status)
+        storage.save_version("request-1", {}, pdf_path, _report(), request_status=request_status, qa_status=qa_status)
 
 
 def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_path):
@@ -196,11 +196,10 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
     monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
-    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 1)
     monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
     monkeypatch.setattr(worker_main, "run_qa", Mock(side_effect=QAError(report)))
     monkeypatch.setattr(worker_main, "emit_event", lambda request_id, event, payload=None: events.append((event, payload or {})))
-    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or "version-1")
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or {"id": "version-1", "version_number": 1})
 
     class _CommentsTable:
         def select(self, *_args): return self
@@ -213,7 +212,7 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
     worker_main.process_job({"id": "request-1", "candidate_first_name": "ZAHIA", "instructions": ""})
 
     assert saved["kwargs"] == {"request_status": "draft_ready", "qa_status": "draft"}
-    assert saved["args"][4] == report
+    assert saved["args"][3] == report
     assert ("draft_ready", {"version_id": "version-1", "version_number": 1, "layout_warnings": report["layout_issues"]}) in events
 
 
@@ -228,10 +227,9 @@ def test_process_job_revision_includes_previous_version_history(monkeypatch, tmp
     monkeypatch.setattr(worker_main, "build_whub_json", lambda text, instructions, comments, candidate_first_name: captured.update({"comments": comments, "instructions": instructions}) or {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
-    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 2)
     monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
     monkeypatch.setattr(worker_main, "run_qa", Mock(return_value=_report()))
-    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: "version-2")
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: {"id": "version-2", "version_number": 2})
     monkeypatch.setattr(worker_main, "emit_event", lambda *args, **kwargs: None)
 
     class _Table:
@@ -274,7 +272,6 @@ def test_process_job_mixed_hard_and_soft_blocks_as_qa_failed(monkeypatch, tmp_pa
     monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
-    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 1)
     monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
     monkeypatch.setattr(worker_main, "run_qa", Mock(side_effect=QAError(report)))
     monkeypatch.setattr(worker_main, "fail_job", lambda job, error, status="failed": failures.append((error, status)))
@@ -338,10 +335,9 @@ def test_process_job_sanitizes_source_text_before_structuring(monkeypatch, tmp_p
     monkeypatch.setattr(worker_main, "build_whub_json", _build_whub_json)
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
-    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 1)
     monkeypatch.setattr(worker_main, "run_bounded_layout_variant_loop", _layout_loop)
     monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", _forbidden)
-    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: "version-1")
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: {"id": "version-1", "version_number": 1})
     monkeypatch.setattr(
         worker_main,
         "emit_event",
@@ -416,13 +412,12 @@ def test_process_job_infers_first_name_when_portal_omits_it(monkeypatch, tmp_pat
     monkeypatch.setattr(worker_main, "build_whub_json", _build_whub_json)
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", _enforce_client_first_name)
-    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 1)
     monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
     monkeypatch.setattr(worker_main, "run_bounded_layout_variant_loop", _layout_loop)
     monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", _forbidden)
     monkeypatch.setattr(
         worker_main, "save_version",
-        lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or "version-1",
+        lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or {"id": "version-1", "version_number": 1},
     )
     monkeypatch.setattr(
         worker_main, "emit_event",

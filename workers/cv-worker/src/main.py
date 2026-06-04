@@ -22,7 +22,7 @@ from .structuring import (
 )
 from .rendering import render_pdf
 from .qa import run_qa, classify_qa_report
-from .storage import next_version_number, save_version
+from .storage import save_version
 from .layout_packing import build_layout_packing_options
 from .layout_variants import run_bounded_layout_variant_loop
 from .preflight import run_startup_preflight
@@ -165,7 +165,6 @@ def process_job(job: dict) -> None:
 
     stage_start = perf_counter()
     assert_no_contact_in_json(structured)
-    version_number = next_version_number(request_id)
     layout_options = build_layout_packing_options(structured)
     forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
     variant_selection = run_bounded_layout_variant_loop(
@@ -211,9 +210,8 @@ def process_job(job: dict) -> None:
     version_qa_status = "draft" if final_qa_status == "draft" else "passed"
 
     stage_start = perf_counter()
-    version_id = save_version(
+    saved_version = save_version(
         request_id,
-        version_number,
         structured,
         pdf,
         qa_report,
@@ -221,7 +219,7 @@ def process_job(job: dict) -> None:
         qa_status=version_qa_status,
     )
     client.table("cv_comments").update({"resolved": True}).eq("request_id", request_id).eq("comment_type", "revision").execute()
-    event_payload = {"version_id": version_id, "version_number": version_number}
+    event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
     if request_status == "draft_ready":
         event_payload["layout_warnings"] = layout_warnings
     emit_event(request_id, request_status, event_payload)
