@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { expectedAccessCodeFromEmail, isValidAccessCodeForEmail, normalizeEmail } from "@/lib/access-code";
+import { verifyAccessCode, normalizeEmail } from "@/lib/access-code";
 
 type AuthUserSummary = {
   id: string;
@@ -65,12 +65,12 @@ export async function login(formData: FormData) {
   }
 
   if (!allowed) redirect("/login?error=not_allowed");
-  if (!isValidAccessCodeForEmail(email, accessCode)) redirect("/login?error=bad_code");
 
-  const password = expectedAccessCodeFromEmail(email);
+  const accessCodeValid = await verifyAccessCode(email, accessCode);
+  if (!accessCodeValid) redirect("/login?error=bad_code");
 
   try {
-    await ensurePasswordUser(admin, email, password);
+    await ensurePasswordUser(admin, email, accessCode);
   } catch (error) {
     console.error("Access-code user provisioning failed", error);
     redirect("/login?error=config");
@@ -79,7 +79,7 @@ export async function login(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({
     email,
-    password
+    password: accessCode,
   });
 
   if (error) {

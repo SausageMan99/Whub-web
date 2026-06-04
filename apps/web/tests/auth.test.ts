@@ -20,7 +20,6 @@ test("login action — all redirect branches", async (t) => {
   let maybeSingle: any = { data: null, error: null };
   let signInError: any = null;
   let validCode = false;
-  let expectedCode = "";
   let normalizeEmailImpl = (v: any) => String(v ?? "").trim().toLowerCase();
 
   t.mock.module("next/navigation", {
@@ -62,8 +61,8 @@ test("login action — all redirect branches", async (t) => {
     namedExports: {
       normalizeEmail: (...args: any[]) => normalizeEmailImpl(...args),
       normalizeAccessCode: (v: any) => String(v ?? "").trim().toLowerCase(),
-      isValidAccessCodeForEmail: () => validCode,
-      expectedAccessCodeFromEmail: () => expectedCode,
+      verifyAccessCode: () => validCode,
+      rotateAccessCode: () => Promise.resolve("new-code"),
     },
   });
 
@@ -158,7 +157,6 @@ test("login action — all redirect branches", async (t) => {
     redirectUrl = "";
     maybeSingle = { data: { email: "user@whub.fr" }, error: null };
     validCode = true;
-    expectedCode = "user";
     signInError = null;
     const fd = new FormData();
     fd.append("email", "user@whub.fr");
@@ -177,7 +175,6 @@ test("login action — all redirect branches", async (t) => {
     redirectUrl = "";
     maybeSingle = { data: { email: "user@whub.fr" }, error: null };
     validCode = true;
-    expectedCode = "user";
     signInError = { code: "invalid_credentials", name: "AuthApiError" };
     const fd = new FormData();
     fd.append("email", "user@whub.fr");
