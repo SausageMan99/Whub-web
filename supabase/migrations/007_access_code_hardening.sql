@@ -25,7 +25,7 @@ language sql
 security definer
 set search_path = public
 as $$
-  select encode(gen_random_bytes(6), 'hex');
+  select encode(extensions.gen_random_bytes(6), 'hex');
 $$;
 
 -- ── 3. Helper: bcrypt-hash a plaintext access code ──
@@ -35,7 +35,7 @@ language sql
 security definer
 set search_path = public
 as $$
-  select crypt(code, gen_salt('bf'));
+  select extensions.crypt(code, extensions.gen_salt('bf'));
 $$;
 
 -- ── 4. RPC: verify a plaintext code against the stored bcrypt hash ──
@@ -49,7 +49,7 @@ as $$
     select 1
     from public.allowed_users au
     where au.email = verify_access_code.email
-      and au.access_code_hash = crypt(verify_access_code.code, au.access_code_hash)
+      and au.access_code_hash = extensions.crypt(verify_access_code.code, au.access_code_hash)
   );
 $$;
 
