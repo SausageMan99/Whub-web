@@ -106,9 +106,13 @@ test('request detail page — renders draft_ready, completed and hard failure st
   assert.doesNotMatch(readyHtml, /Brouillon prêt/);
   assert.doesNotMatch(readyHtml, /PDF bloqué/);
 
-  const failedHtml = await render('qa_failed');
-  assert.match(failedHtml, /Contrôle qualité — PDF non livrable/);
+  const failedHtml = await render('failed');
+  assert.match(failedHtml, /À corriger — génération impossible/);
   assert.match(failedHtml, /Relancer la génération/);
-  assert.match(failedHtml, /PDF bloqué/);
-  assert.doesNotMatch(failedHtml, /Télécharger le brouillon/);
+
+  const qaFailedHtml = await render('qa_failed');
+  assert.match(qaFailedHtml, /Contrôle qualité — PDF non livrable/);
+  assert.doesNotMatch(qaFailedHtml, /Relancer la génération/);
+  assert.match(qaFailedHtml, /PDF bloqué/);
+  assert.doesNotMatch(qaFailedHtml, /Télécharger le brouillon/);
 });

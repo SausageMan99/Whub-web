@@ -128,9 +128,10 @@ test('retryRequest — resets failed request into submitted queue', async () => 
   await retryRequest(makeForm('req-retry'));
 
   assert.equal(state.updatedId, 'req-retry');
-  assert.deepEqual(state.updatedStatuses, ['failed', 'qa_failed']);
+  assert.deepEqual(state.updatedStatuses, ['failed']);
   assert.equal(state.updatedPayload?.status, 'submitted');
   assert.equal(state.updatedPayload?.last_error, null);
+  assert.equal(state.updatedPayload?.error_category, null);
   assert.equal(state.updatedPayload?.worker_locked_at, null);
   assert.equal(state.updatedPayload?.worker_locked_by, null);
   assert.equal(state.updatedPayload?.worker_attempts, 0);
@@ -163,6 +164,15 @@ test('retryRequest — blocks non-owner members from retrying arbitrary requests
 test('retryRequest — does not emit event when request is not retryable', async () => {
   reset();
   state.request = { id: 'req1', status: 'ready', created_by: 'u1' };
+
+  await assert.rejects(() => retryRequest(makeForm('req1')), /not retryable/);
+  assert.equal(state.updatedPayload, null);
+  assert.equal(state.insertedEvent, null);
+});
+
+test('retryRequest — only retries failed worker jobs, not QA failures', async () => {
+  reset();
+  state.request = { id: 'req1', status: 'qa_failed', created_by: 'u1' };
 
   await assert.rejects(() => retryRequest(makeForm('req1')), /not retryable/);
   assert.equal(state.updatedPayload, null);

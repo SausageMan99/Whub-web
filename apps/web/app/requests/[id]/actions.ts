@@ -101,7 +101,7 @@ export async function retryRequest(formData: FormData) {
     .maybeSingle();
 
   if (lookupError || !request) throw new Error("Request not found");
-  if (!["failed", "qa_failed"].includes(request.status)) throw new Error("Request is not retryable");
+  if (request.status !== "failed") throw new Error("Request is not retryable");
   if (request.created_by !== user.id && role !== "admin") throw new Error("Forbidden");
 
   const now = new Date().toISOString();
@@ -110,6 +110,7 @@ export async function retryRequest(formData: FormData) {
     .update({
       status: "submitted",
       last_error: null,
+      error_category: null,
       worker_locked_at: null,
       worker_locked_by: null,
       worker_attempts: 0,
@@ -118,7 +119,7 @@ export async function retryRequest(formData: FormData) {
       updated_at: now,
     })
     .eq("id", requestId)
-    .in("status", ["failed", "qa_failed"])
+    .in("status", ["failed"])
     .select("id");
 
   if (error || !updatedRows || updatedRows.length !== 1) throw new Error("Retry failed");
@@ -128,7 +129,7 @@ export async function retryRequest(formData: FormData) {
     actor_id: user.id,
     actor_type: "user",
     event_type: "retry_requested",
-    payload: { previous_status: "failed_or_qa_failed" },
+    payload: { previous_status: request.status },
   });
 
   if (eventError) throw new Error("Retry event failed");

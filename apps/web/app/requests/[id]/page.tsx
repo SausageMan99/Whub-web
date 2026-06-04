@@ -48,7 +48,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
         <div className="flex flex-col items-start gap-3">
           <StatusBadge status={request.status} events={eventTypes} />
-          {["failed", "qa_failed"].includes(request.status) && (
+          {request.status === "failed" && (
             <form action={retryRequest}>
               <input type="hidden" name="request_id" value={id} />
               <button className="rounded-2xl bg-ink px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5">
