@@ -5,6 +5,16 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { verifyAccessCode, normalizeEmail } from "@/lib/access-code";
 
+/**
+ * Max pages to paginate through findAuthUserByEmail.
+ * Supabase Admin API does not expose getUserByEmail(), so we must
+ * paginate listUsers(). At 100 users per page, the default of 20 pages
+ * covers 2000 users. Adjust MAX_LIST_USERS_PAGES if your user base
+ * exceeds this, or set to Number.POSITIVE_INFINITY to scan all users
+ * (use with caution on large databases).
+ */
+const MAX_LIST_USERS_PAGES = 20;
+
 type AuthUserSummary = {
   id: string;
   email?: string;
@@ -12,7 +22,7 @@ type AuthUserSummary = {
 
 async function findAuthUserByEmail(admin: ReturnType<typeof createSupabaseAdminClient>, email: string): Promise<AuthUserSummary | null> {
   let page = 1;
-  while (page <= 10) {
+  while (page <= MAX_LIST_USERS_PAGES) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 100 });
     if (error) throw error;
     const user = data.users.find((item) => item.email?.toLowerCase() === email);

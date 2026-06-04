@@ -1,51 +1,97 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { verifyAccessCode, rotateAccessCode, normalizeEmail, normalizeAccessCode } from '../lib/access-code';
+import test from "node:test";
+import assert from "node:assert/strict";
 
-// ── VULNERABILITY DOCUMENTATION ──
-// The OLD implementation (expectedAccessCodeFromEmail / isValidAccessCodeForEmail)
-// derived the access code deterministically from the email local part:
-//   expectedAccessCodeFromEmail('cdubosq@whub.fr') → 'cdubosq'
-//   expectedAccessCodeFromEmail('ADAVID@whub.fr')  → 'adavid'
-// Anyone who knows a user's email address could compute their access code
-// without any database lookup, secret verification, or brute-force resistance.
-// This was a critical security vulnerability: the access code offered zero
-// protection beyond the email address itself.
-//
-// The NEW implementation replaces this with:
-//   1. A random hex secret (48 bits) generated at user creation time
-//   2. The secret is bcrypt-hashed and stored in allowed_users.access_code_hash
-//   3. Verification uses pgcrypto's crypt() against the stored hash
-//   4. Rotation re-generates the secret and re-hashes it
-// ──────────────────────────────────
+/* ═════════════════════════════════════════════════════════════════════
+   verifyAccessCode + rotateAccessCode — all RPC response branches
+   (Single parent test so the module cache is fresh with one set of mocks)
+   ═════════════════════════════════════════════════════════════════════ */
 
-test('VULNERABILITY: old email-derived access codes were deterministic (no actual security)', () => {
-  // Under the OLD implementation:
-  //   expectedAccessCodeFromEmail('cdubosq@whub.fr') === 'cdubosq'
-  //   expectedAccessCodeFromEmail('adavid@whub.fr')  === 'adavid'
-  // The access code was literally just the email local part — zero security.
-  assert.ok(true, 'VULNERABILITY DOCUMENTED: access codes were deterministic from email');
-});
+test("verifyAccessCode + rotateAccessCode — all RPC response branches", async (t) => {
+  let rpcResponse: { data: unknown; error: unknown } = { data: true, error: null };
 
-test('verifyAccessCode is an async function', () => {
-  assert.equal(typeof verifyAccessCode, 'function');
-  assert.equal(verifyAccessCode.constructor.name, 'AsyncFunction');
-});
+  t.mock.module("@/lib/supabase/admin", {
+    namedExports: {
+      createSupabaseAdminClient: () => ({
+        rpc: async (_name: string, _params: unknown) => rpcResponse,
+      }),
+    },
+  });
 
-test('rotateAccessCode is an async function', () => {
-  assert.equal(typeof rotateAccessCode, 'function');
-  assert.equal(rotateAccessCode.constructor.name, 'AsyncFunction');
-});
+  const { verifyAccessCode, rotateAccessCode } = await import("../lib/access-code");
 
-test('normalizeEmail trims and lowercases', () => {
-  assert.equal(normalizeEmail('  AdaVid@WHUB.fr  '), 'adavid@whub.fr');
-  assert.equal(normalizeEmail('  '), '');
-  assert.equal(normalizeEmail(null), '');
-  assert.equal(normalizeEmail(undefined), '');
-});
+  /* ── verifyAccessCode ─────────────────────────────────────────────── */
 
-test('normalizeAccessCode trims and lowercases', () => {
-  assert.equal(normalizeAccessCode('  AbC  '), 'abc');
-  assert.equal(normalizeAccessCode(''), '');
-  assert.equal(normalizeAccessCode(null), '');
+  await t.test("verifyAccessCode — RPC returns true", async () => {
+    rpcResponse = { data: true, error: null };
+    const result = await verifyAccessCode("user@whub.fr", "valid-code");
+    assert.equal(result, true);
+  });
+
+  await t.test("verifyAccessCode — RPC returns false", async () => {
+    rpcResponse = { data: false, error: null };
+    const result = await verifyAccessCode("user@whub.fr", "wrong-code");
+    assert.equal(result, false);
+  });
+
+  await t.test("verifyAccessCode — RPC returns null", async () => {
+    rpcResponse = { data: null, error: null };
+    const result = await verifyAccessCode("user@whub.fr", "some-code");
+    assert.equal(result, false);
+  });
+
+  await t.test("verifyAccessCode — RPC returns error", async () => {
+    rpcResponse = { data: null, error: { message: "DB error" } };
+    const result = await verifyAccessCode("user@whub.fr", "some-code");
+    assert.equal(result, false);
+  });
+
+  await t.test("verifyAccessCode — empty email returns false", async () => {
+    rpcResponse = { data: true, error: null };
+    const result = await verifyAccessCode("", "code");
+    assert.equal(result, false);
+  });
+
+  await t.test("verifyAccessCode — empty code returns false", async () => {
+    rpcResponse = { data: true, error: null };
+    const result = await verifyAccessCode("user@whub.fr", "");
+    assert.equal(result, false);
+  });
+
+  await t.test("verifyAccessCode — both empty returns false", async () => {
+    rpcResponse = { data: true, error: null };
+    const result = await verifyAccessCode("", "");
+    assert.equal(result, false);
+  });
+
+  /* ── rotateAccessCode ─────────────────────────────────────────────── */
+
+  await t.test("rotateAccessCode — RPC returns code", async () => {
+    rpcResponse = { data: "new-secret-xyz", error: null };
+    const result = await rotateAccessCode("user@whub.fr");
+    assert.equal(result, "new-secret-xyz");
+  });
+
+  await t.test("rotateAccessCode — RPC returns null", async () => {
+    rpcResponse = { data: null, error: null };
+    const result = await rotateAccessCode("user@whub.fr");
+    assert.equal(result, null);
+  });
+
+  await t.test("rotateAccessCode — RPC returns error", async () => {
+    rpcResponse = { data: null, error: { message: "User not found" } };
+    const result = await rotateAccessCode("unknown@whub.fr");
+    assert.equal(result, null);
+  });
+
+  await t.test("rotateAccessCode — empty email returns null", async () => {
+    rpcResponse = { data: "should-not-be-called", error: null };
+    const result = await rotateAccessCode("");
+    assert.equal(result, null);
+  });
+
+  await t.test("rotateAccessCode — whitespace-only email returns null", async () => {
+    rpcResponse = { data: "should-not-be-called", error: null };
+    const result = await rotateAccessCode("   ");
+    assert.equal(result, null);
+  });
 });
