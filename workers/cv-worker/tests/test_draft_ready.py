@@ -6,6 +6,19 @@ from src.qa import classify_qa_report
 from src.qa import QAError
 from src import main as worker_main
 from src import storage
+from src.layout_variants import LayoutVariantAttempt, LayoutVariantSelection
+
+
+_MINIMAL_CV_SOURCE = "\n".join(
+    [
+        "Zahia source",
+        "Compétences: Python, Kubernetes, Terraform, conduite du changement, architecture cloud.",
+        "Expériences: pilotage de projets data et industrialisation de plateformes internes.",
+        "Réalisations: migration applicative, automatisation CI/CD, sécurisation des déploiements.",
+        "Formation: école d'ingénieur, certifications cloud, ateliers agiles et mentorat technique.",
+        "Langues: français, anglais professionnel, communication avec équipes produit et métier.",
+    ]
+)
 
 
 def _report(**overrides):
@@ -179,7 +192,7 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
 
     monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
     monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
-    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: "Zahia source")
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: _MINIMAL_CV_SOURCE)
     monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
@@ -211,7 +224,7 @@ def test_process_job_revision_includes_previous_version_history(monkeypatch, tmp
 
     monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
     monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
-    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: "Zahia source")
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: _MINIMAL_CV_SOURCE)
     monkeypatch.setattr(worker_main, "build_whub_json", lambda text, instructions, comments, candidate_first_name: captured.update({"comments": comments, "instructions": instructions}) or {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
@@ -257,7 +270,7 @@ def test_process_job_mixed_hard_and_soft_blocks_as_qa_failed(monkeypatch, tmp_pa
 
     monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
     monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
-    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: "Zahia source")
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: _MINIMAL_CV_SOURCE)
     monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
@@ -277,3 +290,89 @@ def test_process_job_mixed_hard_and_soft_blocks_as_qa_failed(monkeypatch, tmp_pa
     worker_main.process_job({"id": "request-1", "candidate_first_name": "ZAHIA", "instructions": ""})
 
     assert failures == [(str(report), "qa_failed")]
+
+
+def test_process_job_sanitizes_source_text_before_structuring(monkeypatch, tmp_path):
+    raw_text = "\n".join(
+        [
+            "Jean Dupont",
+            "jean@example.com",
+            "06 12 34 56 78",
+            "linkedin.com/in/jean",
+            "CV téléchargé depuis Hellowork",
+            "Compétences: Python, Kubernetes, Terraform, AWS, CI/CD, sécurité applicative.",
+            "Expériences: architecte cloud chez un grand client retail, migration Kubernetes.",
+            "Réalisations: automatisation des déploiements, observabilité, coaching des équipes.",
+            "Projets: refonte plateforme data, optimisation coûts cloud, gouvernance DevOps.",
+            "Formation: master informatique, certifications cloud, pratiques agiles avancées.",
+            "Langues: français, anglais professionnel, animation d'ateliers avec les métiers.",
+        ]
+    )
+    pdf_path = tmp_path / "sanitized.pdf"
+    pdf_path.write_bytes(b"%PDF sanitized")
+    captured = {}
+    events = []
+
+    def _build_whub_json(text, instructions, comments, candidate_first_name):
+        captured["structured_text"] = text
+        return {"name": "JEAN", "formations": [], "skills": [], "experiences": []}
+
+    def _forbidden(candidate_first_name, source_text=None):
+        captured["forbidden_args"] = (candidate_first_name, source_text)
+        return []
+
+    def _layout_loop(**kwargs):
+        captured["layout_source_text"] = kwargs["source_text"]
+        attempt = LayoutVariantAttempt(
+            name="base",
+            pdf=pdf_path,
+            qa_report=_report(passed=True),
+            status="passed",
+            layout_options=kwargs["base_options"],
+        )
+        return LayoutVariantSelection(selected=attempt, attempts=[attempt])
+
+    monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: raw_text)
+    monkeypatch.setattr(worker_main, "build_whub_json", _build_whub_json)
+    monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
+    monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
+    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 1)
+    monkeypatch.setattr(worker_main, "run_bounded_layout_variant_loop", _layout_loop)
+    monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", _forbidden)
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: "version-1")
+    monkeypatch.setattr(
+        worker_main,
+        "emit_event",
+        lambda request_id, event, payload=None: events.append((event, payload or {})),
+    )
+
+    class _CommentsTable:
+        def select(self, *_args): return self
+        def update(self, *_args, **_kwargs): return self
+        def eq(self, *_args): return self
+        def execute(self): return type("Res", (), {"data": []})()
+
+    monkeypatch.setattr(worker_main.client, "table", lambda table: _CommentsTable())
+
+    worker_main.process_job({"id": "request-1", "candidate_first_name": "Jean", "instructions": ""})
+
+    sanitized_text = captured["structured_text"]
+    for raw_value in ("jean@example.com", "06 12 34 56 78", "linkedin.com/in/jean", "CV téléchargé depuis Hellowork"):
+        assert raw_value not in sanitized_text
+    assert "Compétences: Python" in sanitized_text
+    assert "Expériences: architecte cloud" in sanitized_text
+    assert captured["layout_source_text"] == sanitized_text
+    assert captured["forbidden_args"] == ("Jean", raw_text)
+
+    source_sanitized_events = [payload for event, payload in events if event == "source_sanitized"]
+    assert len(source_sanitized_events) == 1
+    payload = source_sanitized_events[0]
+    assert payload["removed_email_count"] == 1
+    assert payload["removed_phone_count"] == 1
+    assert payload["removed_linkedin_count"] == 1
+    assert payload["removed_hellowork_line_count"] == 1
+    payload_repr = repr(payload)
+    for raw_value in ("jean@example.com", "06 12 34 56 78", "linkedin.com/in/jean", "CV téléchargé depuis Hellowork"):
+        assert raw_value not in payload_repr

@@ -8,24 +8,28 @@ from src.qa import run_qa, QAError, find_text_overflow, find_pdf_source_fidelity
 from src.structuring import StructuringError, validate_source_fidelity, extract_experience_location_facts
 
 
+def _make_pdf(text: str | None = None, draw=None) -> tuple[Path, tempfile.TemporaryDirectory]:
+    tmp = tempfile.TemporaryDirectory()
+    path = Path(tmp.name) / "sample.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    if text:
+        page.insert_text((72, 120), text, fontsize=12)
+    if draw:
+        draw(doc, page)
+    # Insert fake logo/watermark images so has_logo/has_watermark pass
+    logo_pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 1051, 398), 0)
+    wm_pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 1192, 1192), 0)
+    page.insert_image(fitz.Rect(400, 700, 500, 800), pixmap=logo_pix)
+    page.insert_image(fitz.Rect(400, 700, 500, 800), pixmap=wm_pix)
+    doc.save(path)
+    doc.close()
+    return path, tmp
+
+
 class TestRunQA:
     def _make_pdf(self, text: str | None = None, draw=None) -> tuple[Path, tempfile.TemporaryDirectory]:
-        tmp = tempfile.TemporaryDirectory()
-        path = Path(tmp.name) / "sample.pdf"
-        doc = fitz.open()
-        page = doc.new_page(width=595, height=842)
-        if text:
-            page.insert_text((72, 120), text, fontsize=12)
-        if draw:
-            draw(doc, page)
-        # Insert fake logo/watermark images so has_logo/has_watermark pass
-        logo_pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 1051, 398), 0)
-        wm_pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 1192, 1192), 0)
-        page.insert_image(fitz.Rect(400, 700, 500, 800), pixmap=logo_pix)
-        page.insert_image(fitz.Rect(400, 700, 500, 800), pixmap=wm_pix)
-        doc.save(path)
-        doc.close()
-        return path, tmp
+        return _make_pdf(text=text, draw=draw)
 
     def test_passes_on_clean_pdf(self):
         path, tmp = self._make_pdf("Jean Dupont\nArchitecte Cloud\nPython AWS")
@@ -244,4 +248,125 @@ Missions :
 
         assert report["passed"] is True
         assert report["contact_hits"] == []
+        tmp.cleanup()
+
+
+class TestPdfQaSourceCoverageWithSanitizedText:
+    def test_run_qa_uses_sanitized_source_text_and_does_not_require_removed_contact_or_hellowork_lines(self):
+        sanitized_text = """
+Camille
+Architecte Cloud
+Compétences techniques :
+✓Python, AWS, Terraform
+Certifications :
+✓AWS Certified Solutions Architect
+2022 - 2024 Architecte Cloud | ACME | Paris
+Missions :
+- Concevoir les plateformes AWS sécurisées.
+"""
+        removed_raw_source_lines = [
+            "CV téléchargé depuis Hellowork",
+            "camille.dupont@example.com",
+            "06 12 34 56 78",
+            "https://www.linkedin.com/in/camille-dupont",
+        ]
+        pdf_text = """
+CAMILLE
+Architecte Cloud
+Compétences techniques
+Python, AWS, Terraform
+Certifications
+AWS Certified Solutions Architect
+2022 - 2024 Architecte Cloud | ACME | Paris
+Missions
+Concevoir les plateformes AWS sécurisées.
+"""
+        path, tmp = _make_pdf(pdf_text)
+        try:
+            assert "hellowork" not in sanitized_text.lower()
+            assert "cv téléchargé" not in sanitized_text.lower()
+            for removed_line in removed_raw_source_lines:
+                assert removed_line not in sanitized_text
+
+            report = run_qa(path, source_text=sanitized_text)
+
+            assert report["passed"] is True
+            assert report["content_integrity_issues"] == []
+            assert report["contact_hits"] == []
+        finally:
+            tmp.cleanup()
+
+    def test_run_qa_still_rejects_missing_sanitized_business_section(self):
+        sanitized_text = """
+Camille
+Architecte Cloud
+Compétences techniques :
+✓Python, AWS, Terraform
+Certifications :
+✓AWS Certified Solutions Architect
+"""
+        path, tmp = _make_pdf("CAMILLE\nArchitecte Cloud\nCompétences techniques\nPython, AWS, Terraform")
+        try:
+            with pytest.raises(QAError) as exc_info:
+                run_qa(path, source_text=sanitized_text)
+
+            assert any(
+                issue["code"] == "source_coverage_missing_section"
+                and issue.get("section") == "Certifications"
+                and "AWS Certified Solutions Architect" in issue.get("fact", "")
+                for issue in exc_info.value.report["content_integrity_issues"]
+            )
+        finally:
+            tmp.cleanup()
+
+
+class TestPdfQaContactFalsePositives:
+    @pytest.mark.parametrize("safe_text", [
+        "LinkedIn Ads",
+        "GitHub Actions",
+        "Th@Bot",
+        "Node.js",
+        "API REST",
+        "emailing",
+    ])
+    def test_pdf_qa_allows_safe_contact_like_terms(self, safe_text):
+        path, tmp = _make_pdf(f"Projet: {safe_text}\nArchitecture Cloud et CI/CD")
+
+        report = run_qa(path)
+
+        assert report["passed"] is True
+        assert report["contact_hits"] == []
+        tmp.cleanup()
+
+    @pytest.mark.parametrize(("leak_text", "expected_hit"), [
+        ("Profil: linkedin.com/in/jean-dupont", "linkedin"),
+        ("Code: github.com/jean", "url"),
+        ("Portfolio: https://portfolio.dev", "url"),
+        ("Email: a@b.com", "email"),
+        ("Téléphone: 06 12 34 56 78", "phone_fr"),
+    ])
+    def test_pdf_qa_blocks_real_contact_leaks_by_category(self, leak_text, expected_hit):
+        path, tmp = _make_pdf(leak_text)
+
+        with pytest.raises(QAError) as exc_info:
+            run_qa(path)
+
+        assert expected_hit in exc_info.value.report["contact_hits"]
+        tmp.cleanup()
+
+    def test_pdf_qa_contact_hits_do_not_include_raw_sensitive_values(self):
+        raw_email = "a@b.com"
+        raw_phone = "06 12 34 56 78"
+        path, tmp = _make_pdf(f"Email: {raw_email}\nTéléphone: {raw_phone}")
+
+        with pytest.raises(QAError) as exc_info:
+            run_qa(path)
+
+        hits = exc_info.value.report["contact_hits"]
+        assert "email" in hits
+        assert "phone_fr" in hits
+        assert raw_email not in hits
+        assert raw_phone not in hits
+        assert all("@" not in hit for hit in hits)
+        assert all("06 12" not in hit for hit in hits)
         tmp.cleanup()

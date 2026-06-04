@@ -32,8 +32,16 @@ URL_CONTACT_RE = re.compile(
     re.I,
 )
 LINKEDIN_CONTACT_RE = re.compile(r"\b(?:[a-z]{2}\.)?linkedin(?:\.com)?(?:/\S*)?\b|\blinkedin\b", re.I)
+LINKEDIN_PROFILE_DETECTOR_RE = re.compile(r"(?:https?://)?(?:www\.)?(?:[a-z]{2}\.)?linkedin\.com/\S+|lnkd\.in/\S+", re.I)
 GITHUB_PROFILE_CONTACT_RE = re.compile(r"\bgithub\.com/\S+", re.I)
 CONTACT_LABEL_RE = re.compile(r"\b(?:coordonn[ée]es?|contact|t[ée]l(?:[ée]phone)?|email|mail|e-mail|linkedin|site\s+web)\b\s*:?", re.I)
+CONTACT_DETECTORS = (
+    ("email", EMAIL_CONTACT_RE),
+    ("phone_fr", PHONE_CONTACT_RE),
+    ("linkedin_profile", LINKEDIN_PROFILE_DETECTOR_RE),
+    ("github_profile", GITHUB_PROFILE_CONTACT_RE),
+    ("url", URL_CONTACT_RE),
+)
 
 REQUIRED_TOP_LEVEL_KEYS = {"name", "title", "formations", "skills", "experiences"}
 MAX_PROMPT_CV_CHARS = 45000
@@ -80,6 +88,7 @@ STRUCTURING_ERROR_PUBLIC_MESSAGES = {
     "contact_leak": "Coordonnées détectées dans la structuration du CV.",
     "identity_leak": "Identité candidat détectée dans une zone non autorisée.",
     "source_fidelity": "Fidélité au CV source insuffisante.",
+    "source_sanitization": "Nettoyage de la source CV impossible sans risque de perte de contenu.",
     "structuring_invalid_json": "Réponse de structuration JSON invalide ou incomplète.",
     "layout_density": "Problème de densité ou de pagination détecté.",
     "renderer_asset": "Ressource renderer manquante ou invalide.",
@@ -101,6 +110,8 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
 
     if flattened_categories and all(category == "source_fidelity" for category in flattened_categories):
         category = "source_fidelity"
+    elif re.search(r"\b(source sanitization error|sourcesanitizationerror|sanitization|sanitisation|sanitized text shrunk unusually|texte source trop court)\b", normalized):
+        category = "source_sanitization"
     elif re.search(r"\b(json hermes invalide|json renderer invalide|json renderer incomplet|sans json exploitable|cles manquantes|cl[eé]s manquantes|objet racine attendu|doit etre une liste)\b", normalized):
         category = "structuring_invalid_json"
     elif re.search(r"\b(coordonnees|contact_hits|contact leak|email|linkedin|github|phone_fr|telephone)\b", normalized):
@@ -180,10 +191,10 @@ def compact_extracted_text(text: str) -> str:
 
 
 def assert_no_contact_in_json(data: dict) -> None:
-    text = json.dumps(data, ensure_ascii=False).lower()
-    hits = [p for p in CONTACT_PATTERNS if re.search(p, text)]
-    if hits:
-        raise StructuringError(f"Coordonnées détectées dans JSON renderer: {hits}")
+    text = json.dumps(data, ensure_ascii=False)
+    categories = [category for category, detector in CONTACT_DETECTORS if detector.search(text)]
+    if categories:
+        raise StructuringError(f"Coordonnées détectées dans JSON renderer: {categories}")
 
 
 def sanitize_contact_in_json(data: dict) -> dict:
@@ -224,7 +235,7 @@ def _is_empty_contact_sanitized_value(value: object) -> bool:
     if value is None:
         return True
     if isinstance(value, str):
-        return not value.strip() or CONTACT_LABEL_RE.fullmatch(value.strip()) is not None
+        return not value.strip()
     if isinstance(value, (list, dict)):
         return len(value) == 0
     return False
@@ -232,11 +243,15 @@ def _is_empty_contact_sanitized_value(value: object) -> bool:
 
 def _sanitize_contact_text(text: str) -> str:
     original = str(text)
+    had_email_or_phone = EMAIL_CONTACT_RE.search(original) is not None or PHONE_CONTACT_RE.search(original) is not None
     cleaned = EMAIL_CONTACT_RE.sub("", original)
     cleaned = PHONE_CONTACT_RE.sub("", cleaned)
     cleaned = LINKEDIN_CONTACT_RE.sub("", cleaned)
     cleaned = GITHUB_PROFILE_CONTACT_RE.sub("", cleaned)
     cleaned = URL_CONTACT_RE.sub("", cleaned)
+    label_only_after_contact_removal = re.sub(r"\s+", " ", cleaned).strip()
+    if had_email_or_phone and re.fullmatch(r"contact\s*:?,?", label_only_after_contact_removal, flags=re.I):
+        return "Contact"
     cleaned = CONTACT_LABEL_RE.sub("", cleaned)
     cleaned = re.sub(r"\(\s*(?:site\s+web|linkedin|contact)\s*\)", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\(\s*\)", "", cleaned)
@@ -2201,10 +2216,7 @@ def build_whub_json(
             data = _source_gate_structured_data(data, compacted_text)
             enforce_client_first_name(data, candidate_first_name)
             data = sanitize_contact_in_json(data)
-            try:
-                assert_no_contact_in_json(data)
-            except StructuringError as contact_exc:
-                log.warning("contact surfaces remained after sanitization; continuing: %s", contact_exc)
+            assert_no_contact_in_json(data)
             validate_source_fidelity(
                 compacted_text,
                 data,

@@ -1,4 +1,8 @@
+from types import SimpleNamespace
+
 from src import main as worker_main
+from src.source_sanitizer import SourceSanitizationError
+from src.structuring import classify_structuring_error
 
 
 class _FakeQuery:
@@ -48,3 +52,112 @@ def test_fail_job_persists_safe_taxonomy_message_without_raw_candidate_data(monk
     assert "jean.dupont@example.com" not in persisted
     assert "+33" not in persisted
     assert "linkedin.com" not in persisted
+
+
+class TestSourceSanitizationErrorTaxonomy:
+    def test_classifies_source_sanitization_error_with_safe_message(self):
+        classified = classify_structuring_error(
+            SourceSanitizationError("Texte source trop court après sanitization")
+        )
+
+        assert classified == {
+            "category": "source_sanitization",
+            "message": "Nettoyage de la source CV impossible sans risque de perte de contenu.",
+        }
+
+    def test_source_sanitization_public_message_does_not_leak_raw_payload(self):
+        raw_email = "jean.dupont@example.com"
+        raw_phone = "+33 6 12 34 56 78"
+        raw_url = "https://portfolio.example/raw-cv"
+        classified = classify_structuring_error(
+            SourceSanitizationError(
+                f"Texte source trop court après sanitization raw={raw_email} {raw_phone} {raw_url}"
+            )
+        )
+
+        public_message = classified["message"]
+        assert classified["category"] == "source_sanitization"
+        assert raw_email not in public_message
+        assert raw_phone not in public_message
+        assert raw_url not in public_message
+        assert "raw" not in public_message.lower()
+
+    def test_safe_sanitization_event_payload_uses_expected_count_fields_only(self):
+        report = SimpleNamespace(
+            raw_chars=1234,
+            sanitized_chars=987,
+            removed_email_count=1,
+            removed_phone_count=2,
+            removed_url_count=3,
+            removed_linkedin_count=4,
+            removed_github_profile_count=5,
+            removed_address_line_count=6,
+            removed_contact_label_line_count=7,
+            removed_hellowork_line_count=8,
+            removed_empty_or_boilerplate_line_count=9,
+            warnings=("sanitized_text_shrunk_unusually",),
+            raw_ch="jean.dupont@example.com +33 6 12 34 56 78 https://portfolio.example",
+        )
+
+        payload = worker_main._build_safe_sanitization_event_payload(report)
+
+        assert set(payload) == {
+            "raw_chars",
+            "sanitized_chars",
+            "removed_email_count",
+            "removed_phone_count",
+            "removed_url_count",
+            "removed_linkedin_count",
+            "removed_github_profile_count",
+            "removed_address_line_count",
+            "removed_contact_label_line_count",
+            "removed_hellowork_line_count",
+            "removed_empty_or_boilerplate_line_count",
+            "warnings",
+        }
+        assert payload["removed_email_count"] == 1
+        assert payload["removed_phone_count"] == 2
+        assert payload["warnings"] == ["sanitized_text_shrunk_unusually"]
+        payload_repr = repr(payload)
+        assert "jean.dupont@example.com" not in payload_repr
+        assert "+33 6 12 34 56 78" not in payload_repr
+        assert "https://portfolio.example" not in payload_repr
+
+    def test_process_job_source_sanitization_failure_calls_fail_job_with_safe_public_message(self, monkeypatch, tmp_path):
+        pdf_path = tmp_path / "source.pdf"
+        pdf_path.write_bytes(b"%PDF short source")
+        failures = []
+        events = []
+
+        def _fail_job(job, error, status="failed"):
+            classified = classify_structuring_error(error)
+            failures.append((job["id"], status, classified["category"], classified["message"]))
+
+        monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+        monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+        monkeypatch.setattr(
+            worker_main,
+            "extract_pdf_text",
+            lambda source: "Jean Dupont jean.dupont@example.com +33 6 12 34 56 78",
+        )
+        monkeypatch.setattr(worker_main, "fail_job", _fail_job)
+        monkeypatch.setattr(
+            worker_main,
+            "emit_event",
+            lambda request_id, event, payload=None: events.append((event, payload or {})),
+        )
+
+        worker_main.process_job({"id": "req-source-sanitization", "candidate_first_name": "Jean", "instructions": ""})
+
+        assert failures == [
+            (
+                "req-source-sanitization",
+                "failed",
+                "source_sanitization",
+                "Nettoyage de la source CV impossible sans risque de perte de contenu.",
+            )
+        ]
+        assert [event for event, _payload in events] == ["worker_claimed", "extraction_done"]
+        failure_repr = repr(failures)
+        assert "jean.dupont@example.com" not in failure_repr
+        assert "+33 6 12 34 56 78" not in failure_repr

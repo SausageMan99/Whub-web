@@ -180,29 +180,61 @@ Blue Prism
 
 
 class TestAssertNoContactInJson:
-    def test_raises_on_email(self):
+    def _base_data(self, value: str, *, field: str = "description") -> dict:
         data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
-        data["experiences"] = [{"date": "2024", "role": "Dev", "sections": [{"heading": "Contact", "content": ["jean@example.com"]}]}]
-        with pytest.raises(StructuringError, match="Coordonnées"):
-            assert_no_contact_in_json(data)
+        data[field] = value
+        return data
+
+    def _assert_contact_category(self, value: str, category: str) -> str:
+        with pytest.raises(StructuringError) as exc_info:
+            assert_no_contact_in_json(self._base_data(value))
+        message = str(exc_info.value)
+        assert category in message
+        assert value not in message
+        return message
+
+    def test_raises_on_email(self):
+        message = self._assert_contact_category("jean@example.com", "email")
+        assert "jean@example.com" not in message
 
     def test_raises_on_linkedin(self):
-        data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
-        data["description"] = "Profil linkedin/in/jean"
-        with pytest.raises(StructuringError, match="Coordonnées"):
-            assert_no_contact_in_json(data)
+        self._assert_contact_category("linkedin.com/in/jean", "linkedin_profile")
 
     def test_raises_on_phone(self):
-        data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
-        data["experiences"] = [{"date": "2024", "role": "Dev", "sections": [{"heading": "Contact", "content": ["+33 6 12 34 56 78"]}]}]
-        with pytest.raises(StructuringError, match="Coordonnées"):
-            assert_no_contact_in_json(data)
+        self._assert_contact_category("06 12 34 56 78", "phone_fr")
 
     def test_raises_on_github(self):
-        data = {"name": "JEAN", "title": "Dev", "formations": [], "skills": [], "experiences": []}
-        data["skills"] = [{"category": "Web", "items": ["github.com/jean"]}]
-        with pytest.raises(StructuringError, match="Coordonnées"):
-            assert_no_contact_in_json(data)
+        self._assert_contact_category("github.com/jdupont", "github_profile")
+
+    def test_raises_on_url(self):
+        self._assert_contact_category("https://portfolio.dev", "url")
+
+    def test_contact_error_uses_stable_categories_without_raw_sensitive_values(self):
+        sensitive_email = "jean@example.com"
+        with pytest.raises(StructuringError) as exc_info:
+            assert_no_contact_in_json(self._base_data(sensitive_email))
+
+        message = str(exc_info.value)
+        assert sensitive_email not in message
+        assert any(
+            category in message
+            for category in ["email", "phone_fr", "linkedin_profile", "github_profile", "url"]
+        )
+
+    @pytest.mark.parametrize(
+        "safe_value",
+        [
+            "Th@Bot",
+            "LinkedIn Ads",
+            "GitHub Actions",
+            "Node.js",
+            ".NET",
+            "API REST",
+            "emailing",
+        ],
+    )
+    def test_safe_business_terms_do_not_raise(self, safe_value):
+        assert_no_contact_in_json(self._base_data(safe_value))
 
     def test_passes_without_contact(self):
         data = {
@@ -259,8 +291,80 @@ class TestSanitizeContactInJson:
 
         cleaned = sanitize_contact_in_json(data)
 
-        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Th@Bot"]
+        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Th@Bot", "Contact"]
         assert_no_contact_in_json(cleaned)
+
+
+class TestJsonContactHardBlock:
+    def _base_data(self) -> dict:
+        return {
+            "name": "JEAN",
+            "title": "Dev",
+            "formations": [],
+            "skills": [],
+            "experiences": [
+                {
+                    "date": "2024",
+                    "role": "Dev",
+                    "sections": [{"heading": "Projet", "content": []}],
+                }
+            ],
+        }
+
+    def test_sanitize_then_assert_passes_for_cleanable_email_sentence(self):
+        data = self._base_data()
+        data["experiences"][0]["sections"][0]["content"] = ["Contact jean@example.com"]
+
+        cleaned = sanitize_contact_in_json(data)
+
+        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Contact"]
+        assert_no_contact_in_json(cleaned)
+
+    def test_sanitize_then_assert_passes_for_cleanable_phone_sentence(self):
+        data = self._base_data()
+        data["experiences"][0]["sections"][0]["content"] = ["Contact 06 12 34 56 78"]
+
+        cleaned = sanitize_contact_in_json(data)
+
+        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Contact"]
+        assert_no_contact_in_json(cleaned)
+
+    def test_assert_hard_blocks_uncleaned_real_contact_surface(self):
+        data = self._base_data()
+        data["business_identifier"] = "jean@example.com"
+
+        with pytest.raises(StructuringError) as exc_info:
+            assert_no_contact_in_json(data)
+
+        message = str(exc_info.value)
+        assert "email" in message
+        assert "jean@example.com" not in message
+
+    def test_false_positive_safe_terms_do_not_raise(self):
+        data = self._base_data()
+        data["skills"] = [{"category": "Marketing", "items": ["LinkedIn Ads", "GitHub Actions", "Th@Bot"]}]
+
+        assert_no_contact_in_json(data)
+
+    def test_build_whub_json_propagates_residual_contact_after_sanitization(self, monkeypatch):
+        source = "Jean\nDev\n2024 Dev\nContact jean@example.com\nPiloter le développement applicatif.\n"
+        data = self._base_data()
+        data["experiences"][0]["sections"][0]["content"] = [
+            "Contact jean@example.com",
+            "Piloter le développement applicatif.",
+        ]
+
+        def runner(prompt: str, timeout: int):
+            return 0, json.dumps(data, ensure_ascii=False), ""
+
+        monkeypatch.setattr("src.structuring.sanitize_contact_in_json", lambda payload: payload)
+
+        with pytest.raises(StructuringError) as exc_info:
+            build_whub_json(source, "", [], "Jean", hermes_runner=runner)
+
+        message = str(exc_info.value)
+        assert "email" in message
+        assert "jean@example.com" not in message
 
 
 class TestSourceFidelity:
@@ -1318,6 +1422,61 @@ class TestBuildWHubJson:
         def runner(prompt: str, timeout: int):
             return 0, json.dumps(data, ensure_ascii=False), ""
         return runner
+
+    def test_build_whub_json_source_fidelity_uses_sanitized_business_text_not_removed_boilerplate(self):
+        sanitized_text = """
+Camille
+Architecte Cloud
+Compétences techniques :
+✓Python, AWS, Terraform
+Certifications :
+✓AWS Certified Solutions Architect
+2022 - 2024 Architecte Cloud | ACME | Paris
+Missions :
+- Concevoir les plateformes AWS sécurisées.
+"""
+        removed_raw_source_lines = [
+            "CV téléchargé depuis Hellowork",
+            "camille.dupont@example.com",
+            "06 12 34 56 78",
+            "https://www.linkedin.com/in/camille-dupont",
+        ]
+        data = {
+            "name": "Camille",
+            "title": "Architecte Cloud",
+            "formations": [],
+            "skills": [
+                {"category": "Compétences techniques", "items": ["Python, AWS, Terraform"]},
+                {"category": "Certifications", "items": ["AWS Certified Solutions Architect"]},
+            ],
+            "experiences": [{
+                "date": "2022 - 2024",
+                "role": "Architecte Cloud | ACME | Paris",
+                "company_highlight": "ACME",
+                "sections": [{"heading": "Missions", "content": ["Concevoir les plateformes AWS sécurisées."]}],
+            }],
+        }
+        prompts: list[str] = []
+
+        def runner(prompt: str, timeout: int):
+            prompts.append(prompt)
+            return 0, json.dumps(data, ensure_ascii=False), ""
+
+        assert "hellowork" not in sanitized_text.lower()
+        assert "cv téléchargé" not in sanitized_text.lower()
+        for removed_line in removed_raw_source_lines:
+            assert removed_line not in sanitized_text
+
+        result = build_whub_json(sanitized_text, "", [], "Camille", hermes_runner=runner)
+
+        assert result["name"] == "CAMILLE"
+        assert result["title"] == "Architecte Cloud"
+        assert result["experiences"][0]["sections"][0]["content"] == ["Concevoir les plateformes AWS sécurisées."]
+        assert "AWS Certified Solutions Architect" in json.dumps(result, ensure_ascii=False)
+        assert prompts
+        for removed_line in removed_raw_source_lines:
+            assert removed_line not in prompts[0]
+            assert removed_line not in json.dumps(result, ensure_ascii=False)
 
     def test_build_whub_json_returns_all_required_keys(self):
         data = {

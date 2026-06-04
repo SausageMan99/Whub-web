@@ -23,6 +23,7 @@ from .storage import next_version_number, save_version
 from .layout_packing import build_layout_packing_options
 from .layout_variants import run_bounded_layout_variant_loop
 from .preflight import run_startup_preflight
+from .source_sanitizer import sanitize_source_text, SourceSanitizationError
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
@@ -56,6 +57,24 @@ def forbidden_candidate_name_parts(candidate_first_name: str | None, source_text
         if candidate not in forbidden:
             forbidden.append(candidate)
     return forbidden
+
+
+def _build_safe_sanitization_event_payload(report) -> dict:
+    """Return a sanitization event payload with counts only, never raw values."""
+    return {
+        "raw_chars": int(getattr(report, "raw_chars", 0)),
+        "sanitized_chars": int(getattr(report, "sanitized_chars", 0)),
+        "removed_email_count": int(getattr(report, "removed_email_count", 0)),
+        "removed_phone_count": int(getattr(report, "removed_phone_count", 0)),
+        "removed_url_count": int(getattr(report, "removed_url_count", 0)),
+        "removed_linkedin_count": int(getattr(report, "removed_linkedin_count", 0)),
+        "removed_github_profile_count": int(getattr(report, "removed_github_profile_count", 0)),
+        "removed_address_line_count": int(getattr(report, "removed_address_line_count", 0)),
+        "removed_contact_label_line_count": int(getattr(report, "removed_contact_label_line_count", 0)),
+        "removed_hellowork_line_count": int(getattr(report, "removed_hellowork_line_count", 0)),
+        "removed_empty_or_boilerplate_line_count": int(getattr(report, "removed_empty_or_boilerplate_line_count", 0)),
+        "warnings": list(getattr(report, "warnings", ()) or ()),
+    }
 
 
 def _build_revision_history_comment(version: dict) -> dict:
@@ -101,6 +120,14 @@ def process_job(job: dict) -> None:
     timings["extract_text"] = perf_counter() - stage_start
     emit_event(request_id, "extraction_done", {"chars": len(text)})
 
+    try:
+        sanitization = sanitize_source_text(text, job.get("candidate_first_name"))
+    except SourceSanitizationError as exc:
+        fail_job(job, exc, "failed")
+        return
+    sanitized_text = sanitization.text
+    emit_event(request_id, "source_sanitized", _build_safe_sanitization_event_payload(sanitization.report))
+
     stage_start = perf_counter()
     comments_res = client.table("cv_comments").select("body,comment_type").eq("request_id", request_id).eq("resolved", False).execute()
     timings["load_comments"] = perf_counter() - stage_start
@@ -114,7 +141,7 @@ def process_job(job: dict) -> None:
 
     stage_start = perf_counter()
     comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
-    structured = build_whub_json(text, job.get("instructions") or "", comments_for_prompt, job.get("candidate_first_name"))
+    structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, job.get("candidate_first_name"))
     enforce_client_first_name(structured, job.get("candidate_first_name"))
     timings["hermes_structuring"] = perf_counter() - stage_start
 
@@ -130,7 +157,7 @@ def process_job(job: dict) -> None:
         render_pdf=render_pdf,
         run_qa=run_qa,
         forbidden_names=forbidden_names,
-        source_text=text,
+        source_text=sanitized_text,
     )
     timings["render_pdf_qa_layout_variants"] = perf_counter() - stage_start
     if variant_selection.hard_failure is not None:
