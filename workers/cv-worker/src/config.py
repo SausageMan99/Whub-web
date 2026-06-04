@@ -15,8 +15,11 @@ DEFAULT_WHUB_FONTS_DIR = WORKER_ROOT / "assets" / "fonts" / "poppins"
 class Settings(BaseSettings):
     # ── Supabase / Database ────────────────────────────────────────────
     supabase_url: str
+    # Public anon key used only for Supabase Storage REST operations.
+    # Database access is always through worker_db_url / whub_worker.
+    supabase_anon_key: str = ""
     # worker_db_url replaces supabase_service_role_key for the worker.
-    # Format: postgresql://whub_worker:password@db.xxx.supabase.co:6543/postgres?pgbouncer=true
+    # Format: postgresql://whub_worker:***@db.xxx.supabase.co:6543/postgres?pgbouncer=true
     worker_db_url: str = ""
     # Kept for backward compatibility during transition; the worker no
     # longer uses this.  Set to empty string to disable.

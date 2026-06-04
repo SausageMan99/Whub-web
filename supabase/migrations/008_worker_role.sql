@@ -13,13 +13,12 @@
 --   3. Grants SELECT, INSERT, UPDATE on cv_requests, cv_versions, cv_comments, cv_events
 --      (worker never needs DELETE or DDL)
 --   4. Grants USAGE on all sequences in public (for serial/bigserial columns)
---   5. Grants storage.objects SELECT/INSERT for the worker's buckets
---      (cv-sources, cv-renderer-inputs, cv-finals, cv-artifacts)
---   6. Executes claim_next_cv_request() as the function owner (security definer)
---      so the worker does NOT need direct EXECUTE on the function; it calls
---      through the RPC wrapper which connects as whub_worker and runs the
---      function via the anonymous code block pattern.
---   7. (Optional) Revoke service_role from default_worker_usage — prevents
+--   5. Grants EXECUTE only on claim_next_cv_request(), the only RPC the worker calls.
+--   6. Storage remains behind Supabase Storage REST + anon key/RLS;
+--      whub_worker is not granted direct storage schema/table access.
+--   7. claim_next_cv_request() runs as its function owner (SECURITY DEFINER)
+--      after whub_worker is allowed to invoke it.
+--   8. (Optional) Revoke service_role from default_worker_usage — prevents
 --      accidental grants to public/authenticated that would leak to worker.
 --
 -- REVERSIBLE:
@@ -70,25 +69,14 @@ alter default privileges in schema public
 
 -- ── 6. RPC function execution ──
 -- claim_next_cv_request is SECURITY DEFINER (owned by postgres/superuser),
--- so whub_worker does NOT need direct EXECUTE privilege on it.
--- The worker calls it via the PostgreSQL function call syntax, which runs
--- with the function owner's privileges.
+-- and is the only RPC function the worker calls.
 grant execute on function public.claim_next_cv_request(worker_name text) to whub_worker;
-grant execute on function public.verify_access_code(email text, code text) to whub_worker;
-grant execute on function public.rotate_access_code(email text) to whub_worker;
-grant execute on function public.generate_access_code() to whub_worker;
-grant execute on function public.hash_access_code(code text) to whub_worker;
-grant execute on function public.is_allowed_user() to whub_worker;
-grant execute on function public.current_user_role() to whub_worker;
 
 -- ── 7. Storage bucket permissions ──
--- The worker uploads rendered CVs and artifacts.  Storage RLS policies
--- are defined in 003_storage.sql.  Since whub_worker is NOT an authenticated
--- user (it's a direct PG role), storage operations via the REST API use
--- the anon key + Storage RLS policies.  For direct PG operations, we grant
--- storage schema access so the worker can manage files if needed.
-grant usage on schema storage to whub_worker;
-grant select, insert on storage.buckets to whub_worker;
+-- The worker downloads/uploads files through the Supabase Storage REST API
+-- using SUPABASE_ANON_KEY.  Do not grant the direct PostgreSQL whub_worker
+-- role storage schema/table privileges here; Storage access remains governed
+-- by storage RLS policies.
 
 -- ── 8. Row-level security bypass ──
 -- whub_worker is NOT a Supabase-authenticated user, so RLS policies that

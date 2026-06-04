@@ -28,7 +28,8 @@ EXPECTED_FONT_SHA256 = {
 REQUIRED_FONT_WEIGHTS = tuple(EXPECTED_FONT_SHA256)
 REQUIRED_SUPABASE_SETTINGS = (
     "supabase_url",
-    "supabase_service_role_key",
+    "supabase_anon_key",
+    "worker_db_url",
     "cv_sources_bucket",
     "cv_renderer_inputs_bucket",
     "cv_finals_bucket",

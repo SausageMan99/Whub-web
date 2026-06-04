@@ -8,7 +8,8 @@ dedicated 'whub_worker' role.
 
 The wrapper mimics the subset of the Supabase client API that the
 worker uses:
-    client.rpc(name, params)       — call a function
+    client.rpc(name, params).execute()
+                                   — call a function
     client.table(name).select()    — build SELECT queries
     client.table(name).insert()    — build INSERT queries
     client.table(name).update()    — build UPDATE queries
@@ -205,6 +206,39 @@ class _QueryBuilder:
             return SimpleNamespace(data=data)
 
 
+class _RpcCall:
+    """Supabase-like RPC call builder backed by PostgreSQL."""
+
+    def __init__(self, name: str, params: dict[str, Any], conn_provider):
+        self._name = name
+        self._params = params or {}
+        self._conn_provider = conn_provider
+
+    def execute(self) -> SimpleNamespace:
+        """
+        Call a PostgreSQL function (RPC).
+        SELECT * FROM function_name(arg1 := val1, arg2 := val2)
+        """
+        params = self._params
+        if params:
+            arg_pairs = ", ".join(f"{k} := %s" for k in params)
+            values = list(params.values())
+        else:
+            arg_pairs = ""
+            values = []
+
+        sql = f"SELECT * FROM {self._name}({arg_pairs})"
+        log.debug("RPC: %s  params=%s", sql[:200], params)
+
+        conn = self._conn_provider()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, values)
+            conn.commit()
+            rows = cur.fetchall()
+            data = [dict(r) for r in rows] if rows else []
+            return SimpleNamespace(data=data)
+
+
 # ─────────────────────────────────────────────────────────────────────
 #  Database client wrapper
 # ─────────────────────────────────────────────────────────────────────
@@ -217,7 +251,7 @@ class _WorkerDatabaseClient:
     that the worker actually uses: .rpc(), .table(), .storage.
     """
 
-    def __init__(self, db_url: str, supabase_url: str = ""):
+    def __init__(self, db_url: str, supabase_url: str = "", supabase_anon_key: str = ""):
         self.db_url = db_url
         self._conn: psycopg2.extensions.connection | None = None
         self._storage: SyncStorageClient | None = None
@@ -226,11 +260,14 @@ class _WorkerDatabaseClient:
         # Uses anon key (public) — storage operations are protected
         # by RLS policies on storage.objects.
         self._supabase_url = supabase_url
-        if supabase_url:
+        if supabase_url and supabase_anon_key:
             try:
                 self._storage = create_storage_client(
                     url=f"{supabase_url}/storage/v1",
-                    headers={"apikey": "public", "Authorization": ""},
+                    headers={
+                        "apikey": supabase_anon_key,
+                        "Authorization": f"Bearer {supabase_anon_key}",
+                    },
                     is_async=False,
                 )
                 log.info(
@@ -259,31 +296,8 @@ class _WorkerDatabaseClient:
 
     # ── RPC (function calls) ────────────────────────────────────────
 
-    def rpc(self, name: str, params: dict[str, Any]) -> SimpleNamespace:
-        """
-        Call a PostgreSQL function (RPC).
-        SELECT * FROM function_name(arg1 => val1, arg2 => val2)
-        """
-        if params:
-            arg_pairs = ", ".join(
-                f"{k} := %s" for k in params
-            )
-            values = list(params.values())
-        else:
-            arg_pairs = ""
-            values = []
-
-        sql = f"SELECT * FROM {name}({arg_pairs})"
-        log.debug("RPC: %s  params=%s", sql[:200], params)
-
-        with self.conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
-            cur.execute(sql, values)
-            self.conn.commit()
-            rows = cur.fetchall()
-            data = [dict(r) for r in rows] if rows else []
-            return SimpleNamespace(data=data)
+    def rpc(self, name: str, params: dict[str, Any]) -> _RpcCall:
+        return _RpcCall(name, params, conn_provider=lambda: self.conn)
 
     # ── Storage (proxy to storage3) ─────────────────────────────────
 
@@ -292,7 +306,7 @@ class _WorkerDatabaseClient:
         if self._storage is None:
             raise RuntimeError(
                 "Storage client not initialised. "
-                "Set supabase_url in config."
+                "Set supabase_url and supabase_anon_key in config."
             )
         return self._storage
 
@@ -305,26 +319,16 @@ if settings.worker_db_url:
     client = _WorkerDatabaseClient(
         db_url=settings.worker_db_url,
         supabase_url=settings.supabase_url,
+        supabase_anon_key=settings.supabase_anon_key,
     )
     log.info(
         "worker database client initialised with dedicated role "
         "(no service_role_key)"
     )
-elif settings.supabase_service_role_key:
-    # Fallback: use old Supabase REST client (transition period)
-    from supabase import create_client as _supabase_create_client
-
-    client = _supabase_create_client(
-        settings.supabase_url, settings.supabase_service_role_key
-    )
-    log.warning(
-        "FALLBACK: using supabase REST client with service_role_key — "
-        "set WORKER_DB_URL to use the dedicated whub_worker role"
-    )
 else:
     raise RuntimeError(
-        "Neither WORKER_DB_URL nor SUPABASE_SERVICE_ROLE_KEY configured. "
-        "At least one is required."
+        "WORKER_DB_URL is required. The worker must use the dedicated "
+        "whub_worker database role; service_role_key fallback is disabled."
     )
 
 

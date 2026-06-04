@@ -20,6 +20,8 @@ def _settings(tmp_path: Path, renderer: Path | None = None, assets_dir: Path | N
         whub_assets_dir=str(assets_dir or tmp_path / "assets"),
         whub_fonts_dir=str(fonts_dir or tmp_path / "fonts"),
         supabase_url="https://example.supabase.co",
+        supabase_anon_key="test-anon-key",
+        worker_db_url="postgresql://whub_worker:test@localhost:5432/postgres",
         supabase_service_role_key="test-service-role-key",
         cv_sources_bucket="cv-sources",
         cv_renderer_inputs_bucket="cv-renderer-inputs",
@@ -195,12 +197,14 @@ def test_startup_preflight_fails_when_configured_poppins_dir_is_partial_even_if_
 
 def test_settings_rewrites_legacy_global_renderer_path_to_repo_local_renderer(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon-key")
+    monkeypatch.setenv("WORKER_DB_URL", "postgresql://whub_worker:test@localhost:5432/postgres")
     monkeypatch.setenv("WHUB_RENDERER_PATH", str(LEGACY_WHUB_RENDERER_PATH))
 
     configured = Settings(
         supabase_url="https://example.supabase.co",
-        supabase_service_role_key="test-service-role-key",
+        supabase_anon_key="test-anon-key",
+        worker_db_url="postgresql://whub_worker:***@localhost:5432/postgres",
     )
 
     assert configured.whub_renderer_path == str(DEFAULT_WHUB_RENDERER_PATH)
@@ -209,12 +213,14 @@ def test_settings_rewrites_legacy_global_renderer_path_to_repo_local_renderer(mo
 def test_settings_keeps_non_legacy_renderer_path_for_preflight_validation(tmp_path: Path, monkeypatch):
     external_renderer = tmp_path / "external_renderer.py"
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon-key")
+    monkeypatch.setenv("WORKER_DB_URL", "postgresql://whub_worker:test@localhost:5432/postgres")
     monkeypatch.setenv("WHUB_RENDERER_PATH", str(external_renderer))
 
     configured = Settings(
         supabase_url="https://example.supabase.co",
-        supabase_service_role_key="test-service-role-key",
+        supabase_anon_key="test-anon-key",
+        worker_db_url="postgresql://whub_worker:***@localhost:5432/postgres",
     )
 
     assert configured.whub_renderer_path == str(external_renderer)
@@ -222,12 +228,14 @@ def test_settings_keeps_non_legacy_renderer_path_for_preflight_validation(tmp_pa
 
 def test_settings_rewrites_legacy_tmp_poppins_path_to_repo_fonts(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
-    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "test-anon-key")
+    monkeypatch.setenv("WORKER_DB_URL", "postgresql://whub_worker:test@localhost:5432/postgres")
     monkeypatch.setenv("WHUB_FONTS_DIR", "/tmp/poppins_full")
 
     configured = Settings(
         supabase_url="https://example.supabase.co",
-        supabase_service_role_key="test-service-role-key",
+        supabase_anon_key="test-anon-key",
+        worker_db_url="postgresql://whub_worker:***@localhost:5432/postgres",
     )
 
     assert configured.whub_fonts_dir == str(DEFAULT_WHUB_FONTS_DIR)

@@ -71,6 +71,16 @@ def test_worker_client_does_not_carry_service_role_key():
     )
 
 
+def test_supabase_client_source_has_no_service_role_fallback():
+    """The module must not import/create a Supabase client with service_role_key fallback."""
+    from pathlib import Path
+
+    source = Path("src/supabase_client.py").read_text()
+    assert "_supabase_create_client" not in source
+    assert "settings.supabase_service_role_key" not in source
+    assert "FALLBACK" not in source
+
+
 # ─────────────────────────────────────────────────────────────────────
 # TDD Step 4 (PASS) — new role-confinement tests
 # ─────────────────────────────────────────────────────────────────────
@@ -118,8 +128,8 @@ class TestWorkerRoleConfinement:
         assert "cv_requests" in called_sql
         assert "id = " in called_sql.lower() or "%s" in called_sql
 
-    def test_rpc_returns_data_attribute(self):
-        """Verify .rpc() returns an object with .data."""
+    def test_rpc_execute_returns_data_attribute(self):
+        """Verify .rpc().execute() matches supabase-py's call pattern."""
         client, mock_conn, mock_cursor = _make_mock_database_client(
             return_rows=[{"id": "req-1", "status": "processing"}]
         )
@@ -127,7 +137,10 @@ class TestWorkerRoleConfinement:
         mock_cursor.fetchall.return_value = [{"id": "req-1", "status": "processing"}]
         mock_cursor.description = [("id",), ("status",)]
 
-        result = client.rpc("claim_next_cv_request", {"worker_name": "test-worker"})
+        rpc_call = client.rpc("claim_next_cv_request", {"worker_name": "test-worker"})
+        assert hasattr(rpc_call, "execute")
+
+        result = rpc_call.execute()
 
         assert hasattr(result, "data")
         assert len(result.data) == 1
@@ -196,6 +209,36 @@ class TestWorkerRoleConfinement:
         mock_storage.from_.assert_called_once_with("cv-finals")
         mock_bucket.upload.assert_called_once()
 
+    @patch("src.supabase_client.create_storage_client")
+    def test_storage_uses_configured_anon_key_for_rest_client(self, mock_create_storage_client):
+        """Storage REST client should use the anon key, never a service-role fallback."""
+        from src.supabase_client import _WorkerDatabaseClient
+
+        _WorkerDatabaseClient(
+            "postgresql://whub_worker:***@localhost:5432/testdb",
+            supabase_url="https://example.supabase.co",
+            supabase_anon_key="anon-test-key",
+        )
+
+        mock_create_storage_client.assert_called_once_with(
+            url="https://example.supabase.co/storage/v1",
+            headers={"apikey": "anon-test-key", "Authorization": "Bearer anon-test-key"},
+            is_async=False,
+        )
+
+    def test_storage_requires_url_and_anon_key(self):
+        """Missing anon key should fail early when storage is accessed."""
+        from src.supabase_client import _WorkerDatabaseClient
+
+        client = _WorkerDatabaseClient(
+            "postgresql://whub_worker:***@localhost:5432/testdb",
+            supabase_url="https://example.supabase.co",
+            supabase_anon_key="",
+        )
+
+        with pytest.raises(RuntimeError, match="supabase_url and supabase_anon_key"):
+            _ = client.storage
+
     def test_table_select_with_order_and_limit(self):
         """Verify .order() and .limit() are translated to SQL."""
         client, mock_conn, mock_cursor = _make_mock_database_client(
@@ -244,4 +287,40 @@ def test_settings_has_worker_db_url():
     from src.config import settings
 
     assert hasattr(settings, "worker_db_url")
+    assert hasattr(settings, "supabase_anon_key")
     assert hasattr(settings, "supabase_service_role_key")
+
+
+def test_required_preflight_settings_use_worker_role_not_service_role():
+    """Preflight must require worker role credentials, not service_role_key."""
+    from src.preflight import REQUIRED_SUPABASE_SETTINGS
+
+    assert "worker_db_url" in REQUIRED_SUPABASE_SETTINGS
+    assert "supabase_anon_key" in REQUIRED_SUPABASE_SETTINGS
+    assert "supabase_service_role_key" not in REQUIRED_SUPABASE_SETTINGS
+
+
+def test_worker_role_migration_grants_only_claim_rpc():
+    """Migration should confine whub_worker to the RPC the worker actually calls."""
+    from pathlib import Path
+
+    sql = Path("../../supabase/migrations/008_worker_role.sql").resolve().read_text()
+    grant_lines = [
+        line.strip().lower()
+        for line in sql.splitlines()
+        if line.strip().lower().startswith("grant execute on function")
+    ]
+
+    assert grant_lines == [
+        "grant execute on function public.claim_next_cv_request(worker_name text) to whub_worker;"
+    ]
+    forbidden = (
+        "verify_access_code",
+        "rotate_access_code",
+        "generate_access_code",
+        "hash_access_code",
+        "is_allowed_user",
+        "current_user_role",
+    )
+    for function_name in forbidden:
+        assert not any(function_name in line for line in grant_lines)
