@@ -37,14 +37,62 @@ create policy "allowed users can read profiles" on public.profiles
 create policy "allowed users can upsert own profile" on public.profiles
   for insert to authenticated with check (public.is_allowed_user() and id = auth.uid());
 
-create policy "allowed users can read requests" on public.cv_requests
-  for select to authenticated using (public.is_allowed_user());
+-- ── TDD Step 1 (FAIL): Verify the OLD policy allows a member to see ALL requests ──
+-- Run manually as an allowed 'member' user (adavid@whub.fr):
+--   select * from public.cv_requests;
+-- Expected (insecure) result: member sees ALL rows created by any user.
+-- A secure policy MUST restrict this to only the member's own rows.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create policy "members read own requests" on public.cv_requests
+  for select to authenticated using (created_by = auth.uid());
+
+create policy "admins read all requests" on public.cv_requests
+  for select to authenticated using (public.current_user_role() = 'admin');
 
 create policy "allowed users can create requests" on public.cv_requests
   for insert to authenticated with check (public.is_allowed_user() and created_by = auth.uid());
 
 create policy "allowed users can update own requests or admins all" on public.cv_requests
   for update to authenticated using (public.is_allowed_user() and (created_by = auth.uid() or public.current_user_role() = 'admin'));
+
+-- ── TDD Step 4 (PASS): Verification queries ──
+-- Run these as authenticated users to confirm the new policies are correct:
+--
+-- 1) As member (e.g. adavid@whub.fr):
+--    select * from public.cv_requests;
+--    Expected: only rows WHERE created_by = auth.uid()
+--    (i.e. only requests created by adavid@whub.fr's profile).
+--
+-- 2) As admin (e.g. cdubosq@whub.fr):
+--    select * from public.cv_requests;
+--    Expected: ALL rows (admin override via public.current_user_role() = 'admin').
+--
+-- 3) Assertion via SQL (run in Supabase SQL editor):
+--    with member_sessions as (
+--      select 'adavid@whub.fr' as email
+--    )
+--    -- Member must NOT see another user's request
+--    select case when count(*) = 0 then 'PASS: Member cannot see other users requests'
+--                else 'FAIL: Member can see other users requests'
+--           end as member_isolation_test
+--    from pg_policies
+--    where schemaname = 'public'
+--      and tablename = 'cv_requests'
+--      and policyname = 'members read own requests'
+--      and cmd = 'SELECT';
+--
+-- 4) Policy existence check:
+--    select policyname, permissive, cmd, qual
+--    from pg_policies
+--    where tablename = 'cv_requests'
+--    order by policyname;
+--    Expected:
+--      | admins read all requests          | PERMISSIVE | SELECT | (public.current_user_role() = 'admin'::text) |
+--      | allowed users can create requests | PERMISSIVE | INSERT | ...                                          |
+--      | allowed users can update own ...  | PERMISSIVE | UPDATE | ...                                          |
+--      | members read own requests         | PERMISSIVE | SELECT | (created_by = auth.uid())                     |
+-- ─────────────────────────────────────────────────────────────────────────────
 
 create policy "allowed users can read versions" on public.cv_versions
   for select to authenticated using (public.is_allowed_user());
