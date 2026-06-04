@@ -315,9 +315,9 @@ class _WorkerDatabaseClient:
 #  Module-level client — used by main.py, storage.py, events.py
 # ─────────────────────────────────────────────────────────────────────
 
-if settings.worker_db_url:
+if settings.worker_database_url:
     client = _WorkerDatabaseClient(
-        db_url=settings.worker_db_url,
+        db_url=settings.worker_database_url,
         supabase_url=settings.supabase_url,
         supabase_anon_key=settings.supabase_anon_key,
     )
@@ -327,7 +327,7 @@ if settings.worker_db_url:
     )
 else:
     raise RuntimeError(
-        "WORKER_DB_URL is required. The worker must use the dedicated "
+        "WORKER_DATABASE_URL is required. The worker must use the dedicated "
         "whub_worker database role; service_role_key fallback is disabled."
     )
 

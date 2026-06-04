@@ -96,7 +96,7 @@ class TestWorkerRoleConfinement:
 
     def test_client_passes_worker_db_url_to_connection(self):
         """
-        Verify that _WorkerDatabaseClient uses the worker_db_url
+        Verify that _WorkerDatabaseClient uses the worker_database_url
         from settings when creating the connection string.
         """
         from src.supabase_client import _WorkerDatabaseClient
@@ -282,11 +282,11 @@ class TestWorkerRoleConfinement:
 # Backward compatibility / transition period
 # ─────────────────────────────────────────────────────────────────────
 
-def test_settings_has_worker_db_url():
-    """The settings object should have worker_db_url."""
+def test_settings_has_worker_database_url():
+    """The settings object should have worker_database_url."""
     from src.config import settings
 
-    assert hasattr(settings, "worker_db_url")
+    assert hasattr(settings, "worker_database_url")
     assert hasattr(settings, "supabase_anon_key")
     assert hasattr(settings, "supabase_service_role_key")
 
@@ -295,7 +295,7 @@ def test_required_preflight_settings_use_worker_role_not_service_role():
     """Preflight must require worker role credentials, not service_role_key."""
     from src.preflight import REQUIRED_SUPABASE_SETTINGS
 
-    assert "worker_db_url" in REQUIRED_SUPABASE_SETTINGS
+    assert "worker_database_url" in REQUIRED_SUPABASE_SETTINGS
     assert "supabase_anon_key" in REQUIRED_SUPABASE_SETTINGS
     assert "supabase_service_role_key" not in REQUIRED_SUPABASE_SETTINGS
 
@@ -304,7 +304,7 @@ def test_worker_role_migration_grants_only_claim_rpc():
     """Migration should confine whub_worker to the RPC the worker actually calls."""
     from pathlib import Path
 
-    sql = Path("../../supabase/migrations/008_worker_role.sql").resolve().read_text()
+    sql = Path("../../supabase/migrations/009_worker_role.sql").resolve().read_text()
     grant_lines = [
         line.strip().lower()
         for line in sql.splitlines()

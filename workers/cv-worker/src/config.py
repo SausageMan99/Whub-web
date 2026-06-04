@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -18,12 +18,22 @@ class Settings(BaseSettings):
     # Public anon key used only for Supabase Storage REST operations.
     # Database access is always through worker_db_url / whub_worker.
     supabase_anon_key: str = ""
-    # worker_db_url replaces supabase_service_role_key for the worker.
+    # worker_database_url replaces supabase_service_role_key for the worker.
     # Format: postgresql://whub_worker:***@db.xxx.supabase.co:6543/postgres?pgbouncer=true
-    worker_db_url: str = ""
+    worker_database_url: str = Field(default="", validation_alias="WORKER_DATABASE_URL")
+    # Legacy env/constructor name accepted during transition only.
+    worker_db_url: str = Field(default="", validation_alias="WORKER_DB_URL")
     # Kept for backward compatibility during transition; the worker no
     # longer uses this.  Set to empty string to disable.
     supabase_service_role_key: str = ""
+
+    @model_validator(mode="after")
+    def populate_worker_database_url_from_legacy_alias(self) -> "Settings":
+        if not self.worker_database_url and self.worker_db_url:
+            self.worker_database_url = self.worker_db_url
+        elif self.worker_database_url and not self.worker_db_url:
+            self.worker_db_url = self.worker_database_url
+        return self
 
     # ── Worker identity ────────────────────────────────────────────────
     worker_name: str = "whub-cv-worker-01"
@@ -75,6 +85,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        populate_by_name = True
 
 
 settings = Settings()

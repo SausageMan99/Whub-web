@@ -29,7 +29,7 @@ REQUIRED_FONT_WEIGHTS = tuple(EXPECTED_FONT_SHA256)
 REQUIRED_SUPABASE_SETTINGS = (
     "supabase_url",
     "supabase_anon_key",
-    "worker_db_url",
+    "worker_database_url",
     "cv_sources_bucket",
     "cv_renderer_inputs_bucket",
     "cv_finals_bucket",
@@ -43,6 +43,8 @@ class StartupPreflightError(RuntimeError):
 
 def _require_non_empty_setting(worker_settings: Any, name: str) -> None:
     value = getattr(worker_settings, name, None)
+    if name == "worker_database_url" and (value is None or str(value).strip() == ""):
+        value = getattr(worker_settings, "worker_db_url", None)
     if value is None or str(value).strip() == "":
         raise StartupPreflightError(f"Configuration manquante: {name}")
 
