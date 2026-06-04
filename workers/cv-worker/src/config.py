@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -10,22 +11,37 @@ LEGACY_WHUB_RENDERER_PATH = Path("/root/.hermes/scripts/whub_cv_renderer.py")
 DEFAULT_WHUB_ASSETS_DIR = WORKER_ROOT / "assets" / "whub"
 DEFAULT_WHUB_FONTS_DIR = WORKER_ROOT / "assets" / "fonts" / "poppins"
 
+
 class Settings(BaseSettings):
+    # ── Supabase / Database ────────────────────────────────────────────
     supabase_url: str
-    supabase_service_role_key: str
+    # worker_db_url replaces supabase_service_role_key for the worker.
+    # Format: postgresql://whub_worker:password@db.xxx.supabase.co:6543/postgres?pgbouncer=true
+    worker_db_url: str = ""
+    # Kept for backward compatibility during transition; the worker no
+    # longer uses this.  Set to empty string to disable.
+    supabase_service_role_key: str = ""
+
+    # ── Worker identity ────────────────────────────────────────────────
     worker_name: str = "whub-cv-worker-01"
     poll_interval_seconds: int = 10
     max_attempts: int = 3
+
+    # ── Storage buckets ────────────────────────────────────────────────
     cv_sources_bucket: str = "cv-sources"
     cv_renderer_inputs_bucket: str = "cv-renderer-inputs"
     cv_finals_bucket: str = "cv-finals"
     cv_artifacts_bucket: str = "cv-artifacts"
+
+    # ── Hermes AI ──────────────────────────────────────────────────────
     hermes_cli_path: str = "hermes"
     hermes_profile: str = "default"
     whub_primary_model: str = "gpt-5.5"
     whub_primary_provider: str = "openai-codex"
     whub_fallback_model: str = "gpt-5.5"
     whub_fallback_provider: str = "openai-codex"
+
+    # ── Rendering assets ───────────────────────────────────────────────
     whub_renderer_path: str = str(DEFAULT_WHUB_RENDERER_PATH)
     whub_assets_dir: str = str(DEFAULT_WHUB_ASSETS_DIR)
     whub_fonts_dir: str = str(DEFAULT_WHUB_FONTS_DIR)
@@ -56,5 +72,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
 
 settings = Settings()
