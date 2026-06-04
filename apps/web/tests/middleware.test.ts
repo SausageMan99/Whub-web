@@ -96,22 +96,25 @@ test("middleware — all branches", async (t) => {
 
   const { middleware } = await import("../middleware");
 
-  await t.test("redirects unauthenticated /dashboard to /login", async () => {
+  await t.test("redirects unauthenticated /dashboard to /login with redirect param", async () => {
     getUserResult = { data: { user: null } };
     setAllInput = [];
     const req = new MockNextRequest({ url: "http://example.com/dashboard" });
     const res = await middleware(req as any);
     assert.equal(res.status, 307);
-    assert.ok((res as any).headers.get("location")?.includes("/login"));
+    assert.equal((res as any).headers.get("location"), "http://example.com/login?redirect=%2Fdashboard");
   });
 
-  await t.test("redirects unauthenticated /requests/abc to /login", async () => {
+  await t.test("redirects unauthenticated /requests/abc to /login with redirect param", async () => {
     getUserResult = { data: { user: null } };
     setAllInput = [];
-    const req = new MockNextRequest({ url: "http://example.com/requests/abc-123" });
+    const req = new MockNextRequest({ url: "http://example.com/requests/abc-123?tab=files" });
     const res = await middleware(req as any);
     assert.equal(res.status, 307);
-    assert.ok((res as any).headers.get("location")?.includes("/login"));
+    assert.equal(
+      (res as any).headers.get("location"),
+      "http://example.com/login?redirect=%2Frequests%2Fabc-123%3Ftab%3Dfiles"
+    );
   });
 
   await t.test("passes through authenticated /dashboard", async () => {

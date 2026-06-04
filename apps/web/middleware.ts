@@ -32,11 +32,20 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
+  const requestUrl = new URL(request.url);
+  const pathname = requestUrl.pathname;
   const isProtected =
-    pathname.startsWith("/dashboard") || pathname.startsWith("/requests");
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/") ||
+    pathname === "/requests" ||
+    pathname.startsWith("/requests/");
+
   if (isProtected && !user) {
     const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set(
+      "redirect",
+      `${requestUrl.pathname}${requestUrl.search}`
+    );
     return NextResponse.redirect(loginUrl);
   }
 
@@ -44,7 +53,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/dashboard/:path*", "/requests/:path*"],
 };
