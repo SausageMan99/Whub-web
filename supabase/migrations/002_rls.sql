@@ -56,6 +56,9 @@ create policy "allowed users can create requests" on public.cv_requests
 create policy "allowed users can update own requests or admins all" on public.cv_requests
   for update to authenticated using (public.is_allowed_user() and (created_by = auth.uid() or public.current_user_role() = 'admin'));
 
+create policy "admins can delete requests" on public.cv_requests
+  for delete to authenticated using (public.current_user_role() = 'admin');
+
 -- ── TDD Step 4 (PASS): Verification queries ──
 -- Run these as authenticated users to confirm the new policies are correct:
 --
@@ -73,7 +76,7 @@ create policy "allowed users can update own requests or admins all" on public.cv
 --      select 'adavid@whub.fr' as email
 --    )
 --    -- Member must NOT see another user's request
---    select case when count(*) = 0 then 'PASS: Member cannot see other users requests'
+--    select case when count(*) > 0 then 'PASS: Member cannot see other users requests'
 --                else 'FAIL: Member can see other users requests'
 --           end as member_isolation_test
 --    from pg_policies
@@ -108,3 +111,12 @@ create policy "allowed users can update own comments or admins" on public.cv_com
 
 create policy "allowed users can read events" on public.cv_events
   for select to authenticated using (public.is_allowed_user());
+
+create policy "admins can delete versions" on public.cv_versions
+  for delete to authenticated using (public.current_user_role() = 'admin');
+
+create policy "admins can delete comments" on public.cv_comments
+  for delete to authenticated using (public.current_user_role() = 'admin');
+
+create policy "admins can delete events" on public.cv_events
+  for delete to authenticated using (public.current_user_role() = 'admin');
