@@ -7,10 +7,13 @@ import { prepareUpload, createRequest } from "./actions";
 const errorMessages: Record<string, string> = {
   file_required: "Ajoute un PDF source avant de créer la demande.",
   pdf_required: "Le fichier doit être un PDF.",
+  file_too_large: "Le PDF doit faire 10 Mo maximum.",
   upload_failed: "Upload refusé. Réessaie ou envoie-moi le PDF.",
   profile_failed: "Création du profil interne impossible.",
   request_failed: "Création de la demande impossible.",
 };
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export default function NewRequestForm({ initialError }: { initialError?: string | null }) {
   const router = useRouter();
@@ -36,6 +39,11 @@ export default function NewRequestForm({ initialError }: { initialError?: string
         setIsSubmitting(false);
         return;
       }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        setErrorCode("file_too_large");
+        setIsSubmitting(false);
+        return;
+      }
       const firstBytes = new Uint8Array(await file.arrayBuffer()).slice(0, 5);
       const magic = new TextDecoder().decode(firstBytes);
       if (!magic.startsWith("%PDF-")) {
@@ -45,6 +53,7 @@ export default function NewRequestForm({ initialError }: { initialError?: string
       }
 
       const { requestId, sourcePath, signedUrl } = await prepareUpload({
+        file,
         fileName: file.name,
         fileType: file.type,
       });

@@ -68,7 +68,7 @@ function makeAdminClient() {
 }
 
 let createRequest: (formData: FormData) => Promise<{ ok: boolean; requestId?: string; error?: string }>;
-let prepareUpload: (input: { fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
+let prepareUpload: (input: { file: File; fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
 
 before(async (t) => {
   t.mock.module('next/navigation', {
@@ -120,6 +120,15 @@ function reset(user = true) {
   recordedCalls = [];
 }
 
+function makePdfFile(name = 'cv.pdf') {
+  return new File(['%PDF-1.7\nbody'], name, { type: 'application/pdf' });
+}
+
+function preparePdfUpload(name = 'cv.pdf') {
+  const file = makePdfFile(name);
+  return prepareUpload({ file, fileName: file.name, fileType: file.type });
+}
+
 function makePreparedForm(extra: Record<string, string> = {}) {
   const fd = new FormData();
   fd.set('request_id', extra.request_id ?? '11111111-1111-4111-8111-111111111111');
@@ -164,12 +173,12 @@ function assertCreateRequestFailureLog(
 
 test('prepareUpload — rejects unauthenticated users', async () => {
   reset(false);
-  await assert.rejects(() => prepareUpload({ fileName: 'cv.pdf', fileType: 'application/pdf' }), /REDIRECT \/login/);
+  await assert.rejects(() => preparePdfUpload(), /REDIRECT \/login/);
 });
 
 test('prepareUpload — creates signed upload URL with sanitized source path', async () => {
   reset();
-  const result = await prepareUpload({ fileName: 'my cv.pdf', fileType: 'application/pdf' });
+  const result = await preparePdfUpload('my cv.pdf');
 
   assert.equal(result.signedUrl, 'https://signed-upload.local');
   assert.match(result.requestId, /^[0-9a-f-]{36}$/);
@@ -182,7 +191,7 @@ test('prepareUpload — creates signed upload URL with sanitized source path', a
 test('prepareUpload — redirects to upload_failed on signed URL error', async () => {
   reset();
   state.uploadError = new Error('boom');
-  await assert.rejects(() => prepareUpload({ fileName: 'cv.pdf', fileType: 'application/pdf' }), /REDIRECT \/requests\/new\?error=upload_failed/);
+  await assert.rejects(() => preparePdfUpload(), /REDIRECT \/requests\/new\?error=upload_failed/);
 });
 
 test('createRequest — rejects unauthenticated users', async () => {

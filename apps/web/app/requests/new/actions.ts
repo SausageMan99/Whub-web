@@ -37,10 +37,22 @@ function buildDefaultTitle(_fileName: string) {
 
 const PORTAL_ORIGIN = "web_portal";
 const PORTAL_WORKFLOW = "telegram_whub_cv_generation";
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const PDF_MAGIC_HEADER = Buffer.from("%PDF-");
 
-export async function prepareUpload({ fileName, fileType }: { fileName: string; fileType: string }) {
+async function hasPdfMagicHeader(file: File) {
+  const header = Buffer.from(await file.slice(0, PDF_MAGIC_HEADER.length).arrayBuffer());
+  return header.equals(PDF_MAGIC_HEADER);
+}
+
+export async function prepareUpload({ file, fileName, fileType }: { file: File; fileName: string; fileType: string }) {
   const rateLimit = await checkRateLimit({ action: "upload", limit: 10, windowMs: 60_000 });
   if (!rateLimit.allowed) redirect("/requests/new?error=rate_limited");
+
+  if (file.size > MAX_UPLOAD_BYTES) redirect("/requests/new?error=file_too_large");
+  if (fileType !== "application/pdf" || file.type !== "application/pdf" || !(await hasPdfMagicHeader(file))) {
+    redirect("/requests/new?error=pdf_required");
+  }
 
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();

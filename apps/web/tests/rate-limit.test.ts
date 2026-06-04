@@ -100,13 +100,18 @@ test('prepareUpload Server Action rate limits after 10 requests per minute per I
 
   const { prepareUpload } = await import('../app/requests/new/actions');
 
+  function makePdfUploadInput() {
+    const file = new File(['%PDF-1.7\nbody'], 'cv.pdf', { type: 'application/pdf' });
+    return { file, fileName: file.name, fileType: file.type };
+  }
+
   for (let i = 0; i < 10; i += 1) {
-    const result = await prepareUpload({ fileName: 'cv.pdf', fileType: 'application/pdf' });
+    const result = await prepareUpload(makePdfUploadInput());
     assert.equal(result.signedUrl, 'https://signed-upload.local');
   }
 
   await assert.rejects(
-    () => prepareUpload({ fileName: 'cv.pdf', fileType: 'application/pdf' }),
+    () => prepareUpload(makePdfUploadInput()),
     /REDIRECT \/requests\/new\?error=rate_limited/,
   );
 });
