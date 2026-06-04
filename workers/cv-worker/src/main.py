@@ -4,6 +4,7 @@ from time import perf_counter
 from pathlib import Path
 from datetime import datetime, timezone
 import shutil
+from collections.abc import Callable
 from typing import cast
 from .config import settings
 from .supabase_client import client
@@ -30,6 +31,114 @@ from .source_sanitizer import sanitize_source_text, SourceSanitizationError
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
+
+
+class CircuitBreaker:
+    """Simple circuit breaker for the worker polling path."""
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half-open"
+
+    def __init__(
+        self,
+        failure_threshold: int = 10,
+        recovery_timeout: float = 300,
+        time_func: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.time_func = time_func
+        self.state = self.CLOSED
+        self.failure_count = 0
+        self.opened_at: float | None = None
+
+    def allow_request(self) -> bool:
+        if self.state != self.OPEN:
+            return True
+        if self.opened_at is None:
+            self.opened_at = self.time_func()
+            return False
+        if self.time_func() - self.opened_at >= self.recovery_timeout:
+            self.state = self.HALF_OPEN
+            return True
+        return False
+
+    def record_success(self) -> None:
+        self.state = self.CLOSED
+        self.failure_count = 0
+        self.opened_at = None
+
+    def record_failure(self) -> None:
+        if self.state == self.HALF_OPEN:
+            self._open()
+            return
+        self.failure_count += 1
+        if self.failure_count >= self.failure_threshold:
+            self._open()
+
+    def _open(self) -> None:
+        self.state = self.OPEN
+        self.opened_at = self.time_func()
+
+
+def _backoff_delay(attempt: int, base_delay: float, max_delay: float = 300) -> float:
+    return min(base_delay * (2 ** (attempt - 1)), max_delay)
+
+
+def poll_with_backoff(
+    claim_func: Callable[[], dict | None] | None = None,
+    process_func: Callable[[dict], None] | None = None,
+    sleep_func: Callable[[float], None] = time.sleep,
+    base_delay: float | None = None,
+    breaker: CircuitBreaker | None = None,
+    max_delay: float = 300,
+) -> None:
+    """Poll for CV jobs with exponential backoff and circuit-breaker protection.
+
+    Consecutive errors while claiming work are backed off exponentially from
+    ``base_delay`` and capped at ``max_delay``. After 10 consecutive claim
+    failures by default, the circuit opens and skips claim attempts until the
+    recovery timeout elapses.
+    """
+    claim = claim_next_job if claim_func is None else claim_func
+    process = process_job if process_func is None else process_func
+    poll_delay = settings.poll_interval_seconds if base_delay is None else base_delay
+    circuit_breaker = breaker or CircuitBreaker(recovery_timeout=max_delay)
+    error_attempt = 0
+
+    while True:
+        if not circuit_breaker.allow_request():
+            log.warning("poll circuit breaker open; sleeping %.0fs", circuit_breaker.recovery_timeout)
+            sleep_func(circuit_breaker.recovery_timeout)
+            continue
+
+        try:
+            job = claim()
+        except Exception:
+            error_attempt += 1
+            circuit_breaker.record_failure()
+            delay = _backoff_delay(error_attempt, poll_delay, max_delay)
+            log.exception(
+                "poll failed attempt=%s circuit_state=%s; sleeping %.0fs",
+                error_attempt,
+                circuit_breaker.state,
+                delay,
+            )
+            sleep_func(delay)
+            continue
+
+        circuit_breaker.record_success()
+        error_attempt = 0
+        if not job:
+            sleep_func(poll_delay)
+            continue
+        try:
+            process(job)
+        except Exception as exc:
+            classified = classify_structuring_error(exc)
+            log.error("job failed request_id=%s category=%s", job.get("id"), classified["category"])
+            fail_job(job, exc, "failed")
 
 def claim_next_job() -> dict | None:
     res = client.rpc("claim_next_cv_request", {"worker_name": settings.worker_name}).execute()
@@ -238,17 +347,7 @@ def main() -> None:
         preflight_report["fonts_source"],
         preflight_report["supabase"],
     )
-    while True:
-        job = claim_next_job()
-        if not job:
-            time.sleep(settings.poll_interval_seconds)
-            continue
-        try:
-            process_job(job)
-        except Exception as exc:
-            classified = classify_structuring_error(exc)
-            log.error("job failed request_id=%s category=%s", job.get("id"), classified["category"])
-            fail_job(job, exc, "failed")
+    poll_with_backoff()
 
 if __name__ == "__main__":
     main()
