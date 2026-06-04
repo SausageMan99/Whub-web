@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export type CreateRequestResult =
   | { ok: true; requestId: string }
@@ -38,6 +39,9 @@ const PORTAL_ORIGIN = "web_portal";
 const PORTAL_WORKFLOW = "telegram_whub_cv_generation";
 
 export async function prepareUpload({ fileName, fileType }: { fileName: string; fileType: string }) {
+  const rateLimit = await checkRateLimit({ action: "upload", limit: 10, windowMs: 60_000 });
+  if (!rateLimit.allowed) redirect("/requests/new?error=rate_limited");
+
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.email) redirect("/login");

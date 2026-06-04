@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { verifyAccessCode, normalizeEmail } from "@/lib/access-code";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * Max pages to paginate through findAuthUserByEmail.
@@ -56,6 +57,9 @@ async function ensurePasswordUser(admin: ReturnType<typeof createSupabaseAdminCl
 }
 
 export async function login(formData: FormData) {
+  const rateLimit = await checkRateLimit({ action: "login", limit: 5, windowMs: 60_000 });
+  if (!rateLimit.allowed) redirect("/login?error=rate_limited");
+
   const email = normalizeEmail(formData.get("email"));
   const accessCode = String(formData.get("access_code") || "").trim();
 
