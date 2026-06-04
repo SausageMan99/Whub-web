@@ -10,7 +10,8 @@ export function normalizeAccessCode(value: FormDataEntryValue | string | null | 
 
 /**
  * Verify an access code against the bcrypt hash stored in allowed_users.
- * Uses the Postgres RPC verify_access_code which calls pgcrypto's crypt().
+ * Looks up the stored hash for the normalized email, then uses the Postgres
+ * verify_bcrypt RPC to compare the plaintext code with pgcrypto's crypt().
  *
  * This replaces the old deterministic expectedAccessCodeFromEmail() which
  * derived the code from the email local part — a security vulnerability.
@@ -25,9 +26,25 @@ export async function verifyAccessCode(email: string, code: string): Promise<boo
 
   try {
     const admin = createSupabaseAdminClient();
-    const { data, error } = await admin.rpc("verify_access_code", {
-      email: normalizedEmail,
-      code: normalizedCode,
+    const { data: allowedUser, error: allowedUserError } = await admin
+      .from("allowed_users")
+      .select("access_code_hash")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (allowedUserError) {
+      console.error("verifyAccessCode hash lookup failed", allowedUserError);
+      return false;
+    }
+
+    const passwordHash = allowedUser?.access_code_hash;
+    if (!passwordHash) {
+      return false;
+    }
+
+    const { data, error } = await admin.rpc("verify_bcrypt", {
+      plain_text: normalizedCode,
+      password_hash: passwordHash,
     });
 
     if (error) {

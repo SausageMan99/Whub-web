@@ -8,11 +8,32 @@ import assert from "node:assert/strict";
 
 test("verifyAccessCode + rotateAccessCode — all RPC response branches", async (t) => {
   let rpcResponse: { data: unknown; error: unknown } = { data: true, error: null };
+  let allowedUserResponse: { data: { access_code_hash: string } | null; error: unknown } = {
+    data: { access_code_hash: "$2a$10$abcdefghijklmnopqrstuuabcdabcdabcdabcdabcdabcdabcd" },
+    error: null,
+  };
+  const rpcCalls: Array<{ name: string; params: unknown }> = [];
 
   t.mock.module("@/lib/supabase/admin", {
     namedExports: {
       createSupabaseAdminClient: () => ({
-        rpc: async (_name: string, _params: unknown) => rpcResponse,
+        from: (table: string) => ({
+          select: (columns: string) => ({
+            eq: (column: string, value: string) => ({
+              maybeSingle: async () => {
+                assert.equal(table, "allowed_users");
+                assert.equal(columns, "access_code_hash");
+                assert.equal(column, "email");
+                assert.equal(value, value.toLowerCase());
+                return allowedUserResponse;
+              },
+            }),
+          }),
+        }),
+        rpc: async (name: string, params: unknown) => {
+          rpcCalls.push({ name, params });
+          return rpcResponse;
+        },
       }),
     },
   });
@@ -21,10 +42,34 @@ test("verifyAccessCode + rotateAccessCode — all RPC response branches", async 
 
   /* ── verifyAccessCode ─────────────────────────────────────────────── */
 
-  await t.test("verifyAccessCode — RPC returns true", async () => {
+  await t.test("verifyAccessCode — correct bcrypt-verified secret is accepted", async () => {
+    rpcCalls.length = 0;
+    allowedUserResponse = { data: { access_code_hash: "$2a$10$storedHashForUser" }, error: null };
     rpcResponse = { data: true, error: null };
-    const result = await verifyAccessCode("user@whub.fr", "valid-code");
+
+    const result = await verifyAccessCode("User@WHUB.fr", "valid-random-secret");
+
     assert.equal(result, true);
+    assert.deepEqual(rpcCalls, [
+      {
+        name: "verify_bcrypt",
+        params: {
+          plain_text: "valid-random-secret",
+          password_hash: "$2a$10$storedHashForUser",
+        },
+      },
+    ]);
+  });
+
+  await t.test("verifyAccessCode — old email-derived code is rejected", async () => {
+    rpcCalls.length = 0;
+    allowedUserResponse = { data: { access_code_hash: "$2a$10$storedHashForUser" }, error: null };
+    rpcResponse = { data: false, error: null };
+
+    const result = await verifyAccessCode("user@whub.fr", "user");
+
+    assert.equal(result, false);
+    assert.equal(rpcCalls[0]?.name, "verify_bcrypt");
   });
 
   await t.test("verifyAccessCode — RPC returns false", async () => {
