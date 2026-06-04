@@ -376,3 +376,75 @@ def test_process_job_sanitizes_source_text_before_structuring(monkeypatch, tmp_p
     payload_repr = repr(payload)
     for raw_value in ("jean@example.com", "06 12 34 56 78", "linkedin.com/in/jean", "CV téléchargé depuis Hellowork"):
         assert raw_value not in payload_repr
+
+
+def test_process_job_infers_first_name_when_portal_omits_it(monkeypatch, tmp_path):
+    hodard_source = "\n".join(
+        [f"Skill line {i}: Python, Kubernetes, Terraform, AWS" for i in range(1, 47)]
+        + ["FLORIAN HODARD", "INGÉNIEUR DEVOPS SENIOR"]
+    )
+    captured = {}
+    events = []
+    saved = {}
+    pdf_path = tmp_path / "output.pdf"
+    pdf_path.write_bytes(b"%PDF result")
+
+    def _build_whub_json(text, instructions, comments, candidate_first_name):
+        captured["candidate_first_name"] = candidate_first_name
+        return {"name": "FLORIAN HODARD", "formations": [], "skills": [], "experiences": []}
+
+    def _enforce_client_first_name(structured, first_name):
+        captured["enforced_first_name"] = first_name
+
+    def _forbidden(candidate_first_name, source_text=None):
+        captured["forbidden_args"] = (candidate_first_name, source_text)
+        return []
+
+    def _layout_loop(**kwargs):
+        attempt = LayoutVariantAttempt(
+            name="base",
+            pdf=pdf_path,
+            qa_report=_report(passed=True),
+            status="passed",
+            layout_options=kwargs["base_options"],
+        )
+        return LayoutVariantSelection(selected=attempt, attempts=[attempt])
+
+    monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: hodard_source)
+    monkeypatch.setattr(worker_main, "build_whub_json", _build_whub_json)
+    monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
+    monkeypatch.setattr(worker_main, "enforce_client_first_name", _enforce_client_first_name)
+    monkeypatch.setattr(worker_main, "next_version_number", lambda request_id: 1)
+    monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
+    monkeypatch.setattr(worker_main, "run_bounded_layout_variant_loop", _layout_loop)
+    monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", _forbidden)
+    monkeypatch.setattr(
+        worker_main, "save_version",
+        lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or "version-1",
+    )
+    monkeypatch.setattr(
+        worker_main, "emit_event",
+        lambda request_id, event, payload=None: events.append((event, payload or {})),
+    )
+
+    class _CommentsTable:
+        def select(self, *_args): return self
+        def update(self, *_args, **_kwargs): return self
+        def eq(self, *_args): return self
+        def execute(self): return type("Res", (), {"data": []})()
+
+    monkeypatch.setattr(worker_main.client, "table", lambda table: _CommentsTable())
+
+    worker_main.process_job({"id": "request-1", "candidate_first_name": "", "instructions": ""})
+
+    assert captured.get("candidate_first_name") == "FLORIAN", (
+        f"Expected build_whub_json candidate_first_name=FLORIAN, got {captured.get('candidate_first_name')}"
+    )
+    assert captured.get("enforced_first_name") == "FLORIAN", (
+        f"Expected enforce_client_first_name first_name=FLORIAN, got {captured.get('enforced_first_name')}"
+    )
+    assert saved["kwargs"]["request_status"] == "ready", (
+        f"Expected status=ready, got {saved['kwargs']['request_status']}"
+    )

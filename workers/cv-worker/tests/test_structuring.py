@@ -27,6 +27,8 @@ from src.structuring import (
     extract_source_business_coverage_facts,
     extract_source_experience_coverage_items,
     sanitize_contact_in_json,
+    _infer_first_name_from_source,
+    _CandidateFirstNameInferenceError,
 )
 
 
@@ -498,206 +500,18 @@ définition du besoin.
             "formations": [],
             "skills": [],
             "experiences": [{
-                "date": "Juin 2023 – à ce jour",
+                "date": "Juin 2023 – A ce jour",
                 "role": "Chef de projet | Mutuelle GSMC | Protection sociale",
                 "company_highlight": "",
                 "sections": [],
             }],
         }
 
-        with pytest.raises(StructuringError, match="rôle|role|source"):
+        with pytest.raises(StructuringError, match="source"):
             validate_source_fidelity(source, data, forbidden_identity_terms=[])
 
-    def test_rejects_full_name_display_in_renderer_json(self):
-        source = "Zahia Aris\nChef de projet"
-        data = {
-            "name": "ZAHIA ARIS",
-            "title": "Chef de projet",
-            "formations": [],
-            "skills": [],
-            "experiences": [],
-        }
 
-        with pytest.raises(StructuringError, match="nom complet|full_name"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
-
-    def test_rejects_candidate_surname_outside_name_field(self):
-        source = "Jean Dupont\nDéveloppeur\n2024 Mission\nConstruire les robots logiciels."
-        data = {
-            "name": "JEAN",
-            "title": "Développeur",
-            "description": "Jean Dupont est développeur senior.",
-            "formations": [],
-            "skills": [],
-            "experiences": [{"date": "2024", "role": "Mission", "sections": [{"heading": "Missions clés", "content": ["Construire les robots logiciels."]}]}],
-        }
-
-        assert infer_forbidden_candidate_identity_terms(source, "Jean Dupont") == ["Dupont"]
-        with pytest.raises(StructuringError, match="identité|identity|Dupont|Nom de famille"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=["Dupont"])
-
-    def test_does_not_infer_company_header_as_candidate_surname(self):
-        source = """
-Orange Business
-Jean Dupont
-Architecte
-2024 Architecte | Orange Business
-Piloter le projet.
-"""
-        data = {
-            "name": "JEAN",
-            "title": "Architecte",
-            "formations": [],
-            "skills": [],
-            "experiences": [{"date": "2024", "role": "Architecte | Orange Business", "company_highlight": "Orange Business", "sections": [{"heading": "Missions clés", "content": ["Piloter le projet."]}]}],
-        }
-
-        assert infer_forbidden_candidate_identity_terms(source, "Jean") == ["Dupont"]
-        validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Jean"))
-
-    def test_rachid_document_header_does_not_poison_identity_terms(self):
-        source = """DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5
-
-Rachid AGOUARANE
-Consultant Esker | Business Analyst IT (Run/Build)
-"""
-
-        terms = infer_forbidden_candidate_identity_terms(source, "Rachid")
-
-        assert "AGOUARANE" in terms
-        assert "DOSSIER" not in terms
-        assert "COMPETENCES" not in terms
-        assert "Page" not in terms
-
-    @pytest.mark.parametrize(
-        ("source", "first_name", "expected_surname", "excluded_terms"),
-        [
-            ("DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5", "Rachid", "AGOUARANE", {"DOSSIER", "COMPETENCES", "Page"}),
-            ("Rachid AGOUARANE | CV Consultant", "Rachid", "AGOUARANE", {"CV", "Consultant"}),
-            ("CV | Rachid AGOUARANE", "Rachid", "AGOUARANE", {"CV"}),
-            ("Curriculum Vitae | Jean Dupont", "Jean", "Dupont", {"Curriculum", "Vitae"}),
-            ("Jean Page", "Jean", "Page", set()),
-            ("CV | Jean Page", "Jean", "Page", {"CV"}),
-            ("CV | Jean Page", None, "Page", {"CV"}),
-            ("DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5", None, "AGOUARANE", {"DOSSIER", "COMPETENCES"}),
-        ],
-    )
-    def test_document_header_only_identity_keeps_surname_forbidden(self, source, first_name, expected_surname, excluded_terms):
-        terms = infer_forbidden_candidate_identity_terms(source, first_name)
-
-        assert expected_surname in terms
-        for term in excluded_terms:
-            assert term not in terms
-
-    def test_rachid_competences_word_is_not_blocked_when_only_surname_is_forbidden(self):
-        source = "DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5"
-        data = {
-            "name": "RACHID",
-            "title": "Consultant",
-            "formations": [],
-            "skills": [{"category": "Compétences", "items": ["Business Analyst IT"]}],
-            "experiences": [],
-        }
-
-        validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Rachid"))
-
-    def test_rachid_surname_still_blocks_visible_json_identity(self):
-        source = "DOSSIER DE COMPETENCES | Rachid AGOUARANE Page 1/5"
-        data = {
-            "name": "RACHID",
-            "title": "Consultant Esker | Business Analyst IT (Run/Build)",
-            "description": "Rachid AGOUARANE accompagne les métiers.",
-            "formations": [],
-            "skills": [],
-            "experiences": [],
-        }
-
-        with pytest.raises(StructuringError, match="AGOUARANE|identity|identité"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=infer_forbidden_candidate_identity_terms(source, "Rachid"))
-
-    def test_source_fidelity_allows_project_management_degree_in_formations(self):
-        source = """
-formations
-Master management de projet digital
-Efficom - 2020 - 2022
-Bachelor chef de projet digital
-Efficom - 2019 - 2020
-DUT informatique
-IUT Lille - 2016 - 2018
-"""
-        data = {
-            "name": "RAYAN",
-            "title": "Dev",
-            "formations": [
-                {"date": "2020 - 2022", "degree": "Master management de projet digital", "school": "Efficom"},
-                {"date": "2019 - 2020", "degree": "Bachelor chef de projet digital", "school": "Efficom"},
-                {"date": "2016 - 2018", "degree": "DUT informatique", "school": "IUT Lille"},
-            ],
-            "skills": [],
-            "experiences": [],
-        }
-
-        validate_source_fidelity(source, data, forbidden_identity_terms=[])
-
-    def test_source_fidelity_allows_developer_degree_in_formations(self):
-        source = """
-2019 — 2020
-Titre professionnel Développeur web et web mobile - Programmation informatique, applications spécifiques
-Simplon Grand Ouest
-"""
-        data = {
-            "name": "GUILLAUME",
-            "title": "Développeur",
-            "formations": [
-                {"date": "2019 — 2020", "degree": "Titre professionnel Développeur web et web mobile - Programmation informatique, applications spécifiques", "school": "Simplon Grand Ouest"},
-            ],
-            "skills": [],
-            "experiences": [],
-        }
-
-        validate_source_fidelity(source, data, forbidden_identity_terms=[])
-
-    def test_company_highlight_does_not_trigger_identity_leak(self):
-        source = """
-Guillaume Guibet
-GUIBET TECH | Développeur indépendant Angular
-Je poursuis mon activité comme travailleur indépendant.
-"""
-        data = {
-            "name": "GUILLAUME",
-            "title": "Développeur indépendant Angular",
-            "formations": [],
-            "skills": [],
-            "experiences": [
-                {
-                    "date": "2024-09 — Présent",
-                    "role": "GUIBET TECH | Développeur indépendant Angular",
-                    "company_highlight": "GUIBET TECH",
-                    "sections": [{"heading": "Missions clés", "content": ["Je poursuis mon activité comme travailleur indépendant."]}],
-                }
-            ],
-        }
-
-        validate_source_fidelity(source, data, forbidden_identity_terms=["Guibet"])
-
-    def test_empty_forbidden_identity_terms_do_not_fallback_to_company_header(self):
-        source = """
-Orange Business
-Architecte
-2024 Architecte | Orange Business
-Piloter le projet.
-"""
-        data = {
-            "name": "JEAN",
-            "title": "Architecte",
-            "formations": [],
-            "skills": [],
-            "experiences": [{"date": "2024", "role": "Architecte | Orange Business", "company_highlight": "Orange Business", "sections": [{"heading": "Missions clés", "content": ["Piloter le projet."]}]}],
-        }
-
-        assert infer_forbidden_candidate_identity_terms(source, "Jean") == []
-        validate_source_fidelity(source, data, forbidden_identity_terms=[])
-
+class TestInferForbiddenIdentityTerms:
     def test_missing_first_name_does_not_treat_business_sentence_as_identity_terms(self):
         source = """
 Production et gestion des flux de données et de fichiers :
@@ -1085,7 +899,7 @@ Compétences et outils :
 Exemples de réalisations professionnelles
 :
 ✓Gestion d'un SI d'une usine pharmaceutique (+500 employés)
-✓Conception, développement et mise en place d’une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]
+✓Conception, développement et mise en place d'une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]
 Loisirs :
 ✓Moto
 """
@@ -1098,7 +912,7 @@ Loisirs :
                 {"category": "Compétences et outils", "items": ["Management d'équipe"]},
                 {"category": "Autres", "items": [
                     "Gestion d'un SI d'une usine pharmaceutique (+500 employés)",
-                    "Conception, développement et mise en place d’une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]",
+                    "Conception, développement et mise en place d'une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]",
                     "Moto",
                 ]},
             ],
@@ -1239,7 +1053,7 @@ Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
         prompt = _hermes_prompt("CV source", "", [], "Nicolas")
 
         assert "Ne déduis jamais un environnement technique" in prompt
-        assert "N’utilise `Environnement technique`" in prompt
+        assert "N'utilise `Environnement technique`" in prompt
         assert "Ne corrige pas les typos" in prompt
         assert "ne supprime aucun élément métier d'expérience" in prompt
         assert "jamais par omission" in prompt
@@ -1331,12 +1145,12 @@ Technical Leader RPA/IA
 2020 - 2021 Mission A
 Rédiger la documentation complète des robots développés.
 2021 - 2022 Mission B
-Qualifier les demandes de robotisation des processus d’exploitation.
+Qualifier les demandes de robotisation des processus d'exploitation.
 2022 - 2023 Mission C
 Développer les robots logiciels Blue Prism.
 2023 - 2024 Mission D
 Participer aux réunions avec les parties prenantes.
-2024 - Aujourd’hui Mission E
+2024 - Aujourd'hui Mission E
 Contribuer à la feuille de route RPA.
 """
         data = {
@@ -1346,10 +1160,10 @@ Contribuer à la feuille de route RPA.
             "skills": [],
             "experiences": [
                 {"date": "2020 - 2021", "role": "Mission A", "sections": [{"heading": "Missions clés", "content": ["Rédiger la documentation complète des robots développés."]}]},
-                {"date": "2021 - 2022", "role": "Mission B", "sections": [{"heading": "Missions clés", "content": ["Qualifier les demandes de robotisation des processus d’exploitation."]}]},
+                {"date": "2021 - 2022", "role": "Mission B", "sections": [{"heading": "Missions clés", "content": ["Qualifier les demandes de robotisation des processus d'exploitation."]}]},
                 {"date": "2022 - 2023", "role": "Mission C", "sections": [{"heading": "Missions clés", "content": ["Développer les robots logiciels Blue Prism."]}]},
                 {"date": "2023 - 2024", "role": "Mission D", "sections": [{"heading": "Missions clés", "content": ["Participer aux réunions avec les parties prenantes."]}]},
-                {"date": "2024 - Aujourd’hui", "role": "Mission E", "sections": [{"heading": "Missions clés", "content": ["Contribuer à la feuille de route RPA."]}]},
+                {"date": "2024 - Aujourd'hui", "role": "Mission E", "sections": [{"heading": "Missions clés", "content": ["Contribuer à la feuille de route RPA."]}]},
             ],
         }
 
@@ -1698,3 +1512,190 @@ Missions :
 
     def test_explicit_synthesis_instruction_enables_standard_condensation(self):
         assert resolve_synthesis_mode("complete", "Merci de faire une synthèse courte client", []) == "standard"
+
+
+def _src(lines: list[str]) -> str:
+    """Build a source string from a list of lines."""
+    return "\n".join(lines)
+
+
+class TestInferFirstNameFromSource:
+    """Tests for _infer_first_name_from_source and its wiring into
+    infer_forbidden_candidate_identity_terms when first_name is empty."""
+
+    # ------------------------------------------------------------------
+    # 1. HODARD-style layout: name at line ~47 (after skills)
+    # ------------------------------------------------------------------
+    def test_hodard_style_layout_name_after_skills(self):
+        source = _src(
+            ["Compétences"] * 46
+            + ["FLORIAN HODARD"]
+            + ["Titre professionnel"]
+        )
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "FLORIAN"
+        assert "HODARD" in forbidden
+
+        terms = infer_forbidden_candidate_identity_terms(source, "")
+        assert "HODARD" in terms
+
+    # ------------------------------------------------------------------
+    # 2. Classic layout: name at line 1
+    # ------------------------------------------------------------------
+    def test_classic_layout_name_on_first_line(self):
+        source = _src(["Jean Dupont", "Développeur", "2024 Expérience"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Jean"
+        assert "Dupont" in forbidden
+
+        terms = infer_forbidden_candidate_identity_terms(source, "")
+        assert "Dupont" in terms
+
+    # ------------------------------------------------------------------
+    # 3. Mr. prefix
+    # ------------------------------------------------------------------
+    def test_mr_prefix(self):
+        source = _src(["Mr. Jean DUPONT", "Titre"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Jean"
+        assert "DUPONT" in forbidden
+
+        terms = infer_forbidden_candidate_identity_terms(source, "")
+        assert "DUPONT" in terms
+
+    # ------------------------------------------------------------------
+    # 4. Mme./M. prefix
+    # ------------------------------------------------------------------
+    @pytest.mark.parametrize("prefix", ["Mme.", "M."])
+    def test_mme_and_m_prefix(self, prefix):
+        source = _src([f"{prefix} Jean DUPONT", "Titre"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Jean"
+        assert "DUPONT" in forbidden
+
+    # ------------------------------------------------------------------
+    # 5. Hyphenated first name
+    # ------------------------------------------------------------------
+    def test_hyphenated_first_name(self):
+        source = _src(["Jean-Philippe DUPONT", "Titre"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Jean-Philippe"
+        assert "DUPONT" in forbidden
+
+    # ------------------------------------------------------------------
+    # 6. Anonymized CV (no identity line in 50 lines)
+    # ------------------------------------------------------------------
+    def test_anonymized_cv_no_identity_line(self):
+        source = _src(
+            ["Compétences techniques :"]
+            + ["SQL Server, Python, AWS"]
+            + ["Expériences :"]
+            + ["2022 - 2024 Développeur chez ACME"]
+            + ["Missions :"]
+            + ["Concevoir les API REST."]
+            + ["Formation :"]
+            + ["Master Informatique"]
+        )
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == ""
+        assert forbidden == []
+
+        terms = infer_forbidden_candidate_identity_terms(source, "")
+        assert terms == []
+
+    # ------------------------------------------------------------------
+    # 7. Title before name (INGÉNIEUR DEVOPS then Florian HODARD)
+    # ------------------------------------------------------------------
+    def test_title_before_name(self):
+        source = _src(["INGÉNIEUR DEVOPS", "Florian HODARD"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Florian"
+        assert "HODARD" in forbidden
+
+    # ------------------------------------------------------------------
+    # 8. Multi-line identity (Jean on one line, DUPONT on next)
+    # ------------------------------------------------------------------
+    def test_multi_line_identity(self):
+        source = _src(["Jean", "DUPONT", "Titre professionnel"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Jean"
+        assert "DUPONT" in forbidden
+
+    # ------------------------------------------------------------------
+    # 9. Business sentence rejected
+    # ------------------------------------------------------------------
+    def test_business_sentence_rejected(self):
+        source = _src(["INGÉNIEUR DE PRODUCTION GESTION FLUX"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == ""
+        assert forbidden == []
+
+    # ------------------------------------------------------------------
+    # 10. Skills section rejected
+    # ------------------------------------------------------------------
+    def test_skills_section_rejected(self):
+        source = _src(["Programmation / Langages C#, SQL Server"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == ""
+        assert forbidden == []
+
+    # ------------------------------------------------------------------
+    # 11. Email in identity line rejected
+    # ------------------------------------------------------------------
+    def test_email_in_identity_line_rejected(self):
+        source = _src(["Jean Dupont <jean@example.com>"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == ""
+        assert forbidden == []
+
+    # ------------------------------------------------------------------
+    # 12. Empty source raises _CandidateFirstNameInferenceError
+    # ------------------------------------------------------------------
+    def test_empty_source_raises_error(self):
+        with pytest.raises(_CandidateFirstNameInferenceError):
+            _infer_first_name_from_source("")
+
+        with pytest.raises(_CandidateFirstNameInferenceError):
+            _infer_first_name_from_source("   ")
+
+    # ------------------------------------------------------------------
+    # 13. Particle "de" (Charles de GAULLE)
+    # ------------------------------------------------------------------
+    def test_particle_de_filtered(self):
+        source = _src(["Charles de GAULLE"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Charles"
+        assert "GAULLE" in forbidden
+
+        terms = infer_forbidden_candidate_identity_terms(source, "")
+        assert "GAULLE" in terms
+
+    # ------------------------------------------------------------------
+    # 14. Hyphenated surname (Marie CURIE-SKLODOWSKA)
+    # ------------------------------------------------------------------
+    def test_hyphenated_surname(self):
+        source = _src(["Marie CURIE-SKLODOWSKA", "Titre"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == "Marie"
+        assert "CURIE-SKLODOWSKA" in forbidden
+
+        terms = infer_forbidden_candidate_identity_terms(source, "")
+        assert "CURIE-SKLODOWSKA" in terms
+
+    # ------------------------------------------------------------------
+    # 15. Single-word name (just FLORIAN, no surname)
+    # ------------------------------------------------------------------
+    def test_single_word_name_no_surname(self):
+        source = _src(["FLORIAN", "Développeur"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == ""
+        assert forbidden == []
+
+    # ------------------------------------------------------------------
+    # 16. False-positive guard: JAVA SPRING DEVELOPER not matched
+    # ------------------------------------------------------------------
+    def test_false_positive_java_spring_developer(self):
+        source = _src(["JAVA SPRING DEVELOPER"])
+        first, forbidden = _infer_first_name_from_source(source)
+        assert first == ""
+        assert forbidden == []

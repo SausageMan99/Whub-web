@@ -92,6 +92,7 @@ STRUCTURING_ERROR_PUBLIC_MESSAGES = {
     "structuring_invalid_json": "Réponse de structuration JSON invalide ou incomplète.",
     "layout_density": "Problème de densité ou de pagination détecté.",
     "renderer_asset": "Ressource renderer manquante ou invalide.",
+    "missing_candidate_first_name": "Prénom candidat absent et non inférable depuis le CV source.",
     "transient_model_failure": "Échec temporaire du modèle de structuration.",
 }
 
@@ -122,6 +123,8 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
         category = "layout_density"
     elif re.search(r"\b(renderer_asset|logo|watermark|filigrane|asset|ressource renderer|has_logo|has_watermark)\b", normalized):
         category = "renderer_asset"
+    elif re.search(r"\b(missing_candidate_first_name|inferable|prenom candidat)\b", normalized):
+        category = "missing_candidate_first_name"
     elif re.search(r"\b(fidelite|source_fidelity|source_coverage|source|reformulation|copier-coller|hallucination|absent du cv source|fait pdf absent)\b", normalized):
         category = "source_fidelity"
     elif re.search(r"\b(timeout|hermes crashed|model|fallback|primary|returncode|echec structuration|structuration echouee|failed|crashed)\b", normalized):
@@ -604,6 +607,118 @@ _IDENTITY_LINE_REJECT_TOKENS = {
     "langue",
     "langues",
     "universite",
+    "ingenieur",
+    "java",
+    "spring",
+    "devops",
+    "docker",
+    "kubernetes",
+    "aws",
+    "azure",
+    "python",
+    "javascript",
+    "typescript",
+    "react",
+    "angular",
+    "vue",
+    "node",
+    "php",
+    "ruby",
+    "golang",
+    "rust",
+    "terraform",
+    "ansible",
+    "jenkins",
+    "gitlab",
+    "jira",
+    "confluence",
+    "agile",
+    "scrum",
+    "kanban",
+    "sre",
+    "linux",
+    "windows",
+    "macos",
+    "ios",
+    "android",
+    "reactjs",
+    "nextjs",
+    "vuejs",
+    "nuxt",
+    "nestjs",
+    "dotnet",
+    "csharp",
+    "cpp",
+    "postgres",
+    "mysql",
+    "mongodb",
+    "redis",
+    "kafka",
+    "spark",
+    "hadoop",
+    "snowflake",
+    "airflow",
+    "dbt",
+    "etl",
+    "elt",
+    "sap",
+    "oracle",
+    "salesforce",
+    "figma",
+    "sketch",
+    "master",
+    "licence",
+    "bachelor",
+    "doctorat",
+    "docteur",
+    "phd",
+    "bts",
+    "dut",
+    "baccalaureat",
+    "baccalaureate",
+    "bac",
+    "these",
+    "memoire",
+    "diplome",
+    "diplome",
+    "certification",
+    "certificat",
+    "hnd",
+    "hnc",
+    "mba",
+    "cap",
+    "bep",
+    "dea",
+    "dess",
+    "deps",
+    "ingenierie",
+    "formation",
+    # French CV section headers (commonly appear as 2-4 uppercase-starting tokens)
+    "programmation",
+    "langages",
+    "infrastructure",
+    "conteneurisation",
+    "orchestration",
+    "securite",
+    "observabilite",
+    "proactivite",
+    "initiatives",
+    "atouts",
+    "frameworks",
+    "outils",
+    "collaboration",
+    "esprit",
+    "reseau",
+    "reseaux",
+    "centres",
+    "interet",
+    "homelab",
+    "retrogaming",
+    "guitare",
+    "competence",
+    "langue",
+    "analyst",
+    "analyse",
 }
 
 _KNOWN_FIRST_IDENTITY_BOUNDARY_TOKENS = {
@@ -618,6 +733,17 @@ _KNOWN_FIRST_IDENTITY_BOUNDARY_TOKENS = {
     "chez",
     "specialise",
 }
+
+_FIRST_NAME_SALUTATION_PREFIXES = frozenset({
+    "mr",
+    "m",
+    "mme",
+    "ms",
+    "mrs",
+    "dr",
+    "pr",
+    "prof",
+})
 
 
 def _token_starts_with_uppercase_letter(token: str) -> bool:
@@ -674,6 +800,143 @@ def _identity_tokens_near_known_first(line: str, allowed_first: str) -> list[str
     return likely_identity
 
 
+class _CandidateFirstNameInferenceError(Exception):
+    """Raised when the source has no confident Prenom NOM pattern to infer from."""
+
+    def __init__(self, scanned_lines: int, reason: str):
+        self.scanned_lines = scanned_lines
+        self.reason = reason
+        super().__init__(f"cannot infer candidate first name: {reason}")
+
+
+def _infer_first_name_from_source(source_text: str, scan_limit: int = 50) -> tuple[str, list[str]]:
+    """Return (inferred_first_name, forbidden_post_first_tokens) from source text.
+
+    Conservative pattern matching for CVs that don't put the candidate name in
+    the first 12 lines. Reuses _looks_like_standalone_identity_line and
+    _IDENTITY_LINE_REJECT_TOKENS. Returns ("", []) if no confident match is
+    found within scan_limit lines. Raises _CandidateFirstNameInferenceError
+    if called with an empty source so the caller can fail safely.
+
+    The scan_limit is intentionally bounded. CVs where the name is on page 2+
+    are out of scope for this patch; the portal fix is the right answer there.
+    """
+    if not source_text or not source_text.strip():
+        raise _CandidateFirstNameInferenceError(0, "empty source text")
+
+    lines = (source_text or "").splitlines()[:scan_limit]
+    candidates: list[tuple[int, int, str, str, list[str]]] = []  # (priority, forbidden_count, line, first, forbidden)
+
+    def _looks_like_single_identity_token(token: str) -> bool:
+        """Check if a single token looks like part of a name identity."""
+        stripped = token.strip(" ,;:/\\()[]{}")
+        if not stripped or not stripped[0].isalpha() or stripped[0].upper() != stripped[0]:
+            return False
+        normalized = _normalize_for_fidelity(stripped)
+        if not normalized or normalized in _IDENTITY_LINE_REJECT_TOKENS:
+            return False
+        if _is_document_identity_token(stripped):
+            return False
+        return True
+
+    def _skip_salutation_prefix(tokens: list[str]) -> list[str]:
+        """Remove salutation prefix (Mr., Mme., etc.) from start of tokens list."""
+        if tokens and _normalize_for_fidelity(tokens[0].strip(". ")) in _FIRST_NAME_SALUTATION_PREFIXES:
+            return tokens[1:]
+        return tokens
+
+    for line_index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _is_document_identity_header(stripped):
+            continue
+        # Try single-line identity
+        if _looks_like_standalone_identity_line(stripped):
+            tokens = _identity_tokens(stripped)
+            tokens = _skip_salutation_prefix(tokens)
+            if len(tokens) >= 2:
+                first = tokens[0]
+                forbidden = [t for t in tokens[1:] if not _is_document_identity_token(t)]
+                if forbidden:
+                    # Lower priority for tokens that look like common non-surname words
+                    priority = sum(1 for t in forbidden if _normalize_for_fidelity(t) in _IDENTITY_LINE_REJECT_TOKENS)
+                    candidates.append((priority, len(forbidden), stripped, first, forbidden))
+        # Try identity line with known boundary particles (e.g. "Charles de GAULLE")
+        # where _looks_like_standalone_identity_line rejects the line because
+        # the particle starts with a lowercase letter.
+        if not candidates or line_index > 0:
+            tokens = _identity_tokens(stripped)
+            tokens = _skip_salutation_prefix(tokens)
+            if 3 <= len(tokens) <= 5:
+                normalized = [_normalize_for_fidelity(t) for t in tokens]
+                boundary_indices = [i for i, n in enumerate(normalized) if n in _KNOWN_FIRST_IDENTITY_BOUNDARY_TOKENS]
+                if boundary_indices and boundary_indices[0] >= 1:
+                    first = tokens[0]
+                    first_norm = _normalize_for_fidelity(first)
+                    if (first_norm not in _IDENTITY_LINE_REJECT_TOKENS
+                            and not _is_document_identity_token(first)
+                            and _token_starts_with_uppercase_letter(first)):
+                        # Find the last non-boundary, uppercase token as the surname
+                        surname_candidates = [
+                            t for i, t in enumerate(tokens[1:])
+                            if _normalize_for_fidelity(t) not in _KNOWN_FIRST_IDENTITY_BOUNDARY_TOKENS
+                            and _normalize_for_fidelity(t) not in _IDENTITY_LINE_REJECT_TOKENS
+                            and _token_starts_with_uppercase_letter(t)
+                        ]
+                        if surname_candidates:
+                            forbidden = [surname_candidates[-1]]
+                            candidates.append((0, len(forbidden), stripped, first, forbidden))
+        # Try multi-line identity: first name on this line, surname on next non-empty line
+        if line_index + 1 < len(lines):
+            next_line = lines[line_index + 1].strip()
+            current_tokens = _identity_tokens(stripped)
+            if next_line and len(current_tokens) == 1:
+                next_tokens = _identity_tokens(next_line)
+                if len(next_tokens) == 1:
+                    current_stripped = current_tokens[0].strip(" ,;:/\\()[]{}")
+                    next_stripped = next_tokens[0].strip(" ,;:/\\()[]{}")
+                    if _looks_like_single_identity_token(current_stripped) and _looks_like_single_identity_token(next_stripped):
+                        first = current_tokens[0]
+                        forbidden = [next_tokens[0]]
+                        candidates.append((0, len(forbidden), stripped + " | " + next_line, first, forbidden))
+
+    if not candidates:
+        return ("", [])
+
+    # Separate candidates into "shallow" (within first 12 lines — preserves
+    # backward-compatible behavior for the original 12-line scan zone) and
+    # "deep" (beyond). Only return deep candidates when they are clearly past
+    # the typical CV header/skills zone (line 20+) to avoid matching false
+    # positives like signature blocks in the 13-19 line range.
+    shallow: list[tuple[int, int, str, str, list[str]]] = []
+    deep: list[tuple[int, int, str, str, list[str]]] = []
+    for c in candidates:
+        line_id = lines.index(c[2]) if c[2] in lines else 0
+        if line_id < 12:
+            shallow.append(c)
+        else:
+            deep.append(c)
+
+    if shallow:
+        # Pick the candidate with the lowest reject-token priority,
+        # then fewest forbidden tokens (single-surname lines preferred).
+        shallow.sort(key=lambda c: (c[0], c[1]))
+        _, _, _, first, forbidden = shallow[0]
+        return (first, forbidden)
+
+    if deep:
+        # Only return deep candidates from an unambiguous depth.
+        deep.sort(key=lambda c: (c[0], c[1], lines.index(c[2]) if c[2] in lines else 0))
+        for c in deep:
+            best_line_idx = lines.index(c[2]) if c[2] in lines else 0
+            if best_line_idx >= 20:
+                _, _, _, first, forbidden = c
+                return (first, forbidden)
+
+    return ("", [])
+
+
 def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_name: str | None = None) -> list[str]:
     """Infer surname/full-name tokens that must not appear in client-facing JSON/PDF.
 
@@ -706,23 +969,18 @@ def infer_forbidden_candidate_identity_terms(source_text: str, candidate_first_n
         else:
             return []
     else:
-        # Without a trusted first name, only inspect the document header zone. Scanning
-        # the full CV turns stack labels such as "SQL Server" or language rows into
-        # fake identity terms and blocks legitimate content.
-        for line in (source_text or "").splitlines()[:12]:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if _is_document_identity_header(stripped):
-                identity_line = _identity_line_from_document_header(stripped)
-                if identity_line:
-                    break
-                continue
-            if _looks_like_standalone_identity_line(stripped):
-                identity_line = stripped
-                break
-        if not identity_line:
-            return []
+        # Without a trusted first name, attempt a conservative inference from
+        # the first 50 lines. If inference succeeds, the first token becomes
+        # the allowed first name and subsequent tokens become forbidden.
+        try:
+            inferred_first, inferred_forbidden = _infer_first_name_from_source(source_text or "")
+        except _CandidateFirstNameInferenceError:
+            return []  # empty source, no inference possible
+        if not inferred_first or not inferred_forbidden:
+            return []  # no confident inference
+        # Re-run the first-name-provided path with the inferred first name.
+        # This reuses the existing logic and keeps the inference path testable.
+        return infer_forbidden_candidate_identity_terms(source_text, inferred_first)
 
     tokens = _identity_tokens_near_known_first(identity_line, allowed_first) if allowed_first else _identity_tokens(identity_line)
     if len(tokens) < 2:
@@ -1942,7 +2200,7 @@ Règles non négociables:
 - Structure les compétences en catégories lisibles, hiérarchisées et client-facing quand elles proviennent d'une section compétences source; ne transforme pas des outils cités dans une expérience en compétences globales inventées.
 - Évite les pavés par la mise en page, les retours ligne JSON et la pagination, pas par synthèse, condensation ou raccourcissement du contenu source.
 - Structure les expériences sans inventer de sous-sections. Tu peux utiliser `Missions clés` comme conteneur neutre uniquement pour regrouper des phrases source exactes sans heading visible.
-- N’utilise `Environnement technique`, `Stack technique` ou équivalent que si ce heading existe explicitement dans le CV source pour cette expérience.
+- N'utilise `Environnement technique`, `Stack technique` ou équivalent que si ce heading existe explicitement dans le CV source pour cette expérience.
 - Ne déduis jamais un environnement technique à partir d’outils cités dans un paragraphe. Ne découpe pas un paragraphe source en liste de technologies.
 - Conserve les headings source pertinents quand ils existent dans l'expérience, par exemple `Périmètre applicatif`, au lieu de les renommer.
 - Pour un CV très long: conserve toutes les expériences et informations source; ne synthétise/condense que si la consigne utilisateur demande explicitement une version courte, synthèse ou condensée.

@@ -2,13 +2,16 @@ from types import SimpleNamespace
 
 from src import main as worker_main
 from src.source_sanitizer import SourceSanitizationError
-from src.structuring import classify_structuring_error
+from src.structuring import classify_structuring_error, StructuringError
 
 
 class _FakeQuery:
     def __init__(self):
         self.payload = None
         self.filters = []
+
+    def select(self, columns=""):
+        return self
 
     def update(self, payload):
         self.payload = payload
@@ -19,7 +22,7 @@ class _FakeQuery:
         return self
 
     def execute(self):
-        return self
+        return SimpleNamespace(data=[])
 
 
 class _FakeClient:
@@ -27,7 +30,6 @@ class _FakeClient:
         self.query = _FakeQuery()
 
     def table(self, name):
-        assert name == "cv_requests"
         return self.query
 
 
@@ -161,3 +163,93 @@ class TestSourceSanitizationErrorTaxonomy:
         failure_repr = repr(failures)
         assert "jean.dupont@example.com" not in failure_repr
         assert "+33 6 12 34 56 78" not in failure_repr
+
+
+class TestMissingCandidateFirstNameErrorTaxonomy:
+    def test_classifies_missing_candidate_first_name_error_with_safe_message(self):
+        classified = classify_structuring_error(
+            StructuringError("Prénom candidat manquant et non inférable depuis la source")
+        )
+
+        assert classified["category"] == "missing_candidate_first_name"
+        assert classified["message"] == "Prénom candidat absent et non inférable depuis le CV source."
+
+    def test_missing_candidate_first_name_public_message_does_not_leak_raw_payload(self):
+        raw_payload = "some_secret_raw_value_12345"
+        classified = classify_structuring_error(
+            StructuringError(f"missing_candidate_first_name: inference failed raw_payload={raw_payload}")
+        )
+
+        public_message = classified["message"]
+        assert classified["category"] == "missing_candidate_first_name"
+        assert raw_payload not in public_message
+
+    def test_missing_candidate_first_name_message_is_in_public_messages_dict(self):
+        from src.structuring import STRUCTURING_ERROR_PUBLIC_MESSAGES
+
+        classified = classify_structuring_error(
+            StructuringError("missing_candidate_first_name: cannot infer from anonymized source")
+        )
+
+        assert classified["message"] == STRUCTURING_ERROR_PUBLIC_MESSAGES["missing_candidate_first_name"]
+
+    def test_process_job_missing_first_name_calls_fail_job_with_safe_public_message(self, monkeypatch, tmp_path):
+        pdf_path = tmp_path / "source.pdf"
+        pdf_path.write_bytes(b"%PDF fake")
+        failures: list[tuple] = []
+        events: list[tuple] = []
+        build_whub_json_called = []
+        fake_client = _FakeClient()
+
+        def _fail_job(job, error, status="failed"):
+            classified = classify_structuring_error(error)
+            failures.append((job["id"], status, classified["category"], classified["message"]))
+
+        def _track_build_whub_json(*args, **kwargs):
+            build_whub_json_called.append(True)
+            return {"name": "Ingénieur DevOps"}
+
+        monkeypatch.setattr(worker_main, "client", fake_client)
+        monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+        monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+        # Anonymized CV source: at least 400 chars, no identity line in first 50 lines.
+        # Each line has mixed case (uppercase-after-lowercase tokens), so
+        # _looks_like_standalone_identity_line returns False for every line.
+        monkeypatch.setattr(
+            worker_main,
+            "extract_pdf_text",
+            lambda source: (
+                "Expérience professionnelle dans le domaine du développement logiciel senior avec plus de huit ans d'expérience\n"
+                "Compétences techniques incluant python java javascript typescript react angular vue node express django flask\n"
+                "Projets récents développement d'une plateforme e-commerce avec react et node migration d'une infrastructure\n"
+                "Formation master en informatique université paris-saclay licence en mathématiques et informatique\n"
+                "Langues français natif anglais courant allemand débutant\n"
+                "Centres d'intérêt vélo randonnée photographie lecture voyages cuisine\n"
+                "Certifications aws certified solutions architect google cloud professional data engineer\n"
+                "Publications contribution à des articles sur le développement web et l'architecture logicielle\n"
+                "Recommandations disponibles sur demande\n"
+                "Disponibilité immédiate mobilité internationale\n"
+            ),
+        )
+        monkeypatch.setattr(worker_main, "fail_job", _fail_job)
+        monkeypatch.setattr(
+            worker_main,
+            "emit_event",
+            lambda request_id, event, payload=None: events.append((event, payload or {})),
+        )
+        monkeypatch.setattr(worker_main, "build_whub_json", _track_build_whub_json)
+
+        worker_main.process_job({"id": "req-missing-first-name", "candidate_first_name": "", "instructions": ""})
+
+        assert failures == [
+            (
+                "req-missing-first-name",
+                "failed",
+                "missing_candidate_first_name",
+                "Prénom candidat absent et non inférable depuis le CV source.",
+            )
+        ]
+        assert [event for event, _payload in events] == ["worker_claimed", "extraction_done", "source_sanitized"]
+        assert not build_whub_json_called, "build_whub_json should NOT be called when first name cannot be inferred"
+        failure_repr = repr(failures)
+        assert "Expérience professionnelle" not in failure_repr

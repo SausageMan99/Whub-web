@@ -16,6 +16,9 @@ from .structuring import (
     normalize_candidate_first_name,
     infer_forbidden_candidate_identity_terms,
     classify_structuring_error,
+    StructuringError,
+    _infer_first_name_from_source,
+    _CandidateFirstNameInferenceError,
 )
 from .rendering import render_pdf
 from .qa import run_qa, classify_qa_report
@@ -141,8 +144,23 @@ def process_job(job: dict) -> None:
 
     stage_start = perf_counter()
     comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
-    structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, job.get("candidate_first_name"))
-    enforce_client_first_name(structured, job.get("candidate_first_name"))
+    effective_first_name = job.get("candidate_first_name") or None
+    if not effective_first_name:
+        try:
+            inferred_first, _ = _infer_first_name_from_source(text)
+            if inferred_first:
+                effective_first_name = inferred_first
+        except _CandidateFirstNameInferenceError:
+            pass
+        if not effective_first_name:
+            fail_job(
+                job,
+                StructuringError("missing_candidate_first_name: no Prénom NOM pattern inferable from source"),
+                "failed",
+            )
+            return
+    structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name)
+    enforce_client_first_name(structured, effective_first_name)
     timings["hermes_structuring"] = perf_counter() - stage_start
 
     stage_start = perf_counter()
