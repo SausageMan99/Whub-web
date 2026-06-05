@@ -1118,6 +1118,14 @@ SOFT_FIDELITY_CODES = frozenset({
 })
 
 
+def _extract_fidelity_codes(error_message: str) -> list[str]:
+    """Extract fidelity issue codes from a structuring error message, if present."""
+    match = re.search(r"fidelity_issues=\[([^\]]+)\]", error_message)
+    if match:
+        return [c.strip() for c in match.group(1).split(",") if c.strip()]
+    return []
+
+
 def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: bool = False, forbidden_identity_terms: list[str] | None = None) -> None:
     """Block hallucinations and rewritten experience content.
 
@@ -2512,9 +2520,14 @@ def build_whub_json(
             if last_error is not None:
                 primary_category = classify_structuring_error(last_error)["category"]
                 fallback_category = classify_structuring_error(exc)["category"]
+                # Preserve fidelity codes from both errors in the aggregate message
+                primary_codes = _extract_fidelity_codes(str(last_error))
+                fallback_codes = _extract_fidelity_codes(str(exc))
+                all_codes = sorted(set(primary_codes + fallback_codes))
+                codes_part = f" fidelity_issues=[{','.join(all_codes)}]" if all_codes else ""
                 raise StructuringError(
                     "Structuration échouée après fallback "
-                    f"(primary_category={primary_category}, fallback_category={fallback_category})"
+                    f"(primary_category={primary_category}, fallback_category={fallback_category}){codes_part}"
                 ) from None
             raise
 
