@@ -1115,6 +1115,7 @@ def _add_structural_integrity_issues(data: dict, issues: list[dict]) -> None:
 SOFT_FIDELITY_CODES = frozenset({
     "title_absent_from_source",
     "experience_location_missing_from_json",
+    "experience_misclassified_as_formation",
 })
 
 
