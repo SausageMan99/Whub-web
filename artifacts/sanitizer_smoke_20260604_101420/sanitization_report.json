@@ -1,0 +1,16 @@
+{
+  "raw_chars": 1486,
+  "sanitized_chars": 1036,
+  "removed_email_count": 1,
+  "removed_phone_count": 1,
+  "removed_url_count": 1,
+  "removed_linkedin_count": 1,
+  "removed_github_profile_count": 1,
+  "removed_address_line_count": 2,
+  "removed_contact_label_line_count": 1,
+  "removed_hellowork_line_count": 7,
+  "removed_empty_or_boilerplate_line_count": 5,
+  "warnings": [
+    "hellowork_boilerplate_removed"
+  ]
+}

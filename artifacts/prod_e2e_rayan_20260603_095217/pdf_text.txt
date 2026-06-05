@@ -1,0 +1,87 @@
+RAYAN
+Développeur fullstack
+F O R M A T I O N S
+D I P L Ô M E S
+2020 - 2022
+Master management de projet
+digital
+Efficom
+2019 - 2020
+Bachelor chef de projet digital
+Efficom
+2016 - 2018
+DUT informatique
+IUT Lille
+D E S C R I P T I O N
+Développeur web full-stack avec plus de 6 ans d'expérience en développement et
+gestion de projet agile (Scrum). Spécialisé en JavaScript, React.js, Node.js et Vue.js,
+j'ai travaillé sur des projets d'applications web et e-commerce à fort impact.
+C O M P É T E N C E S   T E C H N I Q U E S
+Autres
+• Créativité
+• UX/UI Design
+• Intégration web / Responsive
+• Travail d’équipe
+• Autonomie
+• Maquettage
+Frontend
+• Javascript
+• HTML/CSS
+• Typescript
+• Vue.js
+• React.js
+Backend
+• Node.js
+Centres d'intérêt
+• Création de vidéo
+• Jeux vidéo
+• Sport : Football
+• Tennis
+• Padel
+• Instrument : Batterie
+Autres
+• Prestashop
+• Wordpress
+Langues
+• Français : Natif
+• Anglais : Billingue
+Autres — suite
+• Gestion de projet
+E X P É R I E N C E S   P R O F E S S I O N N E L L E S
+avril 2025
+Freelance
+Missions clés
+• Site vitrine pour un courtier auto (Vue.js, Strapi, TailwindCSS).
+• Application de création d’événements avec IA générative et IA de montage
+vidéo
+• Développement d’un SaaS événementiel permettant la collecte de photos et
+vidéos via QR code avec génération de montage vidéo IA automatique —
+Next.js 14, TypeScript, Supabase, Stripe, Cloudflare R2
+
+RAYAN
+fev 2023 - mars 2025
+Capgemini - Projet client : RATP – React.js, Node.js, Javascript, HTML, CSS
+Missions clés
+• Projet client : RATP – React.js, Node.js, Javascript, HTML, CSS
+• Développement d'un portail intranet centralisé à destination de plusieurs milliers de conducteurs RER (lignes A & B
+— réseau transportant 2,7 millions de voyageurs par jour)
+• Analyse de code et fournir des suggestions pour améliorer sa qualité
+• Création et exécution des tests unitaires, ainsi que réalisation des tests système pour garantir la qualité du
+logiciel
+• Méthode de travail agile Scrum
+• Projet client : FDJ - React.js, Node.js, Javascript, HTML, CSS
+• Partie connexion des sites de la FDJ
+• Gestion des seuils d’alerte
+jan 2020 - mai 2022
+Groupe Sweetco
+Missions clés
+• Création de site et ajouts de nouvelles fonctionnalités sur les sites existant
+• Refonte graphique de 5 sites web e-commerce
+• Analyse UX et réalisation de maquette
+• Contribution à l'amélioration continue des processus de développement web et des meilleures pratiques
+• Ajouts de nouvelles fonctionnalités sur les sites existant
+• Mise en place de l’utilisation de la cartographie Google Maps
+oct 2017 - oct 2019
+AdoniF
+Missions clés
+• Gestion de projet, prise en charge des stagiaires et alternants

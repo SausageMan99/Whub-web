@@ -1,0 +1,54 @@
+{
+  "name": "NICOLAS",
+  "title": "Responsable du Domaine Applicatif SI Groupe",
+  "formations": [],
+  "skills": [
+    {
+      "category": "Compétences et outils",
+      "items": [
+        "Management d'équipe",
+        "Office, Excel (VBA), MS Project, Visio, AutoCAD, Catia",
+        "ERP - AS400 DB2 – SAP - ORACLE - D365"
+      ]
+    },
+    {
+      "category": "Processus métiers",
+      "items": [
+        "Gestion de projets informatiques",
+        "Supply chain"
+      ]
+    },
+    {
+      "category": "Exemples de réalisations professionnelles",
+      "items": [
+        "Gestion d'un SI d'une usine pharmaceutique (+500 employés)",
+        "Conception, développement et mise en place d’une application de suivi de prestations (85 000 logements) via app mobile & QR codes installés dans les parties communes (#10 000 QR codes suivis) [Point Of Control Vilogia]"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "Novembre 2024 - Aujourd'hui",
+      "role": "Responsable du Domaine Applicatif SI Groupe - TEXDECOR GROUP",
+      "company_highlight": "TEXDECOR GROUP",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Gestion de l'ERP D365 Microsoft, WMS Sage, TMS, interapplicatif, data et alimentation web, PDP facture..."
+          ]
+        }
+      ]
+    }
+  ],
+  "_layout": {
+    "anti_crowding": true,
+    "force_experiences_new_page": false,
+    "force_page_break_before_experience_indexes": [],
+    "allow_grouping": true,
+    "density_profile": "balanced",
+    "page_dense_char_threshold": 2850,
+    "max_used_ratio": 0.86,
+    "readability_reserve": 130
+  }
+}

@@ -1,0 +1,140 @@
+{
+  "status": "passed",
+  "passed": true,
+  "pages": 5,
+  "layout_issues": [],
+  "human_taste": {
+    "score": 100,
+    "verdict": "good",
+    "thresholds": {
+      "good": 86,
+      "draft": 70
+    },
+    "penalties": [],
+    "page_balance": {
+      "spread": 0.183,
+      "min_used_ratio": 0.355,
+      "max_used_ratio": 0.538
+    },
+    "page_metrics": [
+      {
+        "page": 1,
+        "char_count": 614,
+        "block_count": 12,
+        "used_ratio": 0.447,
+        "blank_after_pt": 405.4,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 60.4,
+        "used_bottom": 436.4
+      },
+      {
+        "page": 2,
+        "char_count": 2642,
+        "block_count": 5,
+        "used_ratio": 0.538,
+        "blank_after_pt": 353.7,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 488.2
+      },
+      {
+        "page": 3,
+        "char_count": 2059,
+        "block_count": 4,
+        "used_ratio": 0.428,
+        "blank_after_pt": 446.3,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 395.6
+      },
+      {
+        "page": 4,
+        "char_count": 1531,
+        "block_count": 4,
+        "used_ratio": 0.355,
+        "blank_after_pt": 508.0,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 333.9
+      },
+      {
+        "page": 5,
+        "char_count": 1283,
+        "block_count": 10,
+        "used_ratio": 0.471,
+        "blank_after_pt": 410.4,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 431.5
+      }
+    ]
+  },
+  "contact_hits": [],
+  "bad_glyphs": false,
+  "content_integrity_issues": [],
+  "text_overflow_hits": [],
+  "has_logo": true,
+  "has_watermark": true,
+  "layout_metrics": [
+    {
+      "page": 1,
+      "char_count": 614,
+      "block_count": 12,
+      "used_ratio": 0.447,
+      "blank_after_pt": 405.4,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 60.4,
+      "used_bottom": 436.4
+    },
+    {
+      "page": 2,
+      "char_count": 2642,
+      "block_count": 5,
+      "used_ratio": 0.538,
+      "blank_after_pt": 353.7,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 35.3,
+      "used_bottom": 488.2
+    },
+    {
+      "page": 3,
+      "char_count": 2059,
+      "block_count": 4,
+      "used_ratio": 0.428,
+      "blank_after_pt": 446.3,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 35.3,
+      "used_bottom": 395.6
+    },
+    {
+      "page": 4,
+      "char_count": 1531,
+      "block_count": 4,
+      "used_ratio": 0.355,
+      "blank_after_pt": 508.0,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 35.3,
+      "used_bottom": 333.9
+    },
+    {
+      "page": 5,
+      "char_count": 1283,
+      "block_count": 10,
+      "used_ratio": 0.471,
+      "blank_after_pt": 410.4,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 35.3,
+      "used_bottom": 431.5
+    }
+  ]
+}

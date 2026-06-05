@@ -1,0 +1,22 @@
+[
+  {
+    "event_type": "worker_claimed",
+    "payload": {},
+    "created_at": "2026-06-03T09:52:22.17028+00:00"
+  },
+  {
+    "event_type": "extraction_done",
+    "payload": {
+      "chars": 2374
+    },
+    "created_at": "2026-06-03T09:52:22.914728+00:00"
+  },
+  {
+    "event_type": "ready",
+    "payload": {
+      "version_id": "e30840af-5606-4a45-9bba-e5cedf4f28a6",
+      "version_number": 1
+    },
+    "created_at": "2026-06-03T09:52:54.382148+00:00"
+  }
+]

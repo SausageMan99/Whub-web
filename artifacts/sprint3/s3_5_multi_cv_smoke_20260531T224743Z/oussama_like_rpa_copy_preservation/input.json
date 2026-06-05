@@ -1,0 +1,47 @@
+{
+  "name": "OUSSAMA",
+  "title": "Technical Leader RPA/IA",
+  "formations": [],
+  "skills": [
+    {
+      "category": "RPA",
+      "items": [
+        "Blue Prism",
+        "UiPath"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "01/2024 – Aujourd’hui",
+      "role": "Software Engineer - CDI chez EDF - France",
+      "company_highlight": "EDF - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Piloter le cadrage technique des automatisations RPA et IA.",
+            "Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "07/2022 – 01/2024",
+      "role": "Software Engineer - CDI chez BNP Paribas - France",
+      "company_highlight": "BNP Paribas - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Blue Prism, UiPath, SQL, Python."
+        }
+      ]
+    }
+  ]
+}

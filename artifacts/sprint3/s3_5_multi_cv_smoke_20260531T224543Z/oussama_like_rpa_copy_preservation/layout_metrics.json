@@ -1,0 +1,20 @@
+[
+  {
+    "page": 1,
+    "char_count": 432,
+    "block_count": 9,
+    "used_ratio": 0.361,
+    "blank_after_pt": 477.6,
+    "starts_with_suite": false,
+    "has_experience_heading": true
+  },
+  {
+    "page": 2,
+    "char_count": 359,
+    "block_count": 3,
+    "used_ratio": 0.147,
+    "blank_after_pt": 682.9,
+    "starts_with_suite": false,
+    "has_experience_heading": true
+  }
+]

@@ -51,8 +51,7 @@ class Settings(BaseSettings):
     hermes_profile: str = "default"
     whub_primary_model: str = "gpt-5.5"
     whub_primary_provider: str = "openai-codex"
-    whub_fallback_model: str = "gpt-5.5"
-    whub_fallback_provider: str = "openai-codex"
+    # 2025-06-05: fallback supprimé — MiniMax M3 est le seul modèle de structuration
 
     # ── Rendering assets ───────────────────────────────────────────────
     whub_renderer_path: str = str(DEFAULT_WHUB_RENDERER_PATH)

@@ -1,0 +1,15 @@
+{
+  "anti_crowding": true,
+  "force_experiences_new_page": true,
+  "force_page_break_before_experience_indexes": [
+    1,
+    2,
+    3,
+    5
+  ],
+  "allow_grouping": true,
+  "density_profile": "balanced",
+  "page_dense_char_threshold": 2850,
+  "max_used_ratio": 0.86,
+  "readability_reserve": 130
+}

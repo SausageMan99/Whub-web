@@ -311,25 +311,55 @@ class _WorkerDatabaseClient:
         return self._storage
 
 
+
 # ─────────────────────────────────────────────────────────────────────
 #  Module-level client — used by main.py, storage.py, events.py
 # ─────────────────────────────────────────────────────────────────────
 
-if settings.worker_database_url:
-    client = _WorkerDatabaseClient(
-        db_url=settings.worker_database_url,
+def _fallback_to_rest() -> None:
+    from .supabase_rest_client import _RESTDatabaseClient  # type: ignore
+
+    global client
+    client = _RESTDatabaseClient(
         supabase_url=settings.supabase_url,
         supabase_anon_key=settings.supabase_anon_key,
     )
     log.info(
-        "worker database client initialised with dedicated role "
-        "(no service_role_key)"
+        "worker REST database client initialised (fallback mode)"
     )
+
+
+# Check if the worker_database_url is valid (not a placeholder)
+_db_url = settings.worker_database_url
+_has_real_db = (
+    bool(_db_url)
+    and "***" not in _db_url
+    and "<project-ref>" not in _db_url
+    and _db_url.startswith("postgresql://")
+)
+
+if _has_real_db:
+    try:
+        import psycopg2  # noqa: F401 — verify import works
+
+        client = _WorkerDatabaseClient(
+            db_url=_db_url,
+            supabase_url=settings.supabase_url,
+            supabase_anon_key=settings.supabase_anon_key,
+        )
+        log.info(
+            "worker database client initialised with dedicated role "
+            "(no service_role_key)"
+        )
+    except ImportError:
+        log.warning("psycopg2 not installed, falling back to REST API client")
+        _fallback_to_rest()
 else:
-    raise RuntimeError(
-        "WORKER_DATABASE_URL is required. The worker must use the dedicated "
-        "whub_worker database role; service_role_key fallback is disabled."
+    log.warning(
+        "WORKER_DATABASE_URL has placeholder or is empty, "
+        "falling back to REST API client"
     )
+    _fallback_to_rest()
 
 
 __all__ = ["client", "_WorkerDatabaseClient"]

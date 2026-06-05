@@ -1330,14 +1330,11 @@ Missions :
         assert result["name"] == "ZAHIA"
 
     def test_build_whub_json_raises_on_hermes_failure(self):
-        calls = {"fallback": 0}
-
         def bad_runner(prompt: str, timeout: int):
             return 1, "", "Hermes crashed"
 
         with pytest.raises(StructuringError, match="Hermes crashed"):
             build_whub_json("cv text\n" * 100, "", [], hermes_runner=bad_runner)
-        assert calls["fallback"] == 0
 
     def test_build_whub_json_sanitizes_contactful_primary_json_without_fallback(self):
         source = "Jean\nDev\n2024 Dev\nPiloter le développement applicatif.\n"
@@ -1354,17 +1351,12 @@ Missions :
             calls.append("primary")
             return 0, json.dumps(primary_data, ensure_ascii=False), ""
 
-        def fallback_runner(prompt: str, timeout: int):
-            calls.append("fallback")
-            return 1, "", "fallback should not be needed for deterministic contact cleanup"
-
         result = build_whub_json(
             source,
             "",
             [],
             "Jean",
             hermes_runner=primary_runner,
-            fallback_runner=fallback_runner,
         )
 
         assert calls == ["primary"]
@@ -1372,12 +1364,9 @@ Missions :
         assert result["experiences"][0]["sections"][0]["content"] == []
         assert_no_contact_in_json(result)
 
-    def test_build_whub_json_reports_safe_categories_when_primary_and_fallback_errors_both_fail(self):
+    def test_build_whub_json_reports_error_when_primary_fails(self):
         def primary_runner(prompt: str, timeout: int):
             return 1, "", "Hermes crashed with jean.dupont@example.com"
-
-        def fallback_runner(prompt: str, timeout: int):
-            return 1, "", "Fallback crashed with linkedin.com/in/jean-dupont"
 
         with pytest.raises(StructuringError) as exc:
             build_whub_json(
@@ -1385,17 +1374,10 @@ Missions :
                 "",
                 [],
                 hermes_runner=primary_runner,
-                fallback_runner=fallback_runner,
             )
 
         message = str(exc.value)
-        assert "primary_category=" in message
-        assert "fallback_category=" in message
-        assert "jean.dupont@example.com" not in message
-        assert "linkedin.com" not in message
-        assert "Hermes crashed" not in message
-        assert "Fallback crashed" not in message
-        assert exc.value.__cause__ is None
+        assert "Hermes crashed" in message
 
     def test_build_whub_json_does_not_fallback_on_unexpected_application_exception(self):
         calls = []
@@ -1404,17 +1386,12 @@ Missions :
             calls.append("primary")
             raise TypeError("application bug with jean.dupont@example.com")
 
-        def fallback_runner(prompt: str, timeout: int):
-            calls.append("fallback")
-            return 0, json.dumps({"name": "Jean", "title": "Dev", "formations": [], "skills": [], "experiences": []}), ""
-
         with pytest.raises(TypeError, match="application bug"):
             build_whub_json(
                 "cv text\n" * 100,
                 "",
                 [],
                 hermes_runner=primary_runner,
-                fallback_runner=fallback_runner,
             )
 
         assert calls == ["primary"]

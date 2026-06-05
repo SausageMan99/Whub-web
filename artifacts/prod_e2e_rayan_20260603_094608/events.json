@@ -1,0 +1,22 @@
+[
+  {
+    "event_type": "worker_claimed",
+    "payload": {},
+    "created_at": "2026-06-03T09:46:12.028918+00:00"
+  },
+  {
+    "event_type": "extraction_done",
+    "payload": {
+      "chars": 2374
+    },
+    "created_at": "2026-06-03T09:46:12.861952+00:00"
+  },
+  {
+    "event_type": "failed",
+    "payload": {
+      "error": "Fidélité au CV source insuffisante.",
+      "error_category": "source_fidelity"
+    },
+    "created_at": "2026-06-03T09:47:06.363551+00:00"
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "pdf_exists": true,
+  "pages": 4,
+  "first_name_only": true,
+  "no_email": true,
+  "no_phone_like": true,
+  "no_url_linkedin": true,
+  "contains_klesia": true,
+  "contains_assurone": true,
+  "contains_locations": {
+    "Montreuil (93)": true,
+    "Asnières (92)": true,
+    "Rueil-Malmaison (92)": true,
+    "Paris (75)": true,
+    "Saint-Ouen-l’Aumône (95)": true
+  }
+}

@@ -1,0 +1,449 @@
+{
+  "name": "AMINA",
+  "title": "QA Salesforce",
+  "description": "Ingénieur Qualité & Business Analyst multi-secteurs. Forte de 9 ans d'expérience sur des écosystèmes complexes (Salesforce, ERP, Portails Web), je maîtrise l'intégralité de la chaîne de valeur : du recueil des besoins métiers à la mise en œuvre de stratégies de tests manuels et automatisés. Spécialisée dans le pilotage de tests transverses et le monitoring d'environnements (Robot Framework, Health Checks), j'interviens aussi bien en environnement Agile (SCRUM, SAFE) qu'en Cycle en V. Ma double compétence me permet d'allier rigueur technique (Tests API, SQL) et vision stratégique pour sécuriser les releases et accompagner la conduite du changement auprès des utilisateurs finaux.",
+  "formations": [
+    {
+      "date": "2015 – 2016",
+      "degree": "MASTER 2 MANAGEMENT FINANCIER",
+      "school": "Centre Universitaire Européen de Management"
+    },
+    {
+      "date": "2013 – 2014",
+      "degree": "MASTER 2 ÉCONOMIE APPLIQUÉES, ENTREPRENEURIAT ET INNOVATION",
+      "school": "Université de Reims Champagne Ardennes"
+    },
+    {
+      "date": "2008 – 2012",
+      "degree": "LICENCE EN SCIENCES COMMERCIALES",
+      "school": "École des Hautes Études Commerciales « EHEC Alger »"
+    },
+    {
+      "date": "2008",
+      "degree": "BACCALAURÉAT Scientifique",
+      "school": "Série Sciences Expérimentales"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Test & Qualité Logicielle (QA)",
+      "items": [
+        "Gestion des Tests : Jira (Xray), HP ALM (Quality Center), Squash TM, SpiraTest, Mantis, XStudio",
+        "Automatisation : Robot Framework, Selenium, Ranorex",
+        "Tests API : Postman, SoapUI, Swagger, APIMAN",
+        "Data & Back-end : SQL (SQL Server), DBeaver, Robo3T (MongoDB), TalendLauncher (ETL)",
+        "Analyse Technique : JSON, XML, Logs (Kibana), Queues (RabbitMQ)",
+        "Modélisation : UML"
+      ]
+    },
+    {
+      "category": "Expertises Métier",
+      "items": [
+        "Assurance IARD (Dommages)",
+        "Banque",
+        "Ressources Humaines (ERP)",
+        "Finance",
+        "Comptabilité",
+        "BTP",
+        "Énergie",
+        "Environnement"
+      ]
+    },
+    {
+      "category": "Compétences Linguistiques",
+      "items": [
+        "Français : Courant (C2 - Maîtrise professionnelle complète)",
+        "Anglais : Intermédiaire avancé (B2 - Capacité à travailler dans un environnement international)",
+        "Arabe : Langue maternelle"
+      ]
+    },
+    {
+      "category": "Compétences Numériques",
+      "items": [
+        "Pack Office (Word, Excel, PowerPoint)",
+        "Google Workspace (Docs, Sheets, Drive)",
+        "Messagerie (Outlook, Gmail)",
+        "Outils collaboratifs (Teams, Zoom, Slack)"
+      ]
+    },
+    {
+      "category": "Qualités Professionnelles",
+      "items": [
+        "Rigueur et sens du détail",
+        "Esprit d'analyse",
+        "Organisation et méthode de travail",
+        "Esprit critique",
+        "Bonne communication",
+        "Autonomie",
+        "Réactivité et capacité d'adaptation"
+      ]
+    },
+    {
+      "category": "Loisirs et Centres d'Intérêt",
+      "items": [
+        "Sport (Football)",
+        "Musique",
+        "Voyages",
+        "Cuisine",
+        "Jeux vidéo",
+        "Apprentissage en ligne",
+        "Lecture",
+        "Cinéma"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "05/2022 – EN COURS",
+      "role": "QA Engineer & AUTOMATISATION",
+      "company_highlight": "DALKIA",
+      "sections": [
+        {
+          "heading": "Contexte projet",
+          "content": [
+            "Mise en place d'une application ayant pour objectif d'améliorer la gestion des demandes gérées par les téléopérateurs - DacRC."
+          ]
+        },
+        {
+          "heading": "Stratégie de Test & Gouvernance Agile",
+          "content": [
+            "Participation active au cycle SCRUM (Daily, Poker, Rétrospective) et priorisation stratégique des User Stories lors des PI Planning.",
+            "Mise en œuvre d'une approche Shift Left par l'animation d'ateliers \"3 Amigos\" pour définir les critères d'acceptation et la mise en place de points d'affinage (Grooming) afin de sécuriser la qualité en amont du développement.",
+            "Élaboration de stratégie de tests transverses et rédaction des cahiers de recette sous Jira/Xray et documentation détaillée des parcours de tests nominaux.",
+            "Rédaction de diagrammes de flux, manuels de tests (Club U).",
+            "Réalisation de tutoriels vidéos et formation des utilisateurs finaux.",
+            "Participation aux comités opérationnels pour le suivi de l'avancement, la gestion des risques et l'amélioration continue des processus."
+          ]
+        },
+        {
+          "heading": "Exécution des Test & Validation Métier",
+          "content": [
+            "Exécution des tests Intra DacRC (Demandes, contacts, contrats, emplacements, rapports, etc.).",
+            "Validation des parcours transverses sur les écosystèmes complexes (DacRC, Orion, Dactech, TempoV2).",
+            "Identification des anomalies (TRS/ETI) selon la DoD et arbitrage via la priorisation des anomalies au sein du sprint.",
+            "Réalisation systématique des compagnes de TNR à chaque sprint.",
+            "Constitution et maintenance des jeux de données via requêtes SQL et outils d'inspection.",
+            "Analyse des logs.",
+            "Rédaction des PV de recette et rapports de test avec décision Go/NoGo pour chaque mise en production."
+          ]
+        },
+        {
+          "heading": "Automatisation des Tests",
+          "content": [
+            "Participation à la mise en place from scratch du framework d'automatisation sous Robot Framework et définition de l'architecture avec les développeurs.",
+            "Élaboration de la stratégie d'automatisation, ciblage des tests de non-régression (TNR) prioritaires, puis rédaction, exécution et maintenance des scripts sur les interfaces Salesforce Lightning.",
+            "Développement et planification de scripts de \"Health Checks\" bi-quotidiens pour vérifier la disponibilité bout en bout des différentes applications de l'écosystème et alerter les équipes en cas d'instabilité.",
+            "Analyse des rapports d'automatisation, détection des régressions et sécurisation des releases grâce à la couverture automatisée."
+          ]
+        },
+        {
+          "heading": "Outils",
+          "content": [
+            "Salesforce (DacRC), TempoV2, Orion Lynx, Robot Framework, Jira/Confluence, Xray, SQL, Postman, Klaxoon, Oasis, Miro, Dactech, Dacboard, Dencity, EC, C360, Smile, Inspector, ECRT, Kador Affaire, Kador SEE, Diabolocom, Gimini."
+          ]
+        },
+        {
+          "heading": "Méthodologie",
+          "content": [
+            "Agile (Scrum / SAFe)"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "06/2021 – 05/2022",
+      "role": "TESTEUR FONCTIONNEL ET TECHNIQUE – Validation applicative, API et flux techniques",
+      "company_highlight": "APAVE",
+      "sections": [
+        {
+          "heading": "Contexte projet",
+          "content": [
+            "Projets : Centaurée+, Héraclés, Forum, Pégase, Héra.",
+            "Participation aux activités de test et de validation des applications, avec un focus sur les tests fonctionnels, les flux de données et la qualité des échanges entre systèmes."
+          ]
+        },
+        {
+          "heading": "Tests d'API",
+          "content": [
+            "Exécution des tests API pour vérifier le bon fonctionnement des services web via Postman.",
+            "Création et gestion des collections de tests dans Postman.",
+            "Vérification des requêtes HTTP (GET, POST, PUT, DELETE) et des codes de réponse.",
+            "Contrôle et validation des données retournées (JSON/XML).",
+            "Validation des règles métiers à travers les réponses API.",
+            "Détection, analyse et remontée des anomalies liées aux API.",
+            "Comparaison des résultats obtenus avec les résultats attendus.",
+            "Vérification de l'intégration et du bon fonctionnement des services web.",
+            "Suivi de la stabilité et du bon fonctionnement des endpoints API."
+          ]
+        },
+        {
+          "heading": "Validation IHM & Parcours utilisateurs",
+          "content": [
+            "Exécution des tests IHM.",
+            "Vérification de l'affichage et du bon fonctionnement des éléments graphiques.",
+            "Contrôle de la conformité de l'interface par rapport aux spécifications fonctionnelles.",
+            "Validation des parcours utilisateurs (end-to-end) sur les interfaces web.",
+            "Qualification et suivi des anomalies.",
+            "Réalisation de TNR."
+          ]
+        },
+        {
+          "heading": "Monitoring & Analyse de données (Logs & Queues)",
+          "content": [
+            "Recherche, filtrage et analyse des logs applicatifs via Kibana (Elasticsearch).",
+            "Contrôle des réponses systèmes et des statuts d'exécution.",
+            "Vérification des traitements métiers et contribution à la résolution des problèmes techniques.",
+            "Surveillance et vérification des messages dans les queues RabbitMQ.",
+            "Contrôle des flux de messages et analyse des anomalies."
+          ]
+        },
+        {
+          "heading": "Qualification ETL & Data (Talend)",
+          "content": [
+            "Recette fonctionnelle des traitements Batch et flux de données (entrées/sorties, respect des règles métier).",
+            "Pilotage des jobs via TalendLauncher et analyse des logs pour identifier les anomalies de traitement.",
+            "Vérification de l'intégrité des données en base via requêtes SQL (contrôles avant/après traitement).",
+            "Rédaction des cas de tests Data, vérification de la qualité des données et collaboration avec les équipes techniques pour la résolution des incidents."
+          ]
+        },
+        {
+          "heading": "Pilotage & Gouvernance du Test",
+          "content": [
+            "Rédaction des plans de tests.",
+            "Constitution de jeux de données ciblés.",
+            "Exécution des scénarios de tests.",
+            "Communication de l'état d'avancement et des indicateurs de qualité (KPI) lors des réunions de suivi technique (COTECH).",
+            "Qualification, documentation et suivi du cycle de vie des bugs en collaboration avec les équipes Data et Développement."
+          ]
+        },
+        {
+          "heading": "Outils",
+          "content": [
+            "Xstudio, Postman, Gitlab, Mantis, Kibana, GLPI, APIMAN, TalendLauncher, Notepad++, Robo3T, DBeaver, Swagger, RabbitMQ."
+          ]
+        },
+        {
+          "heading": "Méthodologie",
+          "content": [
+            "Cycle en V"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "05/2021 – 06/2021",
+      "role": "TESTEUR FONCTIONNEL",
+      "company_highlight": "ADEQUAT INTERIM",
+      "sections": [
+        {
+          "heading": "Contexte projet",
+          "content": [
+            "Maintenance évolutive et corrective de l'ERP de gestion des salariés (MyAdequat)."
+          ]
+        },
+        {
+          "heading": "Assurance Qualité & Tests",
+          "content": [
+            "Élaboration et rédaction des plans de tests et des cahiers de recette.",
+            "Réalisation des campagnes de tests et suivi rigoureux de l'avancement via des reportings de qualification.",
+            "Utilisation de requêtes SQL Server pour valider l'intégrité des données en base."
+          ]
+        },
+        {
+          "heading": "Support Applicatif & Gestion des Anomalies",
+          "content": [
+            "Analyse, qualification et traitement des incidents et anomalies de fonctionnement signalés par les utilisateurs.",
+            "Prise en charge prioritaire des tickets critiques pour garantir la continuité de service de l'ERP.",
+            "Accompagnement des utilisateurs et coordination des actions de support de niveau 2/3 jusqu'à la résolution."
+          ]
+        },
+        {
+          "heading": "Outils",
+          "content": [
+            "TFS, Squash TM, SQL Server."
+          ]
+        },
+        {
+          "heading": "Méthodologie",
+          "content": [
+            "Cycle en V"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "06/2020 – 04/2021",
+      "role": "BUSINESS ANALYST – TESTEUR FONCTIONNEL",
+      "company_highlight": "CARDIF IARD (BNP PARIBAS)",
+      "sections": [
+        {
+          "heading": "Contexte projet",
+          "content": [
+            "Gestion de contrats d'assurance Dommages en environnement Multi-Partenaires (Cardif & Matmut) et solutions de relation client."
+          ]
+        },
+        {
+          "heading": "Analyse Business & Conception",
+          "content": [
+            "Recueil et instruction des demandes métiers spécifiques pour Cardif (BNP Paribas) et, en parallèle, analyse des besoins propres à la Matmut pour l'application commune de gestion de contrats IARD.",
+            "Étude, paramétrage et mise en œuvre de configurations spécifiques sur JIRA pour adapter l'outil aux processus internes et aux besoins de suivi des partenaires.",
+            "Définition des spécifications et pilotage de la mise en place de nouvelles solutions (Gestion des filleuls, routage des appels téléphoniques).",
+            "Rédaction des dossiers de spécifications détaillés et maintenance de la base de connaissances partagée sous Confluence."
+          ]
+        },
+        {
+          "heading": "Stratégie de Qualification & Tests",
+          "content": [
+            "Élaboration des plans de tests et conception de scénarios de tests fonctionnels.",
+            "Constitution et maintenance de jeux de données cohérents pour couvrir les différents cas d'usage métier.",
+            "Pilotage des campagnes de tests manuels et introduction à l'automatisation via Ranorex pour les parcours critiques.",
+            "Pilotage du cycle de vie des bugs via JIRA et SpiraTest (détection, qualification, suivi de correction).",
+            "Reporting régulier de l'avancement des tests et des indicateurs de qualité auprès des parties prenantes."
+          ]
+        },
+        {
+          "heading": "Outils",
+          "content": [
+            "JIRA, Confluence, XRAY, SpiraTest, Ranorex."
+          ]
+        },
+        {
+          "heading": "Méthodologie",
+          "content": [
+            "Cycle en V, Agile (Scrum)"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "01/2017 – 12/2019",
+      "role": "BUSINESS ANALYST – TESTEUR FONCTIONNEL",
+      "company_highlight": "O2 CARES SERVICES",
+      "sections": [
+        {
+          "heading": "Contexte projet",
+          "content": [
+            "Déploiement d'un portail web tripartite (Espace Clients, Portail Salariés et Plateforme de Candidatures en ligne)."
+          ]
+        },
+        {
+          "heading": "Expression de besoin",
+          "content": [
+            "Recueil des besoins utilisateurs, analyse de l'existant et étude d'impact sur les processus métiers.",
+            "Support à la rédaction des spécifications fonctionnelles.",
+            "Participation active aux cérémonies SCRUM (Daily, Sprint Planning, Rétrospectives)."
+          ]
+        },
+        {
+          "heading": "Recette",
+          "content": [
+            "Élaboration du plan de tests sur HP ALM (Quality Center) à partir des référentiels fonctionnels.",
+            "Réalisation des campagnes de tests fonctionnels et validation des services web via Postman et SoapUI (Swagger).",
+            "Lancement et analyse des campagnes de tests de non-régression (TNR) automatisées avec Selenium.",
+            "Identification, qualification et pilotage des corrections en étroite collaboration avec les équipes de maîtrise d'œuvre (MOE)."
+          ]
+        },
+        {
+          "heading": "Conduite de changement",
+          "content": [
+            "Rédaction complète des guides utilisateurs (User Guides) pour faciliter l'appropriation des nouveaux outils.",
+            "Animation des sessions de formation pour les utilisateurs finaux sur les nouvelles fonctionnalités du portail."
+          ]
+        },
+        {
+          "heading": "Outils",
+          "content": [
+            "HP ALM (QC), Selenium, Swagger, Postman/SoapUI."
+          ]
+        },
+        {
+          "heading": "Méthodologie",
+          "content": [
+            "Agile"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "04/2016 – 10/2016",
+      "role": "TESTEUR FONCTIONNEL",
+      "company_highlight": "ATG RÉNOVATION",
+      "sections": [
+        {
+          "heading": "Contexte projet",
+          "content": [
+            "Mise en place d'une démarche de test pour les outils de gestion internes et suivi opérationnel des dossiers."
+          ]
+        },
+        {
+          "heading": "Recette",
+          "content": [
+            "Aide à l'élaboration de la stratégie de test et rédaction des scénarios de validation.",
+            "Réalisation des tests fonctionnels et vérification de la conformité des résultats par rapport aux besoins.",
+            "Création et préparation de jeux de données sous Excel.",
+            "Identification des anomalies, saisie et suivi des corrections via l'outil Mantis.",
+            "Communication régulière sur l'avancement des tests.",
+            "Traitement et vérification des documents comptables (factures, devis).",
+            "Assistance dans la gestion des flux de trésorerie et mise à jour des tableaux de suivi."
+          ]
+        },
+        {
+          "heading": "Outils",
+          "content": [
+            "Mantis, Excel."
+          ]
+        },
+        {
+          "heading": "Méthodologie",
+          "content": [
+            "Cycle en V"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "04/2014 – 10/2014",
+      "role": "ASSISTANTE CONTRÔLE DE GESTION EN DIRECTION FINANCIÈRE",
+      "company_highlight": "AIR ALGÉRIE",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "Analyse de la santé financière et audit de la performance des processus internes."
+          ]
+        },
+        {
+          "heading": "Analyse Financière & Audit",
+          "content": [
+            "Analyse approfondie de la situation financière et de la capacité de remboursement de la compagnie (période 2013-2014).",
+            "Participation aux opérations d'audit et de contrôle des processus pour garantir la fiabilité des données financières.",
+            "Analyse de l'efficacité des outils de financement et mesure des écarts entre les prévisions et le réalisé."
+          ]
+        },
+        {
+          "heading": "Synthèse & Reporting",
+          "content": [
+            "Consolidation de données complexes pour établir des diagnostics sur la santé économique de la structure.",
+            "Rédaction de rapports de synthèse sur la solvabilité et la performance financière à destination de la direction."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "09/2010 – 10/2010",
+      "role": "ASSISTANTE ADMINISTRATIVE AU CONSEIL D'ÉTAT (SECTEUR PUBLIC)",
+      "company_highlight": "CONSEIL D'ÉTAT",
+      "sections": [
+        {
+          "heading": "Missions",
+          "content": [
+            "Étude du circuit de traitement des dossiers administratifs et initiation aux procédures spécifiques du secteur public.",
+            "Aide à l'organisation, au classement et à la numérisation des dossiers pour garantir leur traçabilité.",
+            "Assistance dans la rédaction de courriers officiels et la mise à jour de bases de données internes.",
+            "Respect strict des règles de confidentialité et de la déontologie propres au Conseil d'État."
+          ]
+        }
+      ]
+    }
+  ]
+}

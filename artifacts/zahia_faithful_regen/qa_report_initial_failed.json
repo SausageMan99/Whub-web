@@ -1,0 +1,124 @@
+{
+  "passed": false,
+  "pages": 3,
+  "contact_hits": [
+    "forbidden_name:Aris"
+  ],
+  "bad_glyphs": false,
+  "content_integrity_issues": [
+    {
+      "code": "json_fact_missing_from_pdf",
+      "message": "Fait JSON absent du PDF rendu: AssurOne Group",
+      "fact": "AssurOne Group"
+    },
+    {
+      "code": "json_fact_missing_from_pdf",
+      "message": "Fait JSON absent du PDF rendu: Groupe Cevital",
+      "fact": "Groupe Cevital"
+    },
+    {
+      "code": "json_fact_missing_from_pdf",
+      "message": "Fait JSON absent du PDF rendu: Groupe Estée Lauder",
+      "fact": "Groupe Estée Lauder"
+    },
+    {
+      "code": "json_fact_missing_from_pdf",
+      "message": "Fait JSON absent du PDF rendu: SC Johnson",
+      "fact": "SC Johnson"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Google Analytics",
+      "fact": "Google Analytics"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Cloud / DevOps & outils IT",
+      "fact": "Cloud / DevOps & outils IT"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Cloud / DevOps & outils IT (suite)",
+      "fact": "Cloud / DevOps & outils IT (suite)"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Environnement SI legacy couvrant devis",
+      "fact": "Environnement SI legacy couvrant devis"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Missions clés (suite)",
+      "fact": "Missions clés (suite)"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Impact business : croissance du chiffre d'affaires de +40 % entre 2018",
+      "fact": "Impact business : croissance du chiffre d'affaires de +40 % entre 2018"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Cartographie des achats de 10 business units avec économies cibles de 15 % du spend",
+      "fact": "Cartographie des achats de 10 business units avec économies cibles de 15 % du spend"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: demandes dans SAP/SRM",
+      "fact": "demandes dans SAP/SRM"
+    }
+  ],
+  "text_overflow_hits": [],
+  "layout_issues": [
+    {
+      "code": "skill_overflow_page_created",
+      "page": 2,
+      "message": "Bloc compétences poursuivi sur une page dédiée/suite page 2",
+      "snippet": "ZAHIA\nC O M P É T E N C E S   T E C H N I Q U E S   ( S U I T E )\nCRM, BI & applicatifs (suite)\n• Traveldoo• Hypervision ADP GSI• FiggoCloud / DevOps & outils IT (suite)\n• Jira• Mi"
+    },
+    {
+      "code": "page_too_dense",
+      "page": 2,
+      "message": "Page 2 anormalement dense: 3232 caractères, 12 blocs",
+      "char_count": 3232,
+      "block_count": 12,
+      "used_ratio": 0.911
+    },
+    {
+      "code": "skill_block_too_long",
+      "page": 2,
+      "message": "Bloc compétence trop long page 2: 1744 caractères",
+      "bbox": [
+        59.5,
+        421.84,
+        535.8,
+        660.47
+      ],
+      "char_count": 1744,
+      "snippet": "• Analyse d'impact, stratégie de migration de données et décommissionnement des flux retraite.• Participation aux comités de suivi pour intégrer l'organisation et les processus Kle"
+    },
+    {
+      "code": "skills_too_dense",
+      "page": 2,
+      "message": "Bloc compétences trop dense page 2: 1744 caractères, 22 séparateurs",
+      "bbox": [
+        59.5,
+        421.84,
+        535.8,
+        660.47
+      ],
+      "char_count": 1744,
+      "separators": 22,
+      "snippet": "• Analyse d'impact, stratégie de migration de données et décommissionnement des flux retraite.• Participation aux comités de suivi pour intégrer l'organisation et les processus Kle"
+    },
+    {
+      "code": "page_too_dense",
+      "page": 3,
+      "message": "Page 3 anormalement dense: 3977 caractères, 12 blocs",
+      "char_count": 3977,
+      "block_count": 12,
+      "used_ratio": 0.909
+    }
+  ],
+  "has_logo": true,
+  "has_watermark": true
+}

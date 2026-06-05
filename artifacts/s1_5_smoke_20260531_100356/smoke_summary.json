@@ -1,0 +1,44 @@
+{
+  "smoke_dir": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356",
+  "renderer": "/root/whub-cv-factory/workers/cv-worker/renderer/whub_cv_renderer.py",
+  "assets_dir": "/root/whub-cv-factory/workers/cv-worker/assets/whub",
+  "fonts_dir": "/root/whub-cv-factory/workers/cv-worker/assets/fonts/poppins",
+  "cases": [
+    {
+      "label": "oussama",
+      "input": "/root/whub-cv-factory/workers/cv-worker/tests/fixtures/oussama_structured_faithful.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356/oussama/oussama_repo_local.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356/oussama/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356/oussama/layout_metrics.json",
+      "pages": 2,
+      "status": "passed",
+      "contact_hits": [],
+      "bad_glyphs": false,
+      "text_overflow_hits": [],
+      "has_logo": true,
+      "has_watermark": true,
+      "layout_issue_codes": [],
+      "content_integrity_issue_count": 0,
+      "experience_count": 8,
+      "skill_count": 2
+    },
+    {
+      "label": "zahia",
+      "input": "/root/whub-cv-factory/artifacts/zahia_faithful_regen/structured_layout_render.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356/zahia/zahia_repo_local.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356/zahia/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_100356/zahia/layout_metrics.json",
+      "pages": 4,
+      "status": "passed",
+      "contact_hits": [],
+      "bad_glyphs": false,
+      "text_overflow_hits": [],
+      "has_logo": true,
+      "has_watermark": true,
+      "layout_issue_codes": [],
+      "content_integrity_issue_count": 0,
+      "experience_count": 5,
+      "skill_count": 4
+    }
+  ]
+}

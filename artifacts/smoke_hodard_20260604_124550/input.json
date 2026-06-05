@@ -1,0 +1,148 @@
+{
+  "name": "FLORIAN",
+  "title": "Ingénieur DevOps / Full-Stack",
+  "description": "Profil full-stack passionné avec 9 ans d'expérience en développement web/microservices, mise en place de pipelines CI/CD et administration Kubernetes. Je suis attaché aux pratiques DevOps et privilégie les architectures résilientes, la qualité du code ainsi que la collaboration en équipe.",
+  "formations": [
+    {
+      "date": "2016",
+      "degree": "Master Management des Systèmes d'Information",
+      "school": "IAE Paris"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Programmation / Langages",
+      "items": [
+        "C#",
+        "TypeScript/JavaScript",
+        "SQL",
+        "C/C++",
+        "Go",
+        "Python",
+        "Shell",
+        "Web"
+      ]
+    },
+    {
+      "category": "Frameworks",
+      "items": [
+        "Angular",
+        "ThreeJS"
+      ]
+    },
+    {
+      "category": "DevOps / CI/CD",
+      "items": [
+        "AWS",
+        "Azure",
+        "Azure DevOps",
+        "Packer",
+        "Terraform",
+        "Ansible",
+        "Argo CD",
+        "GitHub",
+        "GitLab",
+        "Harbor"
+      ]
+    },
+    {
+      "category": "Infrastructure / Cloud",
+      "items": [
+        "VMware",
+        "Proxmox",
+        "Hyper-V",
+        "OPNsense",
+        "TrueNAS",
+        "HAProxy",
+        "MinIO",
+        "Velero"
+      ]
+    },
+    {
+      "category": "Conteneurisation / Orchestration",
+      "items": [
+        "Docker",
+        "Kubernetes",
+        "Helm",
+        "Kustomize",
+        "RKE2"
+      ]
+    },
+    {
+      "category": "Sécurité / Observabilité",
+      "items": [
+        "Vault",
+        "Keycloak",
+        "OAuth2",
+        "Nagios",
+        "Prometheus",
+        "Grafana",
+        "Alertmanager"
+      ]
+    },
+    {
+      "category": "Outils",
+      "items": [
+        "JetBrains",
+        "Visual Studio"
+      ]
+    },
+    {
+      "category": "Langues",
+      "items": [
+        "Anglais Niveau B2 — TOEIC 690"
+      ]
+    },
+    {
+      "category": "Centres d'intérêt",
+      "items": [
+        "Homelab",
+        "rétrogaming",
+        "guitare"
+      ]
+    },
+    {
+      "category": "Réseaux sociaux",
+      "items": [
+        "@florianhodard"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "De mai 2022 à août 2024",
+      "role": "Ingénieur DevOps / Full-Stack | TraceParts | Saint-Romain-de-Colbosc",
+      "company_highlight": "TraceParts",
+      "sections": [
+        {
+          "heading": "Missions",
+          "content": [
+            "Gestion complète Azure DevOps et Azure en collab avec l'équipe IT.",
+            "Mise en place CI/CD couvrant 70+ projets: code review granulaire, build, tests, quality, déploy/revert automatiques, zéro downtime — Azure Pipelines, Docker, Kubernetes, AWS, Terraform, SonarQube, Nexus Repo.",
+            "Création d'environnements de test: tests rapides, réduction 50% des déploiements superflus — Docker Compose, PowerShell.",
+            "Développement frontend/backend: renfort période de rush, formation juniors, référent Angular — C#,, Angular.",
+            "Administration systèmes et réseaux: automatisation, collaboration équipe Infra — Windows, Linux, HAProxy, Nagios, DNS.",
+            "Pivot technique équipes R&D — Dev, Infra, Data, QA, PO, PM, CTO."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "De février 2017 à mai 2022",
+      "role": "Développeur Full-Stack | TraceParts | Saint-Romain-de-Colbosc",
+      "company_highlight": "TraceParts",
+      "sections": [
+        {
+          "heading": "Missions",
+          "content": [
+            "Visionneuse 3D: fonctionnalités avancées, atout commercial majeur — TypeScript, ThreeJS.",
+            "Développement web/APIs microservices: architecture moderne, code maintenable et documenté, modules réutilisables, zéro dette technique — C#,, Angular.",
+            "Création outils de développement et extensions navigateur: confort accru, réduction des erreurs — Shell, C#, Angular.",
+            "Interfaces gestion de base de données: accès direct équipes métiers, opérations avancées, gain de temps, zéro erreurs — SQL Server, Framework, JavaScript, jQuery, KendoUI.",
+            "Convertisseurs 3D: nouveaux formats CAO, argument marketing — C++."
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+[
+  {
+    "page": 1,
+    "char_count": 2546,
+    "block_count": 16,
+    "used_ratio": 0.6623194841027549,
+    "blank_after_pt": 223.8897705078125,
+    "starts_with_suite": false,
+    "has_experience_heading": true,
+    "used_top": 60.400001525878906,
+    "used_bottom": 618.0
+  },
+  {
+    "page": 2,
+    "char_count": 2669,
+    "block_count": 5,
+    "used_ratio": 0.5731598182465653,
+    "blank_after_pt": 324.0673828125,
+    "starts_with_suite": false,
+    "has_experience_heading": true,
+    "used_top": 35.28499984741211,
+    "used_bottom": 517.8223876953125
+  },
+  {
+    "page": 3,
+    "char_count": 2617,
+    "block_count": 5,
+    "used_ratio": 0.545899811701464,
+    "blank_after_pt": 347.0173034667969,
+    "starts_with_suite": false,
+    "has_experience_heading": true,
+    "used_top": 35.28499984741211,
+    "used_bottom": 494.8724670410156
+  },
+  {
+    "page": 4,
+    "char_count": 1587,
+    "block_count": 5,
+    "used_ratio": 0.4297325630466243,
+    "blank_after_pt": 444.81732177734375,
+    "starts_with_suite": false,
+    "has_experience_heading": true,
+    "used_top": 35.28499984741211,
+    "used_bottom": 397.07244873046875
+  }
+]

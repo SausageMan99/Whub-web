@@ -1,0 +1,58 @@
+{
+  "verdict": "NO-GO",
+  "scope": "Independent QA on actual Zahia regenerated artifacts only",
+  "source_pdf": "/root/.hermes/cache/documents/doc_4f504753d96d_Zahia Aris.pdf",
+  "artifact_dir": "/root/whub-cv-factory/artifacts/zahia_faithful_regen",
+  "final_pdf": "/root/whub-cv-factory/artifacts/zahia_faithful_regen/zahia_faithful_regen.pdf",
+  "structured_json": "/root/whub-cv-factory/artifacts/zahia_faithful_regen/structured.json",
+  "source_sha256_verified": "a2624097e140459f66c2e7c28dcf69a7d2bc763418f7ff5117ca12ddc028d1f5",
+  "automated_gates": {
+    "asset_preflight": "passed",
+    "py_compile_workers_cv_worker_src": "passed",
+    "pytest_targeted": "81 passed, 7 warnings",
+    "run_qa_actual_pdf": {
+      "passed": true,
+      "pages": 4,
+      "contact_hits": [],
+      "bad_glyphs": false,
+      "content_integrity_issues": [],
+      "text_overflow_hits": [],
+      "layout_issues": [],
+      "has_logo": true,
+      "has_watermark": true
+    }
+  },
+  "passed_checks": [
+    "Actual source hash matches source_manifest and source file",
+    "No Zahia Aris full name in final PDF",
+    "No standalone surname Aris in final PDF",
+    "No candidate email, phone, LinkedIn/http marker, or personal city in final PDF",
+    "No GSMC or Mars 2026 hallucination in final PDF",
+    "KLESIA date remains Juin 2023 – A ce jour",
+    "JSON leaf coverage against final PDF has no content loss except non-rendered synthesis_policy metadata"
+  ],
+  "blocking_findings": [
+    {
+      "id": "bad_page_break_assurone",
+      "severity": "blocking",
+      "evidence": "Final PDF text lines 123-133: page 2 ends with ASSURONE CONTEXTE then the orphan heading PRESTATIONS REALISEE; page 3 starts with ZAHIA / PRESTATIONS REALISEE (suite) and only then the bullets. This detaches the section heading from its body and leaves page 2 visibly underused.",
+      "requirement": "No awkward page break / no detached section opening; renderer must make the CV beautiful and readable, not merely pass automated QA."
+    },
+    {
+      "id": "experience_locations_lost",
+      "severity": "review/blocking_under_source_truth_policy",
+      "evidence": "Source experience locations Montreuil (93), Asnières (92), Rueil-Malmaison (92), Paris (75), Saint-Ouen-l’Aumône (95) are omitted from structured.json and final PDF. Candidate personal location Jouy-Le-Moutier is correctly removed; mission/client locations are source facts, not contact details.",
+      "requirement": "Source CV is truth; list and preserve source facts unless explicitly excluded."
+    }
+  ],
+  "non_blocking_notes": [
+    "Automated QA currently misses the ASSURONE orphan page-break issue; add a regression if this correction is implemented.",
+    "Vision tool was unavailable due upstream HTML error, so visual review used PDF text split, bounding boxes and density metrics; page 2 text bbox ends at y=529/842 with large blank area after the orphan heading."
+  ],
+  "commands_run": [
+    "python ~/.hermes/skills/user-workflows/whub-client-cv-generator/scripts/verify_whub_assets.py",
+    "python -m py_compile workers/cv-worker/src/*.py",
+    "PYTHONPATH=workers/cv-worker pytest -q workers/cv-worker/tests/test_qa.py workers/cv-worker/tests/test_renderer_overflow.py workers/cv-worker/tests/test_rendering.py workers/cv-worker/tests/test_structuring.py workers/cv-worker/tests/test_structuring_long_cv.py workers/cv-worker/tests/test_main_layout_retry.py workers/cv-worker/tests/test_qa_layout.py",
+    "PYTHONPATH=workers/cv-worker python - <<'PY' ... run_qa/source-vs-pdf checks ..."
+  ]
+}

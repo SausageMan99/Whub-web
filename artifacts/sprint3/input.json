@@ -1,0 +1,91 @@
+{
+  "name": "OUSSAMA",
+  "title": "Tech Lead Full Stack / DevOps",
+  "description": "Profil senior orienté conception, développement et industrialisation de plateformes web et cloud.",
+  "formations": [
+    {
+      "date": "2018",
+      "degree": "Master Informatique",
+      "school": "École d’ingénieur"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Stack technique dense",
+      "items": [
+        "Python, Java, JavaScript, TypeScript, React, Next.js, Vue.js, Node.js, Express, Symfony, .NET, C#, PostgreSQL, MySQL, MongoDB, Redis, Docker, Kubernetes, Terraform, Helm, Maven, Jenkins, GitLab CI, Azure DevOps, AWS, Azure, GCP, Power BI, SQL, FastAPI, Django, PyTest"
+      ]
+    },
+    {
+      "category": "Méthodes et outils",
+      "items": [
+        "Agile Scrum, Kanban, CI/CD, Clean Code, Code review, TDD, API REST, Microservices"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "2022 - Aujourd’hui",
+      "role": "Tech Lead Full Stack — Client énergie",
+      "company_highlight": "Client énergie",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Conception et développement de services backend et interfaces web pour les équipes métier.",
+            "Mise en place des pipelines CI/CD et accompagnement des développeurs sur les bonnes pratiques."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Python, Java, React, Docker, Kubernetes, Terraform, PostgreSQL"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2019 - 2022",
+      "role": "Développeur Full Stack — Client banque",
+      "company_highlight": "Client banque",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Développement de fonctionnalités front et back dans un contexte applicatif critique.",
+            "Participation aux rituels agiles, revues de code et corrections de performance.",
+            "Contribution à la conception des API REST et à la stabilisation des parcours utilisateurs.",
+            "Rédaction de documentation technique et support aux phases de recette métier."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "JavaScript, TypeScript, Node.js, Vue.js, MongoDB, GitLab CI"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2017 - 2019",
+      "role": "Développeur Backend — Client assurance",
+      "company_highlight": "Client assurance",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Maintenance évolutive de services backend et traitements batch.",
+            "Correction d’anomalies de production et amélioration des temps de réponse.",
+            "Participation aux chiffrages, aux revues de code et aux mises en production."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Java, Spring, Maven, SQL, Jenkins"
+          ]
+        }
+      ]
+    }
+  ]
+}

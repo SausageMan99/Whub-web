@@ -1,0 +1,39 @@
+[
+  {
+    "event_type": "worker_claimed",
+    "payload": {},
+    "created_at": "2026-05-28T22:33:22.159621+00:00"
+  },
+  {
+    "event_type": "extraction_done",
+    "payload": {
+      "chars": 10053
+    },
+    "created_at": "2026-05-28T22:33:22.852467+00:00"
+  },
+  {
+    "event_type": "layout_retry",
+    "payload": {
+      "reason": "page_too_dense",
+      "layout_issues": [
+        {
+          "code": "page_too_dense",
+          "page": 3,
+          "message": "Page 3 anormalement dense: 3883 caractères, 13 blocs",
+          "char_count": 3883,
+          "used_ratio": 0.888,
+          "block_count": 13
+        }
+      ]
+    },
+    "created_at": "2026-05-28T22:34:19.717077+00:00"
+  },
+  {
+    "event_type": "ready",
+    "payload": {
+      "version_id": "cd01c9c4-13e4-4413-957c-bcb066e07cb8",
+      "version_number": 1
+    },
+    "created_at": "2026-05-28T22:34:21.773361+00:00"
+  }
+]

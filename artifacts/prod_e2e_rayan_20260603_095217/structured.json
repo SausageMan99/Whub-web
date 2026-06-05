@@ -1,0 +1,154 @@
+{
+  "name": "RAYAN",
+  "title": "Développeur fullstack",
+  "skills": [
+    {
+      "items": [
+        "Node.js"
+      ],
+      "category": "Backend"
+    },
+    {
+      "items": [
+        "Javascript",
+        "HTML/CSS",
+        "Typescript",
+        "Vue.js",
+        "React.js"
+      ],
+      "category": "Frontend"
+    },
+    {
+      "items": [
+        "Prestashop",
+        "Wordpress"
+      ],
+      "category": "Autres"
+    },
+    {
+      "items": [
+        "Créativité",
+        "UX/UI Design",
+        "Intégration web / Responsive",
+        "Travail d’équipe",
+        "Autonomie",
+        "Maquettage"
+      ],
+      "category": "Autres"
+    },
+    {
+      "items": [
+        "Gestion de projet"
+      ],
+      "category": "Autres — suite"
+    },
+    {
+      "items": [
+        "Français : Natif",
+        "Anglais : Billingue"
+      ],
+      "category": "Langues"
+    },
+    {
+      "items": [
+        "Création de vidéo",
+        "Jeux vidéo",
+        "Sport : Football",
+        "Tennis",
+        "Padel",
+        "Instrument : Batterie"
+      ],
+      "category": "Centres d'intérêt"
+    }
+  ],
+  "formations": [
+    {
+      "date": "2020 - 2022",
+      "degree": "Master management de projet digital",
+      "school": "Efficom"
+    },
+    {
+      "date": "2019 - 2020",
+      "degree": "Bachelor chef de projet digital",
+      "school": "Efficom"
+    },
+    {
+      "date": "2016 - 2018",
+      "degree": "DUT informatique",
+      "school": "IUT Lille"
+    }
+  ],
+  "description": "Développeur web full-stack avec plus de 6 ans d'expérience en développement et gestion de projet agile (Scrum). Spécialisé en JavaScript, React.js, Node.js et Vue.js, j'ai travaillé sur des projets d'applications web et e-commerce à fort impact.",
+  "experiences": [
+    {
+      "date": "avril 2025",
+      "role": "Freelance",
+      "sections": [
+        {
+          "content": [
+            "Site vitrine pour un courtier auto (Vue.js, Strapi, TailwindCSS).",
+            "Application de création d’événements avec IA générative et IA de montage vidéo",
+            "Développement d’un SaaS événementiel permettant la collecte de photos et vidéos via QR code avec génération de montage vidéo IA automatique — Next.js 14, TypeScript, Supabase, Stripe, Cloudflare R2"
+          ],
+          "heading": "Missions clés"
+        }
+      ],
+      "company_highlight": "Freelance"
+    },
+    {
+      "date": "fev 2023 - mars 2025",
+      "role": "Capgemini - Projet client : RATP – React.js, Node.js, Javascript, HTML, CSS",
+      "sections": [
+        {
+          "content": [
+            "Projet client : RATP – React.js, Node.js, Javascript, HTML, CSS",
+            "Développement d'un portail intranet centralisé à destination de plusieurs milliers de conducteurs RER (lignes A & B — réseau transportant 2,7 millions de voyageurs par jour)",
+            "Analyse de code et fournir des suggestions pour améliorer sa qualité",
+            "Création et exécution des tests unitaires, ainsi que réalisation des tests système pour garantir la qualité du logiciel",
+            "Méthode de travail agile Scrum",
+            "Projet client : FDJ - React.js, Node.js, Javascript, HTML, CSS",
+            "Partie connexion des sites de la FDJ",
+            "Gestion des seuils d’alerte"
+          ],
+          "heading": "Missions clés"
+        }
+      ],
+      "company_highlight": "Capgemini"
+    },
+    {
+      "date": "jan 2020 - mai 2022",
+      "role": "Groupe Sweetco",
+      "sections": [
+        {
+          "content": [
+            "Création de site et ajouts de nouvelles fonctionnalités sur les sites existant",
+            "Refonte graphique de 5 sites web e-commerce",
+            "Analyse UX et réalisation de maquette",
+            "Contribution à l'amélioration continue des processus de développement web et des meilleures pratiques",
+            "Ajouts de nouvelles fonctionnalités sur les sites existant",
+            "Mise en place de l’utilisation de la cartographie Google Maps"
+          ],
+          "heading": "Missions clés"
+        }
+      ],
+      "company_highlight": "Groupe Sweetco"
+    },
+    {
+      "date": "oct 2017 - oct 2019",
+      "role": "AdoniF",
+      "sections": [
+        {
+          "content": [
+            "Gestion de projet, prise en charge des stagiaires et alternants"
+          ],
+          "heading": "Missions clés"
+        }
+      ],
+      "company_highlight": "AdoniF"
+    }
+  ],
+  "synthesis_policy": {
+    "mode": "complete",
+    "rules": "Contenu fidèle complet: aucune condensation automatique des expériences; compétences et certifications regroupées pour lisibilité sans suppression de faits source."
+  }
+}

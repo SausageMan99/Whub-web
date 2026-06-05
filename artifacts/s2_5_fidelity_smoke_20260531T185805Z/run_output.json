@@ -1,0 +1,109 @@
+{
+  "artifact_dir": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z",
+  "cases_requested": [
+    "oussama_like_rpa_copy_preservation",
+    "zahia_like_location_and_role_facts",
+    "thorez_like_realizations_and_tools_coverage"
+  ],
+  "cases": [
+    {
+      "id": "oussama_like_rpa_copy_preservation",
+      "first_name_only": "OUSSAMA",
+      "forbidden_identity_terms_count": 0,
+      "structured_json": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/oussama_like_rpa_copy_preservation/structured_input_redacted.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/oussama_like_rpa_copy_preservation/output.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/oussama_like_rpa_copy_preservation/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/oussama_like_rpa_copy_preservation/layout_metrics.json",
+      "checks": {
+        "source_fidelity_json": "passed",
+        "email_absent": true,
+        "linkedin_absent": true,
+        "url_absent": true,
+        "phone_fr_absent": true,
+        "forbidden_identity_absent": true,
+        "must_keep_present": {
+          "Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.": true,
+          "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration.": true
+        },
+        "must_drop_absent": {
+          "drop_1": true,
+          "drop_2": true,
+          "drop_3": true,
+          "drop_4": true
+        },
+        "qa_status": "passed",
+        "layout_warning_count": 0,
+        "hard_quality_ok": true
+      }
+    },
+    {
+      "id": "zahia_like_location_and_role_facts",
+      "first_name_only": "ZAHIA",
+      "forbidden_identity_terms_count": 0,
+      "structured_json": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/zahia_like_location_and_role_facts/structured_input_redacted.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/zahia_like_location_and_role_facts/output.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/zahia_like_location_and_role_facts/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/zahia_like_location_and_role_facts/layout_metrics.json",
+      "checks": {
+        "source_fidelity_json": "passed",
+        "email_absent": true,
+        "linkedin_absent": true,
+        "url_absent": true,
+        "phone_fr_absent": true,
+        "forbidden_identity_absent": true,
+        "must_keep_present": {
+          "Montreuil (93)": true,
+          "Pilotage de la recette métier et coordination des corrections avec les équipes IT.": true,
+          "Organisation des ateliers avec les métiers prévoyance et retraite complémentaire.": true
+        },
+        "must_drop_absent": {
+          "drop_1": true,
+          "drop_2": true,
+          "drop_3": true,
+          "drop_4": true,
+          "drop_5": true
+        },
+        "qa_status": "passed",
+        "layout_warning_count": 0,
+        "hard_quality_ok": true
+      }
+    },
+    {
+      "id": "thorez_like_realizations_and_tools_coverage",
+      "first_name_only": "NICOLAS",
+      "forbidden_identity_terms_count": 0,
+      "structured_json": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/thorez_like_realizations_and_tools_coverage/structured_input_redacted.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/thorez_like_realizations_and_tools_coverage/output.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/thorez_like_realizations_and_tools_coverage/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/thorez_like_realizations_and_tools_coverage/layout_metrics.json",
+      "checks": {
+        "source_fidelity_json": "passed",
+        "email_absent": true,
+        "linkedin_absent": true,
+        "url_absent": true,
+        "phone_fr_absent": true,
+        "forbidden_identity_absent": true,
+        "must_keep_present": {
+          "ERP - AS400 DB2 – SAP - ORACLE - D365": true,
+          "Gestion d'un SI d'une usine pharmaceutique (+500 employés)": true,
+          "Point Of Control Vilogia": true,
+          "Gestion de l'ERP D365 Microsoft, WMS Sage, TMS, interapplicatif, data et alimentation web, PDP facture...": true
+        },
+        "must_drop_absent": {
+          "drop_1": true,
+          "drop_2": true,
+          "drop_3": true,
+          "drop_4": true
+        },
+        "qa_status": "passed",
+        "layout_warning_count": 0,
+        "hard_quality_ok": true
+      }
+    }
+  ],
+  "overall": "GO",
+  "notes": [
+    "No production deploy, push, or worker restart was performed.",
+    "Raw source text was used in memory for fidelity checks but not written to artifacts."
+  ]
+}

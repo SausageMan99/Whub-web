@@ -1,0 +1,172 @@
+{
+  "name": "OUSSAMA",
+  "title": "Technical Leader RPA/IA",
+  "formations": [],
+  "skills": [
+    {
+      "category": "RPA",
+      "items": [
+        "UiPath",
+        "Blue Prism",
+        "Orchestrator"
+      ]
+    },
+    {
+      "category": "Langages",
+      "items": [
+        "Python",
+        "Java",
+        "VBA",
+        "SQL"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "01/2024 – Aujourd’hui",
+      "role": "Software Engineer - CDI chez EDF - France",
+      "company_highlight": "EDF - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Piloter le cadrage technique des automatisations RPA et IA.",
+            "Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.",
+            "Maintenir la documentation technique et accompagner les utilisateurs."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "UiPath, Python, Git, Jira."
+        }
+      ]
+    },
+    {
+      "date": "07/2022 – 01/2024",
+      "role": "Software Engineer - CDI chez BNP Paribas - France",
+      "company_highlight": "BNP Paribas - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Conceptualiser, développer et mettre en œuvre les robots logiciels pour automatiser les processus métier clés.",
+            "Participer activement aux réunions avec les parties prenantes, fournissant des mises à jour régulières sur l'avancement des projets RPA, des démonstrations sur les résultats obtenus et les perspectives d'amélioration.",
+            "Industrialiser les robots existants et suivre les incidents de production."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Blue Prism, UiPath, SQL, Python."
+        }
+      ]
+    },
+    {
+      "date": "02/2022 – 07/2022",
+      "role": "RPA Developer chez STALLERGENES GREER - France",
+      "company_highlight": "STALLERGENES GREER - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Analyser les processus métier et identifier les opportunités d’automatisation.",
+            "Développer les workflows RPA conformément aux besoins exprimés."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "UiPath, Orchestrator, Excel."
+        }
+      ]
+    },
+    {
+      "date": "09/2021 – 02/2022",
+      "role": "RPA Developer chez Banque de France - France",
+      "company_highlight": "Banque de France - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Réaliser les robots logiciels pour automatiser les contrôles opérationnels.",
+            "Documenter les développements et préparer les recettes utilisateurs."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Blue Prism, SQL Server."
+        }
+      ]
+    },
+    {
+      "date": "03/2021 – 09/2021",
+      "role": "Software Engineer chez EMGS Group - France",
+      "company_highlight": "EMGS Group - France",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Développer des scripts d’automatisation pour améliorer la qualité des données.",
+            "Assurer la maintenance corrective et évolutive des outils internes."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Python, VBA, Git."
+        }
+      ]
+    },
+    {
+      "date": "09/2020 – 03/2021",
+      "role": "Développeur informatique chez SAFILAIT - Maroc",
+      "company_highlight": "SAFILAIT - Maroc",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Concevoir des modules applicatifs pour le suivi des activités internes.",
+            "Rédiger les spécifications techniques et réaliser les tests fonctionnels."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Java, Spring Boot, MySQL."
+        }
+      ]
+    },
+    {
+      "date": "03/2020 – 09/2020",
+      "role": "Stagiaire développeur chez HUWAEI - Maroc",
+      "company_highlight": "HUWAEI - Maroc",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Participer au développement d’une application web de suivi des interventions.",
+            "Corriger les anomalies remontées lors des phases de recette."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Angular, Java, Git."
+        }
+      ]
+    },
+    {
+      "date": "2019 – 2020",
+      "role": "Projets académiques",
+      "company_highlight": "",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Développer une application de gestion des absences dans le cadre universitaire.",
+            "Réaliser un projet de classification de données avec Python."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Python, Java, MySQL."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "pages": 2,
+  "passed": true,
+  "has_logo": true,
+  "bad_glyphs": false,
+  "human_taste": {
+    "score": 100,
+    "verdict": "good",
+    "penalties": [],
+    "thresholds": {
+      "good": 86,
+      "draft": 70
+    },
+    "page_balance": {
+      "spread": 0.0,
+      "max_used_ratio": 0.0,
+      "min_used_ratio": 0.0
+    },
+    "page_metrics": [
+      {
+        "page": 1,
+        "used_top": 60.4,
+        "char_count": 1325,
+        "used_ratio": 0.674,
+        "block_count": 20,
+        "used_bottom": 627.5,
+        "blank_after_pt": 214.4,
+        "starts_with_suite": false,
+        "has_experience_heading": true
+      },
+      {
+        "page": 2,
+        "used_top": 35.3,
+        "char_count": 1244,
+        "used_ratio": 0.42,
+        "block_count": 7,
+        "used_bottom": 388.5,
+        "blank_after_pt": 453.4,
+        "starts_with_suite": false,
+        "has_experience_heading": true
+      }
+    ]
+  },
+  "contact_hits": [],
+  "has_watermark": true,
+  "layout_issues": [],
+  "layout_metrics": [
+    {
+      "page": 1,
+      "used_top": 60.4,
+      "char_count": 1325,
+      "used_ratio": 0.674,
+      "block_count": 20,
+      "used_bottom": 627.5,
+      "blank_after_pt": 214.4,
+      "starts_with_suite": false,
+      "has_experience_heading": true
+    },
+    {
+      "page": 2,
+      "used_top": 35.3,
+      "char_count": 1244,
+      "used_ratio": 0.42,
+      "block_count": 7,
+      "used_bottom": 388.5,
+      "blank_after_pt": 453.4,
+      "starts_with_suite": false,
+      "has_experience_heading": true
+    }
+  ],
+  "text_overflow_hits": [],
+  "content_integrity_issues": []
+}

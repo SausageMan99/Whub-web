@@ -1,0 +1,38 @@
+[
+  {
+    "page": 1,
+    "char_count": 2546,
+    "block_count": 16,
+    "used_ratio": 0.662,
+    "blank_after_pt": 223.9,
+    "starts_with_suite": false,
+    "has_experience_heading": true
+  },
+  {
+    "page": 2,
+    "char_count": 2669,
+    "block_count": 5,
+    "used_ratio": 0.573,
+    "blank_after_pt": 324.1,
+    "starts_with_suite": false,
+    "has_experience_heading": true
+  },
+  {
+    "page": 3,
+    "char_count": 2617,
+    "block_count": 5,
+    "used_ratio": 0.546,
+    "blank_after_pt": 347.0,
+    "starts_with_suite": false,
+    "has_experience_heading": true
+  },
+  {
+    "page": 4,
+    "char_count": 1587,
+    "block_count": 5,
+    "used_ratio": 0.43,
+    "blank_after_pt": 444.8,
+    "starts_with_suite": false,
+    "has_experience_heading": true
+  }
+]

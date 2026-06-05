@@ -1,0 +1,332 @@
+{
+  "name": "ZAHIA",
+  "title": "Chef de projet IT | AMOA & AMOE | Assurance & Protection Sociale",
+  "description": "Consultante avec plus de 15 ans d'expérience en gestion de projet IT et transformation digitale dont 10 ans dans le secteur de l'assurance et de la protection sociale. Orientée business, sens du client et culture de la donnée. Capacité à fédérer des parties prenantes transverses internes et externes : métiers, IT, conformité, juridique, marketing, UX, data, et à porter des projets complexes d'intégration SI et de décisionnel. Sensibilité aux enjeux de cybersécurité, gouvernance des données et impacts réglementaires.",
+  "formations": [
+    {
+      "date": "2024",
+      "degree": "PSPO I – Scrum Product Owner",
+      "school": "Certification"
+    },
+    {
+      "date": "2022",
+      "degree": "Certification UX/CX Design",
+      "school": "Cegos"
+    },
+    {
+      "date": "2019",
+      "degree": "Master Responsable de gestion & développement d’entreprise",
+      "school": "ESAM School, Paris"
+    },
+    {
+      "date": "2006",
+      "degree": "Licence Commerce international",
+      "school": "CY Cergy Paris Université"
+    },
+    {
+      "date": "2001",
+      "degree": "HND Business Studies & Languages",
+      "school": "London Metropolitan University, Londres (ex. Guildhall University)"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Pilotage de projets",
+      "items": [
+        "Méthodologies agiles",
+        "PSPO",
+        "Cycle V",
+        "Mode hybride",
+        "Cadrage technique et fonctionnel",
+        "Faisabilité",
+        "POC",
+        "Spécifications",
+        "Interviews métiers",
+        "Modélisation des use cases",
+        "Planning prévisionnel",
+        "Plan de charge",
+        "Budget",
+        "Analyse de risques",
+        "Analyse d'impacts et dépendances",
+        "Alertes et plans d'action",
+        "Pilotage des parties prenantes",
+        "Pilotage production métier",
+        "Conduite du changement"
+      ]
+    },
+    {
+      "category": "Relation client & parcours digitaux",
+      "items": [
+        "CRM PEGA",
+        "CRM Salesforce",
+        "Audit CRM",
+        "Migration de données",
+        "Décommissionnement",
+        "Parcours de souscription",
+        "Espaces client",
+        "Selfcare",
+        "Callbot",
+        "Chatbot conversationnel",
+        "LLM",
+        "Enquêtes de satisfaction",
+        "NPS",
+        "Taux de conversion",
+        "Google Analytics",
+        "Analyse de navigation",
+        "Maquettes",
+        "Wireframes",
+        "UX/UI",
+        "Processus métiers",
+        "Référentiels",
+        "Réglementation"
+      ]
+    },
+    {
+      "category": "Intégration SI & technique",
+      "items": [
+        "Cartographie applicative",
+        "Migrations de flux",
+        "Intégration SI",
+        "APIs SOAP",
+        "APIs REST",
+        "Batch",
+        "Scripts",
+        "Droits et habilitations",
+        "RPA",
+        "Cycles UAT",
+        "Pré-production",
+        "Mise en production",
+        "RUN",
+        "Microsoft 365",
+        "Azure Entra ID"
+      ]
+    },
+    {
+      "category": "Data & décisionnel",
+      "items": [
+        "Solutions décisionnelles",
+        "Cartographie des usages de données",
+        "Data warehouse",
+        "MDM",
+        "Référentiels",
+        "Power Query",
+        "Modèle de données",
+        "Rapports",
+        "UX reporting",
+        "KPIs",
+        "Visualisation",
+        "Qualité des données",
+        "Gouvernance des données",
+        "Formation utilisateurs"
+      ]
+    },
+    {
+      "category": "Langages & développement",
+      "items": [
+        "Python",
+        "Angular",
+        "JavaScript",
+        "MySQL",
+        ".NET Core",
+        "C#",
+        "Microsoft SQL Server",
+        "Bootstrap"
+      ]
+    },
+    {
+      "category": "Cloud / DevOps & outils IT",
+      "items": [
+        "Jenkins",
+        "Azure DevOps",
+        "Postman",
+        "ServiceNow ITSM",
+        "MantisBT",
+        "GLPI",
+        "Jira",
+        "Microsoft Teams",
+        "Microsoft Project",
+        "Suite Office"
+      ]
+    },
+    {
+      "category": "CRM, BI & applicatifs",
+      "items": [
+        "PEGA",
+        "Salesforce",
+        "Power BI",
+        "QlikView",
+        "Umbraco",
+        "Figma",
+        "SAP",
+        "SAP SRM",
+        "Traveldoo",
+        "Hypervision ADP GSI",
+        "Figgo"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "Juin 2023 – À ce jour",
+      "role": "Chef de projet | Protection sociale",
+      "company_highlight": "Groupe Klesia",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "L’Agirc-Arrco impose dans le cadre de la Retraite Complémentaire le pilotage des activités de la relation client via un CRM PEGA mis à disposition pour l’ensemble des IRC : Klesia, Malakoff Humanis, Apicil, AG2R, etc.",
+            "Pilotage de la migration du CRM SELLIGENT vers le CRM global PEGA."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Analyse d'impact, stratégie de migration de données et décommissionnement des flux retraite.",
+            "Participation aux comités de suivi pour intégrer l'organisation et les processus Klesia vers le socle communautaire CRM/PEGA.",
+            "Pilotage de la recette avec la MOE Agirc-Arrco : préparation des cas de test, accompagnement métiers, validation du PV de recette et GO de mise en production.",
+            "Gestion des montées de version, TNR et fourniture des jeux de données pour la recette.",
+            "Intégration d'un callbot sur la chaîne SVI/CRM s'appuyant sur un LLM entraîné spécifiquement sur le domaine retraite entreprise et automatisant 15 % des 13 500 appels entrants par an.",
+            "Développement d'une IHM Angular pour promouvoir les offres de services en adhérence avec le CRM global auprès de 219 conseillers utilisateurs.",
+            "Mise en place d’une solution RPA Selenium pour la distribution des dossiers contentieux, avec une réduction de 15 % des tâches manuelles.",
+            "Migration des applicatifs vers le système d'authentification Azure Entra ID pour 492 utilisateurs.",
+            "Mise en place d'un décisionnel Power BI data & reporting pour piloter l'activité relation client/CRM : 1,4 Go par an et taux d'adoption supérieur ou égal à 90 %.",
+            "Enquêtes de satisfaction : refonte du modèle de données, réécriture du script Python de collecte et traitement, avec +7 % de retours clients.",
+            "Accompagnement d'une plateforme Data centralisée : recueil des usages de données sur les périmètres retraite entreprise, individu et action sociale.",
+            "Cartographie et gestion des flux retraite entre le SI-RC, référentiel de données, et les applications du SI Klesia."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Python, Angular, JavaScript, MySQL, Jenkins, PEGA, Power BI, ServiceNow ITSM, MantisBT, Azure DevOps, Postman, QlikView."
+        }
+      ]
+    },
+    {
+      "date": "Mai 2017 à Mai 2023",
+      "role": "Product Owner Leader | Assurance",
+      "company_highlight": "AssurOne Group",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "Courtier IARD opérant en marque blanche B2B/B2C pour de grands comptes : Matmut, Groupe VyV, SG, LBP, Volvo, Audi.",
+            "Contexte de forte croissance au sein de la TechFactory avec pilotage d’un grand plan de transformation digitale.",
+            "Développement et refonte des parcours de souscription et harmonisation des processus métiers.",
+            "Environnement SI legacy couvrant devis, contrats, sinistres, réclamations, cotisations et GED."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Refonte full responsive des anciens tunnels et développement des nouveaux parcours de souscription.",
+            "Animation des ateliers techniques et métiers, priorisation du backlog, review et validation des livrables avec les partenaires, suivi des sprints.",
+            "Collaboration avec l’UX : création des maquettes et validation des prototypes.",
+            "Intégration du conteneur GTM permettant aux partenaires de collecter les données du parcours utilisateur et de les transmettre à leurs outils analytics.",
+            "Paramétrage des garanties et configuration du moteur tarifaire.",
+            "Refonte des espaces clients avec les nouvelles fonctionnalités selfcare et intégration SSO.",
+            "Migration des APIs SOAP vers REST pour mutualiser le socle technique des parcours.",
+            "Coordination avec les teams en tant que pivot central d’intégration : produit, architectes, SSO, infra, paiement, signature électronique, éditiques, conformité et APIs.",
+            "CRC : paramétrage du CTI dans ISICOM et création des groupes de compétences.",
+            "Pilotage de la recette fonctionnelle avec les partenaires assureurs et priorisation des anomalies pour sécuriser la mise en production et le run.",
+            "Cadrage du projet RAD/LAD avec Zelros, IA documentaire, pour automatiser les pièces de souscription et réduire le temps de vérification de 3 minutes à 10 secondes.",
+            "Cadrage d'un projet CRM Salesforce : interviews métiers, cartographie des parcours et traitements back-office associés, modélisation des use cases, rédaction du cahier des charges technico-fonctionnel, ROI et roadmap.",
+            "Organisation de l'appel d'offres des intégrateurs.",
+            "Impact business : croissance du chiffre d'affaires de +40 % entre 2018, 36 M€, et 2021, 50,4 M€."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": ".NET Core, C#, Angular, Microsoft SQL Server, JavaScript, Bootstrap, Azure DevOps, QlikView, Umbraco, Figma, CRM Salesforce, Postman, GLPI."
+        }
+      ]
+    },
+    {
+      "date": "Juin 2014 - Mars 2017",
+      "role": "Chef de projet AMOA | Transformation groupe achat",
+      "company_highlight": "Groupe Cevital",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "Conglomérat industriel souhaitant structurer la fonction achats et harmoniser les processus via SAP/SRM avec des objectifs d’économies et de professionnalisation des équipes."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Cartographie des achats de 10 business units avec économies cibles de 15 % du spend.",
+            "Coordination projet SAP/SRM dans la chaîne complète des workflows achats.",
+            "Mise en place d’un référentiel compétences et processus RH pour la fonction achat.",
+            "Réalisation du budget et du cahier des charges pour le futur bureau d’achats parisien.",
+            "Objectifs prévisionnels : réduction de 30 % du délai demande d’achat et commande, demandes dans SAP/SRM supérieures ou égales à 90 %, conformité process supérieure ou égale à 95 %."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Microsoft Teams, Suite Office, SAP, GLPI."
+        }
+      ]
+    },
+    {
+      "date": "Oct. 2010 - Oct. 2013",
+      "role": "Chef de projet AMOA | Service merchandising",
+      "company_highlight": "Groupe Estée Lauder",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "AMOA pour le service Merchandising.",
+            "Pilotage de la solution SAP et automatisation des usages métiers."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Cadrage de la mise en place de la solution SAP.",
+            "Conception et implémentation d’un outil de suivi des commandes des marchés EMEA.",
+            "Automatisation des imports via extractions SAP pour alimenter des tableaux de bord.",
+            "Mise en place d’alerteurs pour les équipes merchandising sur les délais et les stocks.",
+            "Mise en place d’un système Travel & Expense Traveldoo – Expedia : politique de voyage, workflows d’approbation et formation des utilisateurs.",
+            "Réduction de 10 % du budget Travel & Expense."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Microsoft Project, Suite Office, SAP, Traveldoo."
+        }
+      ]
+    },
+    {
+      "date": "Sept. 2007 - Mai 2010",
+      "role": "Chef de projet AMOA | Automatisation des processus RH",
+      "company_highlight": "SC Johnson",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "AMOA et gestion de projet digital : digitalisation et sécurisation des outils et processus RH.",
+            "Conduite du changement et intégration applicative."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Déploiement de la solution Figgo pour la gestion des absences : digitalisation totale du workflow de validation.",
+            "Définition des KPIs pour la mise en place du dashboard.",
+            "Formation des utilisateurs et rédaction des guides managers et collaborateurs.",
+            "Mise en place d’un workflow électronique d’entrées et sorties des employés : réduction des erreurs et économies de traitement.",
+            "Refonte et sécurisation de l’espace informatique RH : droits d’accès, archivage et traçabilité."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Jira, Suite Office, SAP, Hypervision ADP GSI, Figgo."
+        }
+      ]
+    }
+  ],
+  "synthesis_policy": {
+    "mode": "complete",
+    "rules": "Contenu fidèle complet: aucune condensation automatique des expériences."
+  }
+}

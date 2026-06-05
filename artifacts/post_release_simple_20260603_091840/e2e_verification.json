@@ -1,0 +1,23 @@
+{
+  "request_id": "94cc027d-54d1-4f69-ba0b-bbd49d4addfc",
+  "version_id": "c40eb76f-aad5-44e2-99b5-34f9809aa3f4",
+  "status": "draft_ready",
+  "artifact_dir": "/root/whub-cv-factory/artifacts/post_release_simple_20260603_091840",
+  "final_pdf": "/root/whub-cv-factory/artifacts/post_release_simple_20260603_091840/final_prod_e2e_simple.pdf",
+  "prod_login_http": 200,
+  "prod_requests_new_http": 307,
+  "prod_requests_new_location": "/login",
+  "qa_passed": false,
+  "qa_no_contacts": true,
+  "qa_no_overflow": true,
+  "first_name_only": false,
+  "no_email": true,
+  "no_phone_like": true,
+  "contains_react": true,
+  "contains_techcorp": true,
+  "pages": 2,
+  "failed_checks": [
+    "qa_passed",
+    "first_name_only"
+  ]
+}

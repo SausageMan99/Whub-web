@@ -1,0 +1,20 @@
+{
+  "task": "t_8ccd0d2b",
+  "scenario": "local worker-identical regeneration from real Zahia source text, no manual renderer JSON",
+  "source_text": "/root/whub-cv-factory/artifacts/zahia_faithful_regen/source_text.txt",
+  "structured_json": "/root/whub-cv-factory/artifacts/z8a_real_auto_regen/structured.json",
+  "pdf": "/root/whub-cv-factory/artifacts/z8a_real_auto_regen/output_layout_retry.pdf",
+  "qa_report": "/root/whub-cv-factory/artifacts/z8a_real_auto_regen/qa_layout_retry.json",
+  "qa_passed": true,
+  "pages": 4,
+  "forbidden_absent": ["GSMC", "Mars 2026", "ZAHIA ARIS", "standalone Aris", "Google Analytics", "Méthode hybride", "Études de faisabilité", "business units"],
+  "required_present": ["KLESIA", "à ce jour", "Montreuil (93)", "Asnières (92)", "Rueil-Malmaison (92)", "Paris (75)", "Saint-Ouen-l’Aumône (95)"],
+  "tests": {
+    "worker_pytest": "96 passed",
+    "compileall_worker": "passed",
+    "renderer_py_compile": "passed",
+    "asset_preflight": "passed",
+    "git_diff_check": "passed"
+  },
+  "deploy_or_restart": "none"
+}

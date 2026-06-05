@@ -1,0 +1,25 @@
+{
+  "corrected_after_z8a": true,
+  "request_id": "797f2dde-cd47-4d74-8832-38745ee99f0a",
+  "version_id": "cd01c9c4-13e4-4413-957c-bcb066e07cb8",
+  "final_pdf": "/root/whub-cv-factory/artifacts/prod_e2e_zahia_20260528_223317/final_prod_e2e.pdf",
+  "pdf_sha256": "261ecfb9dea7ebb61b1943d718fa812db40d96dcd146e0cd9926390968ed87f5",
+  "qa_passed": true,
+  "pages": 4,
+  "first_name_only": true,
+  "no_contact_email_phone_url": true,
+  "no_known_hallucinations": true,
+  "klesia_present": true,
+  "assurone_present": true,
+  "klesia_a_ce_jour_present": true,
+  "locations_present": {
+    "Montreuil (93)": true,
+    "Asnières (92)": true,
+    "Rueil-Malmaison (92)": true,
+    "Paris (75)": true,
+    "Saint-Ouen-l’Aumône (95)": true
+  },
+  "layout_issues": [],
+  "content_integrity_issues": [],
+  "script_note": "Original script failed only on over-strict literal checks (uppercase GROUPE KLESIA/ASSURONE/ENOVACOM and lowercase à ce jour); normalized checks pass."
+}

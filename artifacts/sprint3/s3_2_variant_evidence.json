@@ -1,0 +1,15 @@
+{
+  "selected": "base",
+  "selected_status": "passed",
+  "selected_score": 100,
+  "attempts": [
+    {
+      "name": "base",
+      "status": "passed",
+      "score": 100,
+      "pages": 2,
+      "layout_codes": []
+    }
+  ],
+  "output_pdf": "/root/whub-cv-factory/artifacts/sprint3/s3_2_variant_smoke.pdf"
+}

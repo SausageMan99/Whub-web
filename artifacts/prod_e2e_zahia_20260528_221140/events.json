@@ -1,0 +1,21 @@
+[
+  {
+    "event_type": "worker_claimed",
+    "payload": {},
+    "created_at": "2026-05-28T22:11:44.350764+00:00"
+  },
+  {
+    "event_type": "extraction_done",
+    "payload": {
+      "chars": 10053
+    },
+    "created_at": "2026-05-28T22:11:44.981593+00:00"
+  },
+  {
+    "event_type": "qa_failed",
+    "payload": {
+      "error": "{'passed': False, 'pages': 4, 'contact_hits': [], 'bad_glyphs': False, 'content_integrity_issues': [{'code': 'pdf_fact_absent_from_source', 'message': 'Fait PDF absent du CV source: Google Analytics', 'fact': 'Google Analytics'}, {'code': 'pdf_fact_absent_from_source', 'message': 'Fait PDF absent du CV source: Méthode hybride', 'fact': 'Méthode hybride'}, {'code': 'pdf_fact_absent_from_source', 'message': 'Fait PDF absent du CV source: Études de faisabilité', 'fact': 'Études de faisabilité'}, {'"
+    },
+    "created_at": "2026-05-28T22:12:40.228653+00:00"
+  }
+]

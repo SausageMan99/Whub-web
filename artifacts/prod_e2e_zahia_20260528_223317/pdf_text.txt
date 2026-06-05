@@ -1,0 +1,246 @@
+ZAHIA
+Chef de projet IT | AMOA & AMOE | Assurance &
+Protection Sociale
+F O R M A T I O N S
+D I P L Ô M E S
+2024
+PSPO I – Scrum Product Owner
+Certification
+2022
+Certification UX/CX Design
+Cegos
+2019
+Master Responsable de
+gestion & développement
+d’entreprise
+ESAM School, Paris
+2006
+Licence Commerce
+international
+CY Cergy Paris Université
+2001
+HND Business Studies &
+Languages
+London Metropolitan University,
+Londres
+D E S C R I P T I O N
+Consultante avec plus de 15 ans d'expérience en gestion de projet IT et
+transformation digitale, dont 10 ans dans le secteur de l'assurance et de la
+protection sociale. Orientée business, sens du client et culture de la donnée.
+Capacité à fédérer des parties prenantes transverses internes et externes : métiers,
+IT, conformité, juridique, marketing, UX, data. Expérience dans le pilotage de projets
+complexes d'intégration SI et de décisionnel, avec une sensibilité aux enjeux de
+cybersécurité, gouvernance des données et impacts réglementaires.
+C O M P É T E N C E S   T E C H N I Q U E S
+Autres — suite
+• Interviews métiers
+• Modélisation des use cases
+• Planning prévisionnel
+• Plan de charge
+• Budget
+• Analyse des risques
+Autres — suite
+• Espaces client et selfcare
+• Callbot conversationnel
+• Chatbot LLM
+• Enquêtes de satisfaction
+• NPS
+• Taux de conversion
+Autres — suite
+• Scripts
+• Droits et habilitations
+• RPA
+• Cycles UAT
+• Pré-production
+• Mise en production
+Autres — suite
+• Modèle de données
+• UX reporting
+• KPIs
+• Visualisation
+• Qualité des données
+• Gouvernance des données
+Autres — suite
+• Umbraco
+• Figma
+• GLPI
+• SAP
+• SAP SRM
+• Microsoft Project
+Autres — suite 2
+• Analyse de navigation
+• Maquettes et wireframes
+• UX/UI
+• Processus métiers
+• Référentiels
+Autres
+• CRM PEGA
+• CRM Salesforce
+• Audit CRM
+• Migration de données
+• Plan de décommissionnement
+• Parcours de souscription
+Autres
+• Cartographie applicative
+• Migration de flux
+• Intégration SI
+• APIs SOAP
+• APIs REST
+• Batch
+Autres
+• Solutions décisionnelles
+• Cartographie des usages data
+• Data warehouse
+• MDM
+• Référentiels
+• PowerQuery
+Autres
+• PEGA
+• Salesforce
+• ServiceNow
+• MantisBT
+• Postman
+• QlikView
+Autres
+• Méthodologies agiles
+• Cycle V
+• Mode hybride
+• Cadrage technique et fonctionnel
+• Faisabilité et POC
+Autres — suite 2
+• Impacts et dépendances
+• Alertes et plans d’action
+• Pilotage des parties prenantes
+• Pilotage production métier
+• Conduite du changement
+
+ZAHIA
+C O M P É T E N C E S   T E C H N I Q U E S   ( S U I T E )
+Autres — suite 2
+• Microsoft Teams
+• Suite Office
+• Hypervision ADP GSI
+• Figgo
+• Traveldoo
+Backend
+• Python
+• .NET Core
+• C#
+Autres — suite 2
+• RUN
+• Microsoft 365
+Frontend
+• Angular
+• JavaScript
+Data
+• MySQL
+• Microsoft SQL Server
+Cloud / DevOps
+• Azure DevOps
+• Jenkins
+Autres — suite 3
+• Réglementation
+Cloud / DevOps
+• Azure EntraID
+Data
+• Rapports Power BI
+Autres — suite 2
+• Formation utilisateurs
+Autres
+• Bootstrap
+Data
+• Power BI
+Outils & méthodes
+• Jira
+E X P É R I E N C E S   P R O F E S S I O N N E L L E S
+Juin 2023 – À ce jour
+Chef de projet | Protection sociale - Groupe Klesia, Montreuil (93)
+Contexte
+• L’Agirc-Arrco impose, dans le cadre de la Retraite Complémentaire, le pilotage des activités de la relation client
+via un CRM PEGA mis à disposition pour l’ensemble des IRC : Klesia, Malakoff Humanis, Apicil, AG2R, etc.
+• Pilotage de la migration du CRM SELLIGENT vers le CRM global PEGA.
+Missions clés
+• Analyse d'impact, stratégie de migration de données et décommissionnement des flux retraite.
+• Participation aux comités de suivi pour intégrer l'organisation et les processus Klesia vers le socle communautaire
+CRM/PEGA.
+• Pilotage de la recette avec la MOE Agirc-Arrco : préparation des cas de test, accompagnement métiers,
+validation du PV de recette et GO de mise en production.
+• Gestion des montées de version, TNR et fourniture des jeux de données pour la recette.
+• Développement d'une IHM Angular pour promouvoir les offres de services en adhérence avec le CRM global, pour
+219 conseillers utilisateurs.
+• Mise en place d’une solution RPA Selenium pour la distribution des dossiers contentieux, réduisant de 15 % les
+tâches manuelles.
+• Migration des applicatifs vers le système d'authentification Azure EntraID pour 492 utilisateurs.
+• Accompagnement d'une plateforme Data centralisée : recueil des usages de données sur les périmètres retraite
+entreprise, retraite individu et action sociale.
+• Cartographie et gestion des flux retraite entre le SI-RC, référentiel de données, et les applications du SI Klesia.
+Environnement technique
+Python, Angular, JavaScript, MySQL, Jenkins, PEGA, Power BI, ServiceNow ITSM, MantisBT, Azure DevOps, Postman,
+QlikView
+
+ZAHIA
+Mai 2017 – Mai 2023
+Product Owner Leader | Assurance - AssurOne Group, Asnières (92)
+Contexte
+• Courtier IARD opérant en marque blanche B2B/B2C pour de grands comptes : Matmut, Groupe VyV, SG, LBP, Volvo,
+Audi.
+• Contexte de forte croissance au sein de la TechFactory : pilotage d’un grand plan de transformation digitale,
+développement et refonte des parcours de souscription, harmonisation des processus métiers.
+• Environnement SI legacy : devis, contrats, sinistres, réclamations, cotisations, GED.
+Missions clés
+• Refonte full responsive des anciens tunnels et développement des nouveaux parcours de souscription.
+• Animation des ateliers techniques et métiers, priorisation du backlog, review et validation des livrables avec les
+partenaires, suivi des sprints.
+• Paramétrage des garanties et configuration du moteur tarifaire.
+• Refonte des espaces clients avec les nouvelles fonctionnalités selfcare et intégration SSO.
+• Migration des APIs SOAP vers REST pour mutualiser le socle technique des parcours.
+• CRC : paramétrage du CTI dans ISICOM et création des groupes de compétences.
+• Pilotage de la recette fonctionnelle avec les partenaires assureurs et priorisation des anomalies pour sécuriser la
+mise en production et le run.
+• Cadrage d'un projet CRM Salesforce : interviews métiers, cartographie des parcours et traitements back-office
+associés, modélisation des use cases, rédaction du cahier des charges technico-fonctionnel, ROI et roadmap.
+• Organisation de l'appel d'offres des intégrateurs.
+Environnement technique
+.NET Core, C#, Angular, Microsoft SQL Server, JavaScript, Bootstrap, Azure DevOps, QlikView, Umbraco, Figma, CRM
+Salesforce, Postman, GLPI
+Juin 2014 – Mars 2017
+Chef de projet AMOA | Transformation Groupe Achat - Groupe Cevital, Rueil-Malmaison (92)
+Contexte
+• Conglomérat industriel souhaitant structurer la fonction achats et harmoniser les processus via SAP/SRM, avec
+des objectifs d’économies et de professionnalisation des équipes.
+Missions clés
+• Coordination du projet SAP/SRM dans la chaîne complète des workflows achats.
+• Mise en place d’un référentiel compétences et processus RH pour la fonction achat.
+• Réalisation du budget et du cahier des charges pour le futur bureau d’achats parisien.
+Environnement technique
+Microsoft Teams, Suite Office, SAP, GLPI
+Oct. 2010 – Oct. 2013
+Chef de projet AMOA | Service Merchandising - Groupe Estée Lauder, Paris (75)
+Contexte
+• AMOA pour le service Merchandising, pilotage de la solution SAP et automatisation des usages métiers.
+Missions clés
+• Cadrage de la mise en place de la solution SAP.
+• Conception et implémentation d’un outil de suivi des commandes des marchés EMEA, avec extractions SAP et
+automatisation des imports pour alimenter des tableaux de bord.
+
+ZAHIA
+Missions clés (suite)
+• Mise en place d’alerteurs pour les équipes merchandising sur les délais et les stocks.
+• Mise en place d’un système Travel & Expense Traveldoo – Expedia : politique de voyage, workflows d’approbation
+et formation des utilisateurs, avec 10 % de réduction du budget.
+Environnement technique
+Microsoft Project, Suite Office, SAP, Traveldoo
+Sept. 2007 – Mai 2010
+Chef de projet AMOA | Automatisation des processus RH - SC Johnson, Saint-Ouen-l’Aumône (95)
+Contexte
+• AMOA et gestion de projet digital : digitalisation et sécurisation des outils et processus RH, conduite du
+changement et intégration applicative.
+Missions clés
+• Déploiement de la solution Figgo pour la gestion des absences : digitalisation totale du workflow de validation.
+• Définition des KPIs pour la mise en place du dashboard.
+• Formation des utilisateurs et rédaction des guides managers et collaborateurs.
+• Mise en place d’un workflow électronique d’entrées et sorties des employés, avec réduction des erreurs et
+économies de traitement.
+• Refonte et sécurisation de l’espace informatique RH : droits d’accès, archivage et traçabilité.
+Environnement technique
+Jira, Suite Office, SAP, Hypervision ADP GSI, Figgo

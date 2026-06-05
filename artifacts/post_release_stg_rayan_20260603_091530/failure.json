@@ -1,0 +1,35 @@
+{
+  "request": {
+    "ts": "2026-06-03T09:17:04.097995+00:00",
+    "id": "e67cf766-3926-4af5-961c-c7996e7612eb",
+    "status": "failed",
+    "last_error": "Échec temporaire du modèle de structuration.",
+    "worker_attempts": 1,
+    "current_version_id": null,
+    "updated_at": "2026-06-03T09:16:58.462717+00:00",
+    "ready_at": null
+  },
+  "events": [
+    {
+      "event_type": "worker_claimed",
+      "payload": {},
+      "created_at": "2026-06-03T09:15:33.350401+00:00"
+    },
+    {
+      "event_type": "extraction_done",
+      "payload": {
+        "chars": 2374
+      },
+      "created_at": "2026-06-03T09:15:34.049415+00:00"
+    },
+    {
+      "event_type": "failed",
+      "payload": {
+        "error": "Échec temporaire du modèle de structuration.",
+        "error_category": "transient_model_failure"
+      },
+      "created_at": "2026-06-03T09:16:58.821288+00:00"
+    }
+  ],
+  "versions": []
+}

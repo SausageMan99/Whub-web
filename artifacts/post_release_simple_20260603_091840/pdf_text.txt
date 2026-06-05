@@ -1,0 +1,36 @@
+ALICE
+Développeuse fullstack senior
+F O R M A T I O N S
+D I P L Ô M E S
+2018 - 2019
+Master développement web
+Ecole Web Paris
+D E S C R I P T I O N
+Développeuse fullstack avec 7 ans d expérience sur React, Node.js et TypeScript.
+C O M P É T E N C E S   T E C H N I Q U E S
+Frontend
+• React.js
+• Next.js
+• TypeScript
+Data
+• PostgreSQL
+Cloud / DevOps
+• Docker
+• AWS
+Backend
+• Node.js
+Langues
+• Français : Natif Anglais : Courant
+E X P É R I E N C E S   P R O F E S S I O N N E L L E S
+2022 - 2026
+Développeuse fullstack senior — TechCorp
+Missions clés
+• Développement d une plateforme SaaS B2B en React.js, Next.js, Node.js et
+TypeScript.
+• Mise en place de tests unitaires, CI/CD Docker et déploiements AWS.
+
+ALICE
+2019 - 2022
+Développeuse web — RetailPlus
+Missions clés
+• Création de fonctionnalités e-commerce avec React.js, Node.js et PostgreSQL.

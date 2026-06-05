@@ -1,0 +1,84 @@
+{
+  "passed": false,
+  "pages": 2,
+  "contact_hits": [],
+  "bad_glyphs": false,
+  "content_integrity_issues": [
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: Master Management des",
+      "fact": "Master Management des"
+    },
+    {
+      "code": "pdf_fact_absent_from_source",
+      "message": "Fait PDF absent du CV source: IAE Paris",
+      "fact": "IAE Paris"
+    }
+  ],
+  "text_overflow_hits": [],
+  "layout_issues": [],
+  "layout_metrics": [
+    {
+      "page": 1,
+      "char_count": 1672,
+      "block_count": 22,
+      "used_ratio": 0.877,
+      "blank_after_pt": 43.0,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 60.4,
+      "used_bottom": 798.9
+    },
+    {
+      "page": 2,
+      "char_count": 1012,
+      "block_count": 5,
+      "used_ratio": 0.273,
+      "blank_after_pt": 577.2,
+      "starts_with_suite": false,
+      "has_experience_heading": true,
+      "used_top": 35.3,
+      "used_bottom": 264.7
+    }
+  ],
+  "human_taste": {
+    "score": 100,
+    "verdict": "good",
+    "thresholds": {
+      "good": 86,
+      "draft": 70
+    },
+    "penalties": [],
+    "page_balance": {
+      "spread": 0.0,
+      "min_used_ratio": 0.0,
+      "max_used_ratio": 0.0
+    },
+    "page_metrics": [
+      {
+        "page": 1,
+        "char_count": 1672,
+        "block_count": 22,
+        "used_ratio": 0.877,
+        "blank_after_pt": 43.0,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 60.4,
+        "used_bottom": 798.9
+      },
+      {
+        "page": 2,
+        "char_count": 1012,
+        "block_count": 5,
+        "used_ratio": 0.273,
+        "blank_after_pt": 577.2,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 264.7
+      }
+    ]
+  },
+  "has_logo": true,
+  "has_watermark": true
+}

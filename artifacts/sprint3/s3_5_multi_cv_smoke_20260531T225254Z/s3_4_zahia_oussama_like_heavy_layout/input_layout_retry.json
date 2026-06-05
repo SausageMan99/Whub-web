@@ -1,0 +1,238 @@
+{
+  "name": "ZAHIA",
+  "title": "Product Owner / Business Analyst Assurance",
+  "description": "Profil synthétique de smoke local pour valider la pagination expériences sans modification de contenu.",
+  "formations": [
+    {
+      "date": "2018",
+      "degree": "Master Management des systèmes d’information",
+      "school": "École synthétique"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Fonctionnel",
+      "items": [
+        "Cadrage besoin",
+        "Ateliers métier",
+        "User stories",
+        "Backlog",
+        "Recette UAT",
+        "Conduite du changement"
+      ]
+    },
+    {
+      "category": "Outils",
+      "items": [
+        "Jira",
+        "Confluence",
+        "Miro",
+        "ServiceNow",
+        "Power BI",
+        "Excel avancé"
+      ]
+    },
+    {
+      "category": "Technique",
+      "items": [
+        "SQL",
+        "API REST",
+        "Data mapping",
+        "Intégration SI",
+        "RGPD",
+        "Tests automatisés"
+      ]
+    },
+    {
+      "category": "Assurance",
+      "items": [
+        "Santé",
+        "Prévoyance",
+        "Retraite",
+        "Relation client"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "2023 - 2024",
+      "role": "CONSULTANT SI SPRINT 3 1 CHEZ CLIENT 1",
+      "company_highlight": "CLIENT 1",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Mission source 1.01 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.02 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.03 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.04 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.05 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.06 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.07 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.08 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.09 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.10 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.11 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.12 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.13 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 1.14 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Jira",
+            "Confluence",
+            "SQL",
+            "API REST"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2022 - 2023",
+      "role": "CONSULTANT SI SPRINT 3 2 CHEZ CLIENT 2",
+      "company_highlight": "CLIENT 2",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Mission source 2.01 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.02 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.03 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.04 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.05 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.06 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.07 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.08 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.09 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.10 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 2.11 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Jira",
+            "Confluence",
+            "SQL",
+            "API REST"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2021 - 2022",
+      "role": "CONSULTANT SI SPRINT 3 3 CHEZ CLIENT 3",
+      "company_highlight": "CLIENT 3",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Mission source 3.01 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.02 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.03 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.04 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.05 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.06 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.07 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée",
+            "Mission source 3.08 cadrage métier, ateliers, recette, coordination et reporting avec analyse détaillée, coordination transverse, indicateurs et documentation source conservée"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Jira",
+            "Confluence",
+            "SQL",
+            "API REST"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2020 - 2021",
+      "role": "CONSULTANT SI SPRINT 3 4 CHEZ CLIENT 4",
+      "company_highlight": "CLIENT 4",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Mission source 4.01 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 4.02 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 4.03 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 4.04 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 4.05 cadrage métier, ateliers, recette, coordination et reporting"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Jira",
+            "Excel"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2019 - 2020",
+      "role": "CONSULTANT SI SPRINT 3 5 CHEZ CLIENT 5",
+      "company_highlight": "CLIENT 5",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Mission source 5.01 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 5.02 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 5.03 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 5.04 cadrage métier, ateliers, recette, coordination et reporting"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Jira",
+            "Excel"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "2018 - 2019",
+      "role": "CONSULTANT SI SPRINT 3 6 CHEZ CLIENT 6",
+      "company_highlight": "CLIENT 6",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Mission source 6.01 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 6.02 cadrage métier, ateliers, recette, coordination et reporting",
+            "Mission source 6.03 cadrage métier, ateliers, recette, coordination et reporting"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "Jira",
+            "Excel"
+          ]
+        }
+      ]
+    }
+  ],
+  "_layout": {
+    "anti_crowding": true,
+    "force_experiences_new_page": true,
+    "force_page_break_before_experience_indexes": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "allow_grouping": true,
+    "density_profile": "balanced",
+    "page_dense_char_threshold": 2850,
+    "max_used_ratio": 0.86,
+    "readability_reserve": 130
+  }
+}

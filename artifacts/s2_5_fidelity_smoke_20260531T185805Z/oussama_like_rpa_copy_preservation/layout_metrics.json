@@ -1,0 +1,24 @@
+[
+  {
+    "page": 1,
+    "char_count": 432,
+    "block_count": 9,
+    "used_ratio": 0.3609587438944165,
+    "blank_after_pt": 477.602294921875,
+    "starts_with_suite": false,
+    "has_experience_heading": true,
+    "used_top": 60.400001525878906,
+    "used_bottom": 364.2874755859375
+  },
+  {
+    "page": 2,
+    "char_count": 359,
+    "block_count": 3,
+    "used_ratio": 0.14697590017255927,
+    "blank_after_pt": 682.8672637939453,
+    "starts_with_suite": false,
+    "has_experience_heading": true,
+    "used_top": 35.28499984741211,
+    "used_bottom": 159.0225067138672
+  }
+]

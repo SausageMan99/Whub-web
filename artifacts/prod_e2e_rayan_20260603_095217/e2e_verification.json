@@ -1,0 +1,18 @@
+{
+  "request_id": "23ea30ed-4f2e-495b-be89-6334a1abc99a",
+  "status": "ready",
+  "version_id": "e30840af-5606-4a45-9bba-e5cedf4f28a6",
+  "artifact_dir": "/root/whub-cv-factory/artifacts/prod_e2e_rayan_20260603_095217",
+  "final_pdf": "/root/whub-cv-factory/artifacts/prod_e2e_rayan_20260603_095217/final_prod_e2e.pdf",
+  "prod_login_http": 200,
+  "qa_passed": true,
+  "qa_no_contacts": true,
+  "qa_layout_ok": true,
+  "qa_no_overflow": true,
+  "first_name_only": true,
+  "no_email": true,
+  "no_phone_like": true,
+  "no_url_linkedin": true,
+  "pages": 2,
+  "failed_checks": []
+}

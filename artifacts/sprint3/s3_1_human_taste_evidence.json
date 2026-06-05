@@ -1,0 +1,73 @@
+{
+  "pdf": "artifacts/sprint3/s3_1_human_taste_smoke.pdf",
+  "smoke_note": "Fixture volontairement sparse conservée comme régression anti-faux-GO: elle doit produire des warnings/action codes et ne plus être scorée good.",
+  "layout_issues": [
+    {
+      "code": "last_page_sparse",
+      "page": 2,
+      "message": "Dernière page trop peu remplie: 392 caractères, 4 blocs, hauteur utilisée 22%",
+      "char_count": 392,
+      "block_count": 4,
+      "used_ratio": 0.221
+    },
+    {
+      "code": "page_too_sparse",
+      "page": 2,
+      "message": "Page 2 trop peu remplie: 392 caractères, 4 blocs, hauteur utilisée 22%",
+      "char_count": 392,
+      "block_count": 4,
+      "used_ratio": 0.221
+    }
+  ],
+  "human_taste": {
+    "score": 66,
+    "verdict": "poor",
+    "thresholds": {
+      "good": 86,
+      "draft": 70
+    },
+    "penalties": [
+      {
+        "code": "last_page_sparse",
+        "page": 2,
+        "points": 16,
+        "reason": "Dernière page trop peu remplie: 392 caractères, 4 blocs, hauteur utilisée 22%"
+      },
+      {
+        "code": "page_too_sparse",
+        "page": 2,
+        "points": 18,
+        "reason": "Page 2 trop peu remplie: 392 caractères, 4 blocs, hauteur utilisée 22%"
+      }
+    ],
+    "page_balance": {
+      "spread": 0.0,
+      "min_used_ratio": 0.0,
+      "max_used_ratio": 0.0
+    },
+    "page_metrics": [
+      {
+        "page": 1,
+        "char_count": 915,
+        "block_count": 16,
+        "used_ratio": 0.684,
+        "blank_after_pt": 205.5,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 60.4,
+        "used_bottom": 636.4
+      },
+      {
+        "page": 2,
+        "char_count": 392,
+        "block_count": 4,
+        "used_ratio": 0.221,
+        "blank_after_pt": 620.4,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 221.5
+      }
+    ]
+  }
+}

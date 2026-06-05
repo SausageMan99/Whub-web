@@ -1,0 +1,412 @@
+{
+  "name": "ZAHIA",
+  "title": "Chef de projet IT | AMOA & AMOE | Assurance & Protection Sociale",
+  "description": "Consultante avec plus de 15 ans d'expérience en gestion de projet IT et transformation digitale, dont 10 ans dans le secteur de l'assurance et de la protection sociale. Orientée business, sens du client et culture de la donnée. Capacité à fédérer des parties prenantes transverses internes et externes : métiers, IT, conformité, juridique, marketing, UX et data, et à porter des projets complexes d'intégration SI et de décisionnel. Sensibilité aux enjeux de cybersécurité, gouvernance des données et impacts réglementaires.",
+  "formations": [
+    {
+      "date": "2024",
+      "degree": "PSPO I – Scrum Product Owner",
+      "school": "Certification"
+    },
+    {
+      "date": "2022",
+      "degree": "Certification UX/CX Design",
+      "school": "Cegos"
+    },
+    {
+      "date": "2019",
+      "degree": "Master Responsable de gestion & développement d’entreprise",
+      "school": "ESAM School, Paris"
+    },
+    {
+      "date": "2006",
+      "degree": "Licence Commerce international",
+      "school": "CY Cergy Paris Université"
+    },
+    {
+      "date": "2001",
+      "degree": "HND Business Studies & Languages",
+      "school": "London Metropolitan University, Londres"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Autres",
+      "items": [
+        "Méthodologies agiles",
+        "PSPO",
+        "Cycle V",
+        "Cadrage technique et fonctionnel"
+      ]
+    },
+    {
+      "category": "Autres — suite",
+      "items": [
+        "POC",
+        "Interviews métiers",
+        "Modélisation des use cases",
+        "Planning prévisionnel",
+        "Plan de charge"
+      ]
+    },
+    {
+      "category": "Autres — suite 2",
+      "items": [
+        "Budget",
+        "Analyse de risques",
+        "Analyse d’impacts",
+        "Gestion des dépendances",
+        "Alertes et plans d’action",
+        "Pilotage de parties prenantes"
+      ]
+    },
+    {
+      "category": "Autres — suite 3",
+      "items": [
+        "Pilotage production métier",
+        "Conduite du changement"
+      ]
+    },
+    {
+      "category": "Autres",
+      "items": [
+        "CRM PEGA",
+        "CRM Salesforce",
+        "Audit CRM",
+        "Migration de données",
+        "Décommissionnement",
+        "Parcours de souscription"
+      ]
+    },
+    {
+      "category": "Autres — suite",
+      "items": [
+        "Espaces client",
+        "Selfcare",
+        "Callbot",
+        "Chatbot conversationnel",
+        "LLM",
+        "Enquêtes de satisfaction"
+      ]
+    },
+    {
+      "category": "Autres — suite 2",
+      "items": [
+        "NPS",
+        "Taux de conversion",
+        "Analyse de navigation",
+        "Maquettes",
+        "Wireframes"
+      ]
+    },
+    {
+      "category": "Autres — suite 3",
+      "items": [
+        "UX/UI",
+        "Processus métiers",
+        "Référentiels",
+        "Réglementation"
+      ]
+    },
+    {
+      "category": "Cloud / DevOps",
+      "items": [
+        "Azure EntraID"
+      ]
+    },
+    {
+      "category": "Autres",
+      "items": [
+        "Cartographie applicative",
+        "Migration de flux",
+        "Intégration SI",
+        "APIs SOAP",
+        "APIs REST",
+        "Batch"
+      ]
+    },
+    {
+      "category": "Autres — suite",
+      "items": [
+        "Scripts",
+        "Gestion des droits",
+        "Habilitations",
+        "RPA",
+        "Cycles UAT",
+        "Pré-production"
+      ]
+    },
+    {
+      "category": "Autres — suite 2",
+      "items": [
+        "Mise en production",
+        "RUN",
+        "Microsoft 365"
+      ]
+    },
+    {
+      "category": "Autres",
+      "items": [
+        "Pilotage de solutions décisionnelles",
+        "Conception décisionnelle",
+        "Cartographie des usages data",
+        "Data warehouse",
+        "MDM",
+        "Référentiels"
+      ]
+    },
+    {
+      "category": "Autres — suite",
+      "items": [
+        "PowerQuery",
+        "Modèle de données",
+        "UX reporting",
+        "KPIs",
+        "Visualisation",
+        "Qualité des données"
+      ]
+    },
+    {
+      "category": "Autres — suite 2",
+      "items": [
+        "Gouvernance des données",
+        "Formation utilisateurs"
+      ]
+    },
+    {
+      "category": "Backend",
+      "items": [
+        "Python",
+        ".NET Core",
+        "C#"
+      ]
+    },
+    {
+      "category": "Frontend",
+      "items": [
+        "Angular",
+        "JavaScript"
+      ]
+    },
+    {
+      "category": "Cloud / DevOps",
+      "items": [
+        "Jenkins"
+      ]
+    },
+    {
+      "category": "Data",
+      "items": [
+        "MySQL",
+        "Microsoft SQL Server"
+      ]
+    },
+    {
+      "category": "Autres",
+      "items": [
+        "Bootstrap"
+      ]
+    },
+    {
+      "category": "Cloud / DevOps",
+      "items": [
+        "Azure DevOps"
+      ]
+    },
+    {
+      "category": "Data",
+      "items": [
+        "Power BI"
+      ]
+    },
+    {
+      "category": "Outils & méthodes",
+      "items": [
+        "Jira"
+      ]
+    },
+    {
+      "category": "Autres",
+      "items": [
+        "PEGA",
+        "ServiceNow ITSM",
+        "MantisBT",
+        "Postman",
+        "QlikView",
+        "Umbraco"
+      ]
+    },
+    {
+      "category": "Autres — suite",
+      "items": [
+        "Figma",
+        "Salesforce",
+        "GLPI",
+        "SAP",
+        "SAP SRM",
+        "Microsoft Teams"
+      ]
+    },
+    {
+      "category": "Autres — suite 2",
+      "items": [
+        "Microsoft Project",
+        "Suite Office",
+        "Traveldoo",
+        "Hypervision ADP GSI",
+        "Figgo"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "Juin 2023 – À ce jour",
+      "role": "Chef de projet | Protection sociale — Groupe Klesia, Montreuil (93)",
+      "company_highlight": "Groupe Klesia",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "Dans le cadre de la Retraite Complémentaire, l’Agirc-Arrco impose le pilotage des activités de la relation client via un CRM PEGA mis à disposition pour l’ensemble des IRC : Klesia, Malakoff Humanis, Apicil, AG2R, etc.",
+            "Pilotage de la migration du CRM Selligent vers le CRM global PEGA."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Analyse d’impact, stratégie de migration de données et décommissionnement des flux retraite.",
+            "Participation aux comités de suivi pour intégrer l’organisation et les processus Klesia vers le socle communautaire CRM/PEGA.",
+            "Pilotage de la recette avec la MOE Agirc-Arrco : préparation des cas de test, accompagnement métiers, validation du PV de recette et GO de mise en production.",
+            "Gestion des montées de version, TNR et fourniture des jeux de données pour la recette.",
+            "Mise en place d’une solution RPA Selenium pour la distribution des dossiers contentieux, avec une réduction de 15 % des tâches manuelles.",
+            "Migration des applicatifs vers le système d’authentification Azure EntraID pour 492 utilisateurs.",
+            "Accompagnement d’une plateforme Data centralisée : recueil des usages de données sur les périmètres retraite entreprise, retraite individu et action sociale.",
+            "Cartographie et gestion des flux retraite entre le SI-RC, référentiel de données, et les applications du SI Klesia."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Python, Angular, JavaScript, MySQL, Jenkins, PEGA, Power BI, ServiceNow ITSM, MantisBT, Azure DevOps, Postman, QlikView."
+        }
+      ]
+    },
+    {
+      "date": "Mai 2017 – Mai 2023",
+      "role": "Product Owner Leader | Assurance — AssurOne Group, Asnières (92)",
+      "company_highlight": "AssurOne Group",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "Courtier IARD opérant en marque blanche B2B/B2C pour de grands comptes : Matmut, Groupe VYV, SG, LBP, Volvo, Audi.",
+            "Contexte de forte croissance au sein de la TechFactory : pilotage d’un grand plan de transformation digitale, développement et refonte des parcours de souscription, harmonisation des processus métiers.",
+            "Environnement SI legacy : devis, contrats, sinistres, réclamations, cotisations, GED."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Refonte full responsive des anciens tunnels et développement des nouveaux parcours de souscription : animation des ateliers techniques et métiers, priorisation du backlog, review et validation des livrables avec les partenaires, suivi des sprints.",
+            "Collaboration avec l’UX : création des maquettes et validation des prototypes.",
+            "Intégration du conteneur GTM permettant aux partenaires de collecter les données du parcours utilisateur et de les transmettre à leurs outils analytics.",
+            "Paramétrage des garanties et configuration du moteur tarifaire.",
+            "Refonte des espaces clients avec les nouvelles fonctionnalités selfcare et intégration SSO.",
+            "Migration des APIs SOAP vers REST pour mutualiser le socle technique des parcours.",
+            "CRC : paramétrage du CTI dans ISICOM et création des groupes de compétences.",
+            "Pilotage de la recette fonctionnelle avec les partenaires assureurs et priorisation des anomalies pour sécuriser la mise en production et le RUN.",
+            "Cadrage du projet RAD/LAD avec Zelros, IA documentaire : automatisation des pièces de souscription réduisant le temps de vérification de 3 minutes à 10 secondes.",
+            "Cadrage d’un projet CRM Salesforce : interviews métiers, cartographie des parcours et traitements back-office associés, modélisation des use cases, rédaction du cahier des charges technico-fonctionnel, ROI et roadmap.",
+            "Organisation de l’appel d’offres des intégrateurs."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": ".NET Core, C#, Angular, Microsoft SQL Server, JavaScript, Bootstrap, Azure DevOps, QlikView, Umbraco, Figma, CRM Salesforce, Postman, GLPI."
+        }
+      ]
+    },
+    {
+      "date": "Juin 2014 – Mars 2017",
+      "role": "Chef de projet AMOA | Transformation groupe achat — Groupe Cevital, Rueil-Malmaison (92)",
+      "company_highlight": "Groupe Cevital",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "Conglomérat industriel souhaitant structurer la fonction achats et harmoniser les processus via SAP/SRM, avec des objectifs d’économies et de professionnalisation des équipes."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Coordination projet SAP/SRM sur la chaîne complète des workflows achats.",
+            "Mise en place d’un référentiel compétences et processus RH pour la fonction achat.",
+            "Réalisation du budget et du cahier des charges pour le futur bureau d’achats parisien."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Microsoft Teams, Suite Office, SAP, GLPI."
+        }
+      ]
+    },
+    {
+      "date": "Octobre 2010 – Octobre 2013",
+      "role": "Chef de projet AMOA | Service merchandising — Groupe Estée Lauder, Paris (75)",
+      "company_highlight": "Groupe Estée Lauder",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "AMOA pour le service Merchandising : pilotage de la solution SAP et automatisation des usages métiers."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Cadrage de la mise en place de la solution SAP.",
+            "Conception et implémentation d’un outil de suivi des commandes des marchés EMEA : extractions SAP et automatisation des imports pour alimenter des tableaux de bord.",
+            "Mise en place d’alerteurs pour les équipes merchandising : délais, stocks.",
+            "Mise en place d’un système Travel & Expense Traveldoo – Expedia : politique de voyage, workflows d’approbation et formation des utilisateurs, avec 10 % de réduction du budget."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Microsoft Project, Suite Office, SAP, Traveldoo."
+        }
+      ]
+    },
+    {
+      "date": "Septembre 2007 – Mai 2010",
+      "role": "Chef de projet AMOA | Automatisation des processus RH — SC Johnson, Saint-Ouen-l’Aumône (95)",
+      "company_highlight": "SC Johnson",
+      "sections": [
+        {
+          "heading": "Contexte",
+          "content": [
+            "AMOA et gestion de projet digital : digitalisation et sécurisation des outils et processus RH.",
+            "Conduite du changement et intégration applicative."
+          ]
+        },
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Déploiement de la solution Figgo pour la gestion des absences : digitalisation totale du workflow de validation.",
+            "Définition des KPIs pour la mise en place du dashboard.",
+            "Formation des utilisateurs et rédaction des guides managers et collaborateurs.",
+            "Mise en place d’un workflow électronique d’entrées et sorties des employés, avec réduction des erreurs et économies de traitement.",
+            "Refonte et sécurisation de l’espace informatique RH : droits d’accès, archivage et traçabilité."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": "Jira, Suite Office, SAP, Hypervision ADP GSI, Figgo."
+        }
+      ]
+    }
+  ],
+  "synthesis_policy": {
+    "mode": "complete",
+    "rules": "Contenu fidèle complet: aucune condensation automatique des expériences; compétences et certifications regroupées pour lisibilité sans suppression de faits source."
+  }
+}

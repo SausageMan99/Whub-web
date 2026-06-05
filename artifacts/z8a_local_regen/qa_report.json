@@ -1,0 +1,20 @@
+{
+  "passed": false,
+  "pages": 4,
+  "contact_hits": [],
+  "bad_glyphs": false,
+  "content_integrity_issues": [],
+  "text_overflow_hits": [],
+  "layout_issues": [
+    {
+      "code": "page_too_dense",
+      "page": 3,
+      "message": "Page 3 anormalement dense: 3849 caractères, 13 blocs",
+      "char_count": 3849,
+      "block_count": 13,
+      "used_ratio": 0.891
+    }
+  ],
+  "has_logo": true,
+  "has_watermark": true
+}

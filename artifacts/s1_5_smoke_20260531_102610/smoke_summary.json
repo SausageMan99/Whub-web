@@ -1,0 +1,49 @@
+{
+  "verdict": "GO",
+  "smoke_dir": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610",
+  "renderer": "/root/whub-cv-factory/workers/cv-worker/renderer/whub_cv_renderer.py",
+  "assets_dir": "/root/whub-cv-factory/workers/cv-worker/assets/whub",
+  "fonts_dir": "/root/whub-cv-factory/workers/cv-worker/assets/fonts/poppins",
+  "visual_montage": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/visual_montage_first_last.png",
+  "cases": [
+    {
+      "label": "oussama",
+      "input": "/root/whub-cv-factory/workers/cv-worker/tests/fixtures/oussama_structured_faithful.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/oussama/oussama_repo_local.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/oussama/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/oussama/layout_metrics.json",
+      "first_page_png": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/oussama/page_1.png",
+      "last_page_png": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/oussama/page_2.png",
+      "pages": 2,
+      "status": "passed",
+      "passed": true,
+      "contact_hits": [],
+      "bad_glyphs": false,
+      "text_overflow_hits": [],
+      "has_logo": true,
+      "has_watermark": true,
+      "layout_issue_codes": [],
+      "content_integrity_issue_count": 0
+    },
+    {
+      "label": "zahia",
+      "input": "/root/whub-cv-factory/artifacts/zahia_faithful_regen/structured_layout_render.json",
+      "pdf": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/zahia/zahia_repo_local.pdf",
+      "qa_report": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/zahia/qa_report.json",
+      "layout_metrics": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/zahia/layout_metrics.json",
+      "first_page_png": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/zahia/page_1.png",
+      "last_page_png": "/root/whub-cv-factory/artifacts/s1_5_smoke_20260531_102610/zahia/page_4.png",
+      "pages": 4,
+      "status": "passed",
+      "passed": true,
+      "contact_hits": [],
+      "bad_glyphs": false,
+      "text_overflow_hits": [],
+      "has_logo": true,
+      "has_watermark": true,
+      "layout_issue_codes": [],
+      "content_integrity_issue_count": 0
+    }
+  ],
+  "no_prod_side_effects": true
+}

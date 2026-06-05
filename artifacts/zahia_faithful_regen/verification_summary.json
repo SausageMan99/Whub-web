@@ -1,0 +1,15 @@
+{
+  "pdf_exists": true,
+  "pdf_pages": 4,
+  "qa_passed": true,
+  "no_gsmc": true,
+  "no_mars_2026": true,
+  "name_is_zahia": true,
+  "full_name_absent_pdf": true,
+  "surname_aris_standalone_absent": true,
+  "klesia_a_ce_jour_json": true,
+  "klesia_a_ce_jour_pdf": true,
+  "no_contact_email_phone": true,
+  "bad_glyphs": false,
+  "layout_issues": []
+}

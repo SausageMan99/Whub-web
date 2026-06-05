@@ -1,0 +1,32 @@
+{
+  "name": "ZAHIA",
+  "title": "Chef de projet",
+  "formations": [],
+  "skills": [],
+  "experiences": [
+    {
+      "date": "Juin 2023 – A ce jour",
+      "role": "GROUPE KLESIA — Montreuil (93) — CHEF DE PROJET | Protection sociale",
+      "company_highlight": "GROUPE KLESIA",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Pilotage de la recette métier et coordination des corrections avec les équipes IT.",
+            "Organisation des ateliers avec les métiers prévoyance et retraite complémentaire."
+          ]
+        }
+      ]
+    }
+  ],
+  "_layout": {
+    "anti_crowding": true,
+    "force_experiences_new_page": false,
+    "force_page_break_before_experience_indexes": [],
+    "allow_grouping": true,
+    "density_profile": "balanced",
+    "page_dense_char_threshold": 2850,
+    "max_used_ratio": 0.86,
+    "readability_reserve": 130
+  }
+}

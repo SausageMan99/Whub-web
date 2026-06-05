@@ -1,0 +1,1012 @@
+{
+  "run_id": "20260531T224743Z",
+  "generated_at_utc": "2026-05-31T22:47:50.572727+00:00",
+  "scope": "S3-5 evidence ledger + local multi-CV smoke, no prod/push/restart/deploy",
+  "case_count": 4,
+  "cases_passed": 4,
+  "cases_failed": [],
+  "artifacts_dir": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z",
+  "montage": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/s3_5_current_pdfs_first_last_montage.png",
+  "cases": [
+    {
+      "id": "zahia_like_location_and_role_facts",
+      "kind": "real_anonymized_s2_fixture",
+      "input": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/zahia_like_location_and_role_facts/input.json",
+      "current_pdf": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/zahia_like_location_and_role_facts/current_layout_intelligence.pdf",
+      "layout_options": {
+        "anti_crowding": true,
+        "force_experiences_new_page": false,
+        "force_page_break_before_experience_indexes": [],
+        "allow_grouping": true,
+        "density_profile": "balanced",
+        "page_dense_char_threshold": 2850,
+        "max_used_ratio": 0.86,
+        "readability_reserve": 130
+      },
+      "current_qa": {
+        "status": "passed",
+        "passed": true,
+        "pages": 1,
+        "layout_issues": [],
+        "human_taste": {
+          "score": 100,
+          "verdict": "good",
+          "thresholds": {
+            "good": 86,
+            "draft": 70
+          },
+          "penalties": [],
+          "page_balance": {
+            "spread": 0.0,
+            "min_used_ratio": 0.0,
+            "max_used_ratio": 0.0
+          },
+          "page_metrics": [
+            {
+              "page": 1,
+              "char_count": 418,
+              "block_count": 8,
+              "used_ratio": 0.328,
+              "blank_after_pt": 505.0,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 336.9
+            }
+          ]
+        },
+        "contact_hits": [],
+        "bad_glyphs": false,
+        "content_integrity_issues": [],
+        "text_overflow_hits": [],
+        "has_logo": true,
+        "has_watermark": true,
+        "layout_metrics": [
+          {
+            "page": 1,
+            "char_count": 418,
+            "block_count": 8,
+            "used_ratio": 0.328,
+            "blank_after_pt": 505.0,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 60.4,
+            "used_bottom": 336.9
+          }
+        ]
+      },
+      "current_metrics": [
+        {
+          "page": 1,
+          "char_count": 418,
+          "block_count": 8,
+          "used_ratio": 0.328,
+          "blank_after_pt": 505.0,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        }
+      ],
+      "source_coverage": {
+        "checked_items": 8,
+        "missing_count": 0,
+        "missing": []
+      },
+      "contact_markers": {
+        "email": false,
+        "phone_fr": false,
+        "linkedin": false,
+        "url": false
+      },
+      "before": {
+        "pdf": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/zahia_like_location_and_role_facts/output.pdf",
+        "qa": {
+          "status": "passed",
+          "passed": true,
+          "pages": 1,
+          "layout_issues": [],
+          "human_taste": {
+            "score": 100,
+            "verdict": "good",
+            "thresholds": {
+              "good": 86,
+              "draft": 70
+            },
+            "penalties": [],
+            "page_balance": {
+              "spread": 0.0,
+              "min_used_ratio": 0.0,
+              "max_used_ratio": 0.0
+            },
+            "page_metrics": [
+              {
+                "page": 1,
+                "char_count": 418,
+                "block_count": 8,
+                "used_ratio": 0.328,
+                "blank_after_pt": 505.0,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 60.4,
+                "used_bottom": 336.9
+              }
+            ]
+          },
+          "contact_hits": [],
+          "bad_glyphs": false,
+          "content_integrity_issues": [],
+          "text_overflow_hits": [],
+          "has_logo": true,
+          "has_watermark": true,
+          "layout_metrics": [
+            {
+              "page": 1,
+              "char_count": 418,
+              "block_count": 8,
+              "used_ratio": 0.328,
+              "blank_after_pt": 505.0,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 336.9
+            }
+          ]
+        },
+        "metrics": [
+          {
+            "page": 1,
+            "char_count": 418,
+            "block_count": 8,
+            "used_ratio": 0.328,
+            "blank_after_pt": 505.0,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          }
+        ],
+        "file_copied_to": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/zahia_like_location_and_role_facts/before_existing.pdf"
+      },
+      "comparison": {
+        "pages_before": 1,
+        "pages_after": 1,
+        "score_before": 100,
+        "score_after": 100,
+        "layout_issues_before": [],
+        "layout_issues_after": []
+      },
+      "hard_failures": []
+    },
+    {
+      "id": "oussama_like_rpa_copy_preservation",
+      "kind": "real_anonymized_s2_fixture",
+      "input": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/oussama_like_rpa_copy_preservation/input.json",
+      "current_pdf": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/oussama_like_rpa_copy_preservation/current_layout_intelligence.pdf",
+      "layout_options": {
+        "anti_crowding": true,
+        "force_experiences_new_page": false,
+        "force_page_break_before_experience_indexes": [],
+        "allow_grouping": true,
+        "density_profile": "balanced",
+        "page_dense_char_threshold": 2850,
+        "max_used_ratio": 0.86,
+        "readability_reserve": 130
+      },
+      "current_qa": {
+        "status": "passed",
+        "passed": true,
+        "pages": 1,
+        "layout_issues": [],
+        "human_taste": {
+          "score": 100,
+          "verdict": "good",
+          "thresholds": {
+            "good": 86,
+            "draft": 70
+          },
+          "penalties": [],
+          "page_balance": {
+            "spread": 0.0,
+            "min_used_ratio": 0.0,
+            "max_used_ratio": 0.0
+          },
+          "page_metrics": [
+            {
+              "page": 1,
+              "char_count": 783,
+              "block_count": 11,
+              "used_ratio": 0.479,
+              "blank_after_pt": 378.2,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 463.7
+            }
+          ]
+        },
+        "contact_hits": [],
+        "bad_glyphs": false,
+        "content_integrity_issues": [],
+        "text_overflow_hits": [],
+        "has_logo": true,
+        "has_watermark": true,
+        "layout_metrics": [
+          {
+            "page": 1,
+            "char_count": 783,
+            "block_count": 11,
+            "used_ratio": 0.479,
+            "blank_after_pt": 378.2,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 60.4,
+            "used_bottom": 463.7
+          }
+        ]
+      },
+      "current_metrics": [
+        {
+          "page": 1,
+          "char_count": 783,
+          "block_count": 11,
+          "used_ratio": 0.479,
+          "blank_after_pt": 378.2,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        }
+      ],
+      "source_coverage": {
+        "checked_items": 17,
+        "missing_count": 0,
+        "missing": []
+      },
+      "contact_markers": {
+        "email": false,
+        "phone_fr": false,
+        "linkedin": false,
+        "url": false
+      },
+      "before": {
+        "pdf": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/oussama_like_rpa_copy_preservation/output.pdf",
+        "qa": {
+          "status": "failed",
+          "passed": false,
+          "pages": 2,
+          "layout_issues": [
+            {
+              "code": "last_page_sparse",
+              "page": 2,
+              "message": "Dernière page trop peu remplie: 359 caractères, 3 blocs, hauteur utilisée 15%",
+              "char_count": 359,
+              "block_count": 3,
+              "used_ratio": 0.147
+            },
+            {
+              "code": "page_too_sparse",
+              "page": 2,
+              "message": "Page 2 trop peu remplie: 359 caractères, 3 blocs, hauteur utilisée 15%",
+              "char_count": 359,
+              "block_count": 3,
+              "used_ratio": 0.147
+            }
+          ],
+          "human_taste": {
+            "score": 66,
+            "verdict": "poor",
+            "thresholds": {
+              "good": 86,
+              "draft": 70
+            },
+            "penalties": [
+              {
+                "code": "last_page_sparse",
+                "page": 2,
+                "points": 16,
+                "reason": "Dernière page trop peu remplie: 359 caractères, 3 blocs, hauteur utilisée 15%"
+              },
+              {
+                "code": "page_too_sparse",
+                "page": 2,
+                "points": 18,
+                "reason": "Page 2 trop peu remplie: 359 caractères, 3 blocs, hauteur utilisée 15%"
+              }
+            ],
+            "page_balance": {
+              "spread": 0.0,
+              "min_used_ratio": 0.0,
+              "max_used_ratio": 0.0
+            },
+            "page_metrics": [
+              {
+                "page": 1,
+                "char_count": 432,
+                "block_count": 9,
+                "used_ratio": 0.361,
+                "blank_after_pt": 477.6,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 60.4,
+                "used_bottom": 364.3
+              },
+              {
+                "page": 2,
+                "char_count": 359,
+                "block_count": 3,
+                "used_ratio": 0.147,
+                "blank_after_pt": 682.9,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 35.3,
+                "used_bottom": 159.0
+              }
+            ]
+          },
+          "contact_hits": [],
+          "bad_glyphs": false,
+          "content_integrity_issues": [],
+          "text_overflow_hits": [],
+          "has_logo": true,
+          "has_watermark": true,
+          "layout_metrics": [
+            {
+              "page": 1,
+              "char_count": 432,
+              "block_count": 9,
+              "used_ratio": 0.361,
+              "blank_after_pt": 477.6,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 364.3
+            },
+            {
+              "page": 2,
+              "char_count": 359,
+              "block_count": 3,
+              "used_ratio": 0.147,
+              "blank_after_pt": 682.9,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 159.0
+            }
+          ]
+        },
+        "metrics": [
+          {
+            "page": 1,
+            "char_count": 432,
+            "block_count": 9,
+            "used_ratio": 0.361,
+            "blank_after_pt": 477.6,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          },
+          {
+            "page": 2,
+            "char_count": 359,
+            "block_count": 3,
+            "used_ratio": 0.147,
+            "blank_after_pt": 682.9,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          }
+        ],
+        "file_copied_to": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/oussama_like_rpa_copy_preservation/before_existing.pdf"
+      },
+      "comparison": {
+        "pages_before": 2,
+        "pages_after": 1,
+        "score_before": 66,
+        "score_after": 100,
+        "layout_issues_before": [
+          {
+            "code": "last_page_sparse",
+            "page": 2,
+            "message": "Dernière page trop peu remplie: 359 caractères, 3 blocs, hauteur utilisée 15%",
+            "char_count": 359,
+            "block_count": 3,
+            "used_ratio": 0.147
+          },
+          {
+            "code": "page_too_sparse",
+            "page": 2,
+            "message": "Page 2 trop peu remplie: 359 caractères, 3 blocs, hauteur utilisée 15%",
+            "char_count": 359,
+            "block_count": 3,
+            "used_ratio": 0.147
+          }
+        ],
+        "layout_issues_after": []
+      },
+      "hard_failures": []
+    },
+    {
+      "id": "thorez_like_realizations_and_tools_coverage",
+      "kind": "real_anonymized_s2_fixture",
+      "input": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/thorez_like_realizations_and_tools_coverage/input.json",
+      "current_pdf": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/thorez_like_realizations_and_tools_coverage/current_layout_intelligence.pdf",
+      "layout_options": {
+        "anti_crowding": true,
+        "force_experiences_new_page": false,
+        "force_page_break_before_experience_indexes": [],
+        "allow_grouping": true,
+        "density_profile": "balanced",
+        "page_dense_char_threshold": 2850,
+        "max_used_ratio": 0.86,
+        "readability_reserve": 130
+      },
+      "current_qa": {
+        "status": "passed",
+        "passed": true,
+        "pages": 1,
+        "layout_issues": [],
+        "human_taste": {
+          "score": 100,
+          "verdict": "good",
+          "thresholds": {
+            "good": 86,
+            "draft": 70
+          },
+          "penalties": [],
+          "page_balance": {
+            "spread": 0.0,
+            "min_used_ratio": 0.0,
+            "max_used_ratio": 0.0
+          },
+          "page_metrics": [
+            {
+              "page": 1,
+              "char_count": 902,
+              "block_count": 11,
+              "used_ratio": 0.429,
+              "blank_after_pt": 420.7,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 421.2
+            }
+          ]
+        },
+        "contact_hits": [],
+        "bad_glyphs": false,
+        "content_integrity_issues": [],
+        "text_overflow_hits": [],
+        "has_logo": true,
+        "has_watermark": true,
+        "layout_metrics": [
+          {
+            "page": 1,
+            "char_count": 902,
+            "block_count": 11,
+            "used_ratio": 0.429,
+            "blank_after_pt": 420.7,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 60.4,
+            "used_bottom": 421.2
+          }
+        ]
+      },
+      "current_metrics": [
+        {
+          "page": 1,
+          "char_count": 902,
+          "block_count": 11,
+          "used_ratio": 0.429,
+          "blank_after_pt": 420.7,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        }
+      ],
+      "source_coverage": {
+        "checked_items": 17,
+        "missing_count": 0,
+        "missing": []
+      },
+      "contact_markers": {
+        "email": false,
+        "phone_fr": false,
+        "linkedin": false,
+        "url": false
+      },
+      "before": {
+        "pdf": "/root/whub-cv-factory/artifacts/s2_5_fidelity_smoke_20260531T185805Z/thorez_like_realizations_and_tools_coverage/output.pdf",
+        "qa": {
+          "status": "passed",
+          "passed": true,
+          "pages": 1,
+          "layout_issues": [],
+          "human_taste": {
+            "score": 100,
+            "verdict": "good",
+            "thresholds": {
+              "good": 86,
+              "draft": 70
+            },
+            "penalties": [],
+            "page_balance": {
+              "spread": 0.0,
+              "min_used_ratio": 0.0,
+              "max_used_ratio": 0.0
+            },
+            "page_metrics": [
+              {
+                "page": 1,
+                "char_count": 902,
+                "block_count": 11,
+                "used_ratio": 0.429,
+                "blank_after_pt": 420.7,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 60.4,
+                "used_bottom": 421.2
+              }
+            ]
+          },
+          "contact_hits": [],
+          "bad_glyphs": false,
+          "content_integrity_issues": [],
+          "text_overflow_hits": [],
+          "has_logo": true,
+          "has_watermark": true,
+          "layout_metrics": [
+            {
+              "page": 1,
+              "char_count": 902,
+              "block_count": 11,
+              "used_ratio": 0.429,
+              "blank_after_pt": 420.7,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 421.2
+            }
+          ]
+        },
+        "metrics": [
+          {
+            "page": 1,
+            "char_count": 902,
+            "block_count": 11,
+            "used_ratio": 0.429,
+            "blank_after_pt": 420.7,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          }
+        ],
+        "file_copied_to": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/thorez_like_realizations_and_tools_coverage/before_existing.pdf"
+      },
+      "comparison": {
+        "pages_before": 1,
+        "pages_after": 1,
+        "score_before": 100,
+        "score_after": 100,
+        "layout_issues_before": [],
+        "layout_issues_after": []
+      },
+      "hard_failures": []
+    },
+    {
+      "id": "s3_4_zahia_oussama_like_heavy_layout",
+      "kind": "sprint3_heavy_layout_fixture",
+      "input": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/s3_4_zahia_oussama_like_heavy_layout/input.json",
+      "current_pdf": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/s3_4_zahia_oussama_like_heavy_layout/current_layout_intelligence.pdf",
+      "layout_options": {
+        "anti_crowding": true,
+        "force_experiences_new_page": true,
+        "force_page_break_before_experience_indexes": [
+          1,
+          2,
+          3,
+          5
+        ],
+        "allow_grouping": true,
+        "density_profile": "balanced",
+        "page_dense_char_threshold": 2850,
+        "max_used_ratio": 0.86,
+        "readability_reserve": 130
+      },
+      "current_qa": {
+        "status": "passed",
+        "passed": true,
+        "pages": 5,
+        "layout_issues": [],
+        "human_taste": {
+          "score": 100,
+          "verdict": "good",
+          "thresholds": {
+            "good": 86,
+            "draft": 70
+          },
+          "penalties": [],
+          "page_balance": {
+            "spread": 0.183,
+            "min_used_ratio": 0.355,
+            "max_used_ratio": 0.538
+          },
+          "page_metrics": [
+            {
+              "page": 1,
+              "char_count": 614,
+              "block_count": 12,
+              "used_ratio": 0.447,
+              "blank_after_pt": 405.4,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 436.4
+            },
+            {
+              "page": 2,
+              "char_count": 2642,
+              "block_count": 5,
+              "used_ratio": 0.538,
+              "blank_after_pt": 353.7,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 488.2
+            },
+            {
+              "page": 3,
+              "char_count": 2059,
+              "block_count": 4,
+              "used_ratio": 0.428,
+              "blank_after_pt": 446.3,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 395.6
+            },
+            {
+              "page": 4,
+              "char_count": 1531,
+              "block_count": 4,
+              "used_ratio": 0.355,
+              "blank_after_pt": 508.0,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 333.9
+            },
+            {
+              "page": 5,
+              "char_count": 1283,
+              "block_count": 10,
+              "used_ratio": 0.471,
+              "blank_after_pt": 410.4,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 431.5
+            }
+          ]
+        },
+        "contact_hits": [],
+        "bad_glyphs": false,
+        "content_integrity_issues": [],
+        "text_overflow_hits": [],
+        "has_logo": true,
+        "has_watermark": true,
+        "layout_metrics": [
+          {
+            "page": 1,
+            "char_count": 614,
+            "block_count": 12,
+            "used_ratio": 0.447,
+            "blank_after_pt": 405.4,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 60.4,
+            "used_bottom": 436.4
+          },
+          {
+            "page": 2,
+            "char_count": 2642,
+            "block_count": 5,
+            "used_ratio": 0.538,
+            "blank_after_pt": 353.7,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 35.3,
+            "used_bottom": 488.2
+          },
+          {
+            "page": 3,
+            "char_count": 2059,
+            "block_count": 4,
+            "used_ratio": 0.428,
+            "blank_after_pt": 446.3,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 35.3,
+            "used_bottom": 395.6
+          },
+          {
+            "page": 4,
+            "char_count": 1531,
+            "block_count": 4,
+            "used_ratio": 0.355,
+            "blank_after_pt": 508.0,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 35.3,
+            "used_bottom": 333.9
+          },
+          {
+            "page": 5,
+            "char_count": 1283,
+            "block_count": 10,
+            "used_ratio": 0.471,
+            "blank_after_pt": 410.4,
+            "starts_with_suite": false,
+            "has_experience_heading": true,
+            "used_top": 35.3,
+            "used_bottom": 431.5
+          }
+        ]
+      },
+      "current_metrics": [
+        {
+          "page": 1,
+          "char_count": 614,
+          "block_count": 12,
+          "used_ratio": 0.447,
+          "blank_after_pt": 405.4,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        },
+        {
+          "page": 2,
+          "char_count": 2642,
+          "block_count": 5,
+          "used_ratio": 0.538,
+          "blank_after_pt": 353.7,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        },
+        {
+          "page": 3,
+          "char_count": 2059,
+          "block_count": 4,
+          "used_ratio": 0.428,
+          "blank_after_pt": 446.3,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        },
+        {
+          "page": 4,
+          "char_count": 1531,
+          "block_count": 4,
+          "used_ratio": 0.355,
+          "blank_after_pt": 508.0,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        },
+        {
+          "page": 5,
+          "char_count": 1283,
+          "block_count": 10,
+          "used_ratio": 0.471,
+          "blank_after_pt": 410.4,
+          "starts_with_suite": false,
+          "has_experience_heading": true
+        }
+      ],
+      "source_coverage": {
+        "checked_items": 98,
+        "missing_count": 0,
+        "missing": []
+      },
+      "contact_markers": {
+        "email": false,
+        "phone_fr": false,
+        "linkedin": false,
+        "url": false
+      },
+      "before": {
+        "pdf": "/root/whub-cv-factory/artifacts/sprint3/s3_4_zahia_oussama_like_smoke.pdf",
+        "qa": {
+          "status": "passed",
+          "passed": true,
+          "pages": 5,
+          "layout_issues": [],
+          "human_taste": {
+            "score": 100,
+            "verdict": "good",
+            "thresholds": {
+              "good": 86,
+              "draft": 70
+            },
+            "penalties": [],
+            "page_balance": {
+              "spread": 0.183,
+              "min_used_ratio": 0.355,
+              "max_used_ratio": 0.538
+            },
+            "page_metrics": [
+              {
+                "page": 1,
+                "char_count": 614,
+                "block_count": 12,
+                "used_ratio": 0.447,
+                "blank_after_pt": 405.4,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 60.4,
+                "used_bottom": 436.4
+              },
+              {
+                "page": 2,
+                "char_count": 2642,
+                "block_count": 5,
+                "used_ratio": 0.538,
+                "blank_after_pt": 353.7,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 35.3,
+                "used_bottom": 488.2
+              },
+              {
+                "page": 3,
+                "char_count": 2059,
+                "block_count": 4,
+                "used_ratio": 0.428,
+                "blank_after_pt": 446.3,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 35.3,
+                "used_bottom": 395.6
+              },
+              {
+                "page": 4,
+                "char_count": 1531,
+                "block_count": 4,
+                "used_ratio": 0.355,
+                "blank_after_pt": 508.0,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 35.3,
+                "used_bottom": 333.9
+              },
+              {
+                "page": 5,
+                "char_count": 1283,
+                "block_count": 10,
+                "used_ratio": 0.471,
+                "blank_after_pt": 410.4,
+                "starts_with_suite": false,
+                "has_experience_heading": true,
+                "used_top": 35.3,
+                "used_bottom": 431.5
+              }
+            ]
+          },
+          "contact_hits": [],
+          "bad_glyphs": false,
+          "content_integrity_issues": [],
+          "text_overflow_hits": [],
+          "has_logo": true,
+          "has_watermark": true,
+          "layout_metrics": [
+            {
+              "page": 1,
+              "char_count": 614,
+              "block_count": 12,
+              "used_ratio": 0.447,
+              "blank_after_pt": 405.4,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 60.4,
+              "used_bottom": 436.4
+            },
+            {
+              "page": 2,
+              "char_count": 2642,
+              "block_count": 5,
+              "used_ratio": 0.538,
+              "blank_after_pt": 353.7,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 488.2
+            },
+            {
+              "page": 3,
+              "char_count": 2059,
+              "block_count": 4,
+              "used_ratio": 0.428,
+              "blank_after_pt": 446.3,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 395.6
+            },
+            {
+              "page": 4,
+              "char_count": 1531,
+              "block_count": 4,
+              "used_ratio": 0.355,
+              "blank_after_pt": 508.0,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 333.9
+            },
+            {
+              "page": 5,
+              "char_count": 1283,
+              "block_count": 10,
+              "used_ratio": 0.471,
+              "blank_after_pt": 410.4,
+              "starts_with_suite": false,
+              "has_experience_heading": true,
+              "used_top": 35.3,
+              "used_bottom": 431.5
+            }
+          ]
+        },
+        "metrics": [
+          {
+            "page": 1,
+            "char_count": 614,
+            "block_count": 12,
+            "used_ratio": 0.447,
+            "blank_after_pt": 405.4,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          },
+          {
+            "page": 2,
+            "char_count": 2642,
+            "block_count": 5,
+            "used_ratio": 0.538,
+            "blank_after_pt": 353.7,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          },
+          {
+            "page": 3,
+            "char_count": 2059,
+            "block_count": 4,
+            "used_ratio": 0.428,
+            "blank_after_pt": 446.3,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          },
+          {
+            "page": 4,
+            "char_count": 1531,
+            "block_count": 4,
+            "used_ratio": 0.355,
+            "blank_after_pt": 508.0,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          },
+          {
+            "page": 5,
+            "char_count": 1283,
+            "block_count": 10,
+            "used_ratio": 0.471,
+            "blank_after_pt": 410.4,
+            "starts_with_suite": false,
+            "has_experience_heading": true
+          }
+        ],
+        "file_copied_to": "/root/whub-cv-factory/artifacts/sprint3/s3_5_multi_cv_smoke_20260531T224743Z/s3_4_zahia_oussama_like_heavy_layout/before_existing.pdf"
+      },
+      "comparison": {
+        "pages_before": 5,
+        "pages_after": 5,
+        "score_before": 100,
+        "score_after": 100,
+        "layout_issues_before": [],
+        "layout_issues_after": []
+      },
+      "hard_failures": []
+    }
+  ],
+  "non_prod_guards": {
+    "push": false,
+    "worker_restart": false,
+    "vercel_deploy": false
+  }
+}

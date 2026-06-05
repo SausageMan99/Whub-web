@@ -1,0 +1,53 @@
+{
+  "renderer_path": "/root/whub-cv-factory/workers/cv-worker/renderer/whub_cv_renderer.py",
+  "pdf_path": "/root/whub-cv-factory/artifacts/sprint3/s3_3_dense_skills_smoke.pdf",
+  "qa_status": "passed",
+  "qa_passed": true,
+  "pages": 2,
+  "missing_skill_terms": [],
+  "skill_dense_layout_codes": [],
+  "max_bullet_line_chars_extracted": 92,
+  "layout_issue_codes": [],
+  "human_taste": {
+    "score": 100,
+    "verdict": "good",
+    "thresholds": {
+      "good": 86,
+      "draft": 70
+    },
+    "penalties": [],
+    "page_balance": {
+      "spread": 0.0,
+      "min_used_ratio": 0.0,
+      "max_used_ratio": 0.0
+    },
+    "page_metrics": [
+      {
+        "page": 1,
+        "char_count": 1049,
+        "block_count": 14,
+        "used_ratio": 0.574,
+        "blank_after_pt": 297.9,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 60.4,
+        "used_bottom": 544.0
+      },
+      {
+        "page": 2,
+        "char_count": 830,
+        "block_count": 7,
+        "used_ratio": 0.29,
+        "blank_after_pt": 562.2,
+        "starts_with_suite": false,
+        "has_experience_heading": true,
+        "used_top": 35.3,
+        "used_bottom": 279.7
+      }
+    ]
+  },
+  "contact_hits": [],
+  "bad_glyphs": false,
+  "text_overflow_hits": [],
+  "content_integrity_issues": []
+}

@@ -1,0 +1,57 @@
+{
+  "name": "JEAN",
+  "title": "Chef de projet Data et Cloud",
+  "description": "Chef de projet Data et Cloud avec 8 ans d'expérience dans la transformation numérique.",
+  "formations": [
+    {
+      "date": "2016",
+      "degree": "Master Management des Systèmes d'Information",
+      "school": "IAE Paris"
+    },
+    {
+      "date": "2014",
+      "degree": "Licence Informatique",
+      "school": "Université Paris Cité"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Projets",
+      "items": [
+        "plateforme Th@Bot",
+        "API REST Node.js"
+      ]
+    },
+    {
+      "category": "Compétences",
+      "items": [
+        "risques. Data & Cloud: AWS",
+        "SQL. DevOps: GitHub Actions",
+        "Gestion de projet: Scrum",
+        "Gestion de projet: Scrum, Kanban, planning, budget, risques. Data & Cloud: AWS, Azure, Snowflake, Power BI, Python, SQL. DevOps: GitHub Actions, Docker, Kubernetes, Jenkins."
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "Janvier 2022 - Mars 2026",
+      "role": "Chef de projet Data | GROUPE ATLAS | Paris (75)",
+      "company_highlight": "GROUPE ATLAS",
+      "sections": [
+        {
+          "heading": "Missions",
+          "content": [
+            "Pilotage du programme de migration cloud AWS pour les applications décisionnelles.",
+            "Coordination de 12 contributeurs métier, data engineering et sécurité.",
+            "Mise en place de tableaux de bord Power BI pour le suivi des indicateurs opérationnels.",
+            "Animation des comités hebdomadaires et reporting exécutif."
+          ]
+        }
+      ]
+    }
+  ],
+  "synthesis_policy": {
+    "mode": "complete",
+    "rules": "Contenu fidèle complet: aucune condensation automatique des expériences; compétences et certifications regroupées pour lisibilité sans suppression de faits source."
+  }
+}

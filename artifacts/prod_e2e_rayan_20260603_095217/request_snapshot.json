@@ -1,0 +1,11 @@
+{
+  "ts": "2026-06-03T09:53:01.095645+00:00",
+  "id": "23ea30ed-4f2e-495b-be89-6334a1abc99a",
+  "status": "ready",
+  "last_error": null,
+  "worker_attempts": 1,
+  "current_version_id": "e30840af-5606-4a45-9bba-e5cedf4f28a6",
+  "updated_at": "2026-06-03T09:52:54.107897+00:00",
+  "created_at": "2026-06-03T09:52:20.267253+00:00",
+  "ready_at": "2026-06-03T09:52:54.107897+00:00"
+}

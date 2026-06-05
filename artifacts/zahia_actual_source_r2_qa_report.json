@@ -1,0 +1,291 @@
+{
+  "verdict": "NO-GO",
+  "scope": "actual uploaded Zahia source + actual request artifacts only; no synthetic fixture used",
+  "paths": {
+    "source": "/tmp/whub-cv-factory/bb7d24a2-7154-42e1-a144-38373db28a92/source.pdf",
+    "output": "/tmp/whub-cv-factory/bb7d24a2-7154-42e1-a144-38373db28a92/output.pdf",
+    "input_json": "/tmp/whub-cv-factory/bb7d24a2-7154-42e1-a144-38373db28a92/input.json"
+  },
+  "sha256": {
+    "/tmp/whub-cv-factory/bb7d24a2-7154-42e1-a144-38373db28a92/source.pdf": "a2624097e140459f66c2e7c28dcf69a7d2bc763418f7ff5117ca12ddc028d1f5",
+    "/tmp/whub-cv-factory/bb7d24a2-7154-42e1-a144-38373db28a92/output.pdf": "8cfb22972f811214910f8437eadaf4d9f2caf17e6050da714d9a0ac054cf27c7",
+    "/tmp/whub-cv-factory/bb7d24a2-7154-42e1-a144-38373db28a92/input.json": "d3aaa0f4821cd5abdfe44e2f49f04d89955ae595c1cad8596e83c93501c4b9a6"
+  },
+  "qa_reports": {
+    "default": {
+      "passed": false,
+      "pages": 4,
+      "contact_hits": [],
+      "bad_glyphs": false,
+      "content_integrity_issues": [],
+      "text_overflow_hits": [],
+      "layout_issues": [
+        {
+          "code": "page_too_dense",
+          "page": 3,
+          "message": "Page 3 anormalement dense: 4131 caractères, 9 blocs",
+          "char_count": 4131,
+          "block_count": 9,
+          "used_ratio": 0.857
+        }
+      ],
+      "has_logo": true,
+      "has_watermark": true
+    },
+    "with_forbidden_surname_ARIS": {
+      "passed": false,
+      "pages": 4,
+      "contact_hits": [
+        "forbidden_name:ARIS"
+      ],
+      "bad_glyphs": false,
+      "content_integrity_issues": [],
+      "text_overflow_hits": [],
+      "layout_issues": [
+        {
+          "code": "page_too_dense",
+          "page": 3,
+          "message": "Page 3 anormalement dense: 4131 caractères, 9 blocs",
+          "char_count": 4131,
+          "block_count": 9,
+          "used_ratio": 0.857
+        }
+      ],
+      "has_logo": true,
+      "has_watermark": true
+    }
+  },
+  "evidence": {
+    "Analyse des besoins assurance": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    },
+    "GSMC": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 2,
+        "snippet": "méthodes • Jira E X P É R I E N C E S P R O F E S S I O N N E L L E S Mars 2026 – à ce jour Chef de projet | Mutuelle GSMC | Protection sociale Missions clés • Mission pour la mutuelle GSMC, mutuelle de Lille, portant sur la refonte d’un tunnel B2B et la refonte d’une page web Service. • Analyse des irritants d’un tunnel mis en production n"
+      },
+      "input.json": {
+        "count": 3,
+        "snippet": "] } ], \"experiences\": [ { \"date\": \"Mars 2026 – à ce jour\", \"role\": \"Chef de projet | Mutuelle GSMC | Protection sociale\", \"company_highlight\": \"Mutuelle GSMC\", \"sections\": [ { \"heading\": \"Missions clés\", \"content\": [ \"Mission pour la mutuelle GSMC, mutuelle de Lille"
+      }
+    },
+    "Mars 2026": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 2,
+        "snippet": "DevOps • Azure DevOps Data • Power BI Outils & méthodes • Jira E X P É R I E N C E S P R O F E S S I O N N E L L E S Mars 2026 – à ce jour Chef de projet | Mutuelle GSMC | Protection sociale Missions clés • Mission pour la mutuelle GSMC, mutuelle de Lille, portant sur la refonte d’un tunnel B2B et la refonte d’une page web Service. • Analyse de"
+      },
+      "input.json": {
+        "count": 2,
+        "snippet": "\"Traveldoo\", \"Hypervision ADP GSI\", \"Figgo\" ] } ], \"experiences\": [ { \"date\": \"Mars 2026 – à ce jour\", \"role\": \"Chef de projet | Mutuelle GSMC | Protection sociale\", \"company_highlight\": \"Mutuelle GSMC\", \"sections\": [ { \"heading\": \"Missions clés\", \"content\": ["
+      }
+    },
+    "tunnel B2B": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 2,
+        "snippet": "GSMC | Protection sociale Missions clés • Mission pour la mutuelle GSMC, mutuelle de Lille, portant sur la refonte d’un tunnel B2B et la refonte d’une page web Service. • Analyse des irritants d’un tunnel mis en production ne fonctionnant pas correctement et nécessitant une refonte. • Travail en coordination avec le marketing et le service digital."
+      },
+      "input.json": {
+        "count": 2,
+        "snippet": "lés\", \"content\": [ \"Mission pour la mutuelle GSMC, mutuelle de Lille, portant sur la refonte d’un tunnel B2B et la refonte d’une page web Service.\", \"Analyse des irritants d’un tunnel mis en production ne fonctionnant pas correctement et nécessitant une refonte.\", \"Travail en coordination avec le market"
+      }
+    },
+    "page web Service": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 1,
+        "snippet": "nges transverses et suivi projet en mode semi-agile. Environnement technique Azure DevOps, mode semi-agile, tunnel B2B, page web Service Juin 2023 – Mars 2026 Chef de projet | GROUPE KLESIA | Protection sociale Missions clés • Pilotage de la migration du CRM Selligent vers le CRM global PEGA mis à disposition par l’Agirc-Arrco pour les IRC. • Analyse d’i"
+      },
+      "input.json": {
+        "count": 2,
+        "snippet": "\"Mission pour la mutuelle GSMC, mutuelle de Lille, portant sur la refonte d’un tunnel B2B et la refonte d’une page web Service.\", \"Analyse des irritants d’un tunnel mis en production ne fonctionnant pas correctement et nécessitant une refonte.\", \"Travail en coordination avec le marketing et le service digital.\","
+      }
+    },
+    "Juin 2023 – A ce jour": {
+      "source.pdf": {
+        "count": 1,
+        "snippet": "m | 📞 06 11 96 61 17 Jouy-Le-Moutier 2/4 EXPERIENCES PROFESSIONNELLES GROUPE KLESIA 📌 Montreuil (93) 📆 Juin 2023 – A ce jour CHEF DE PROJET | PROTECTION SOCIALE CONTEXTE L’Agirc Arrco impose dans le cadre de la « Retraite Complémentaire », le pilotage des activités de la relation client via un CRM PEGA mis à disposition pour l’ensemble de"
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    },
+    "Juin 2023 – Mars 2026": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 1,
+        "snippet": "et suivi projet en mode semi-agile. Environnement technique Azure DevOps, mode semi-agile, tunnel B2B, page web Service Juin 2023 – Mars 2026 Chef de projet | GROUPE KLESIA | Protection sociale Missions clés • Pilotage de la migration du CRM Selligent vers le CRM global PEGA mis à disposition par l’Agirc-Arrco pour les IRC. • Analyse d’impact, stratégie de mi"
+      },
+      "input.json": {
+        "count": 1,
+        "snippet": "\"content\": \"Azure DevOps, mode semi-agile, tunnel B2B, page web Service\" } ] }, { \"date\": \"Juin 2023 – Mars 2026\", \"role\": \"Chef de projet | GROUPE KLESIA | Protection sociale\", \"company_highlight\": \"GROUPE KLESIA\", \"sections\": [ { \"heading\": \"Missions clés\", \"content\": [ \""
+      }
+    },
+    "ZAHIA ARIS": {
+      "source.pdf": {
+        "count": 1,
+        "snippet": "Formation des utilisateurs finaux Chef de projet IT | AMOA & AMOE Assurance & Protection Sociale Zahia Aris | Consultante ✉️ zaris2208@gmail.com | 📞 06 11 96 61 17 Jouy-Le-Moutier 2/4 EXPERIENCES PROFESSIONNELLES GROUPE KLESIA 📌 Montreuil (93) 📆 Juin 2023 – A ce jour CHEF DE PROJET | PROTECTION SOCIALE"
+      },
+      "output.pdf": {
+        "count": 4,
+        "snippet": "ZAHIA ARIS Chef de projet IT | AMOA & AMOE Assurance & Protection Sociale F O R M A T I O N S D I P L Ô M E S 2024 PSPO I – Scrum Product Owner Certification 2022 Certification UX/CX Design Cegos 2019 Master Responsable de gestion"
+      },
+      "input.json": {
+        "count": 1,
+        "snippet": "{ \"name\": \"ZAHIA ARIS\", \"title\": \"Chef de projet IT | AMOA & AMOE Assurance & Protection Sociale\", \"description\": \"Consultante avec plus de 15 ans d'expérience en gestion de projet IT et transformation digitale, dont 10 ans dans le secte"
+      }
+    },
+    "@": {
+      "source.pdf": {
+        "count": 1,
+        "snippet": "Chef de projet IT | AMOA & AMOE Assurance & Protection Sociale Zahia Aris | Consultante ✉️ zaris2208@gmail.com | 📞 06 11 96 61 17 Jouy-Le-Moutier 2/4 EXPERIENCES PROFESSIONNELLES GROUPE KLESIA 📌 Montreuil (93) 📆 Juin 2023 – A ce jour CHEF DE PROJET | PROTECTION SOCIALE CONTEXTE L’Agirc Arrco impose d"
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    },
+    "linkedin": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    },
+    "http": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    },
+    "www.": {
+      "source.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    },
+    "06 11 96 61 17": {
+      "source.pdf": {
+        "count": 1,
+        "snippet": "hef de projet IT | AMOA & AMOE Assurance & Protection Sociale Zahia Aris | Consultante ✉️ zaris2208@gmail.com | 📞 06 11 96 61 17 Jouy-Le-Moutier 2/4 EXPERIENCES PROFESSIONNELLES GROUPE KLESIA 📌 Montreuil (93) 📆 Juin 2023 – A ce jour CHEF DE PROJET | PROTECTION SOCIALE CONTEXTE L’Agirc Arrco impose dans le cadre de la « Retrait"
+      },
+      "output.pdf": {
+        "count": 0,
+        "snippet": null
+      },
+      "input.json": {
+        "count": 0,
+        "snippet": null
+      }
+    }
+  },
+  "source_fact_preservation_probes": {
+    "LLM entraîné spécifiquement": {
+      "source.pdf": true,
+      "output.pdf": false,
+      "input.json": false
+    },
+    "10 % de réduction du budget": {
+      "source.pdf": true,
+      "output.pdf": false,
+      "input.json": false
+    },
+    "GROUPE CEVITAL": {
+      "source.pdf": true,
+      "output.pdf": true,
+      "input.json": true
+    },
+    "FIGGO": {
+      "source.pdf": true,
+      "output.pdf": true,
+      "input.json": true
+    },
+    "Traveldoo": {
+      "source.pdf": true,
+      "output.pdf": true,
+      "input.json": true
+    },
+    "collecter les données du parcours": {
+      "source.pdf": true,
+      "output.pdf": true,
+      "input.json": true
+    },
+    "moteur tarifaire": {
+      "source.pdf": true,
+      "output.pdf": true,
+      "input.json": true
+    }
+  },
+  "blocking_findings": [
+    "Full name/surname is present in input JSON and output PDF (ZAHIA ARIS); first-name-only rule fails.",
+    "Output/input add a Mutuelle GSMC / Mars 2026 mission absent from the actual source PDF; factual preservation fails.",
+    "KLESIA date changed from Juin 2023 – A ce jour in source to Juin 2023 – Mars 2026 in output/input because of the added GSMC mission.",
+    "Worker QA reports page_too_dense on output page 3 (4131 chars, 9 blocks, used_ratio 0.857).",
+    "Older experiences are condensed as “Synthèse W hub … consulter le CV source”, despite this R2 requiring no compaction/rewrite unless explicitly approved."
+  ],
+  "non_blocking_passes": [
+    "No Analyse des besoins assurance numbered placeholder bullets in actual source/input/output artifacts.",
+    "No email/LinkedIn/URL/phone contact hit in output under default QA.",
+    "No bad glyphs, no text overflow, logo and watermark detected."
+  ]
+}
