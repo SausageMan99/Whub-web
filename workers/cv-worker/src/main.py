@@ -1,11 +1,12 @@
 import logging
 import time
+import re
 from time import perf_counter
 from pathlib import Path
 from datetime import datetime, timezone
 import shutil
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 from .config import settings
 from .supabase_client import client
 from .events import emit_event
@@ -152,7 +153,14 @@ def fail_job(job: dict, error: str | Exception, status: str = "failed") -> None:
         "last_error": safe_error,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", job["id"]).execute()
-    emit_event(job["id"], status, {"error": safe_error, "error_category": classified["category"]})
+    event_payload: dict[str, Any] = {"error": safe_error, "error_category": classified["category"]}
+    # Extract safe fidelity issue codes from the error message
+    error_str = str(error)
+    fidelity_match = re.search(r"fidelity_issues=\[([^\]]+)\]", error_str)
+    if fidelity_match:
+        codes = [c.strip() for c in fidelity_match.group(1).split(",") if c.strip()]
+        event_payload["fidelity_issues"] = codes
+    emit_event(job["id"], status, event_payload)
 
 
 def forbidden_candidate_name_parts(candidate_first_name: str | None, source_text: str | None = None) -> list[str]:
@@ -271,6 +279,8 @@ def process_job(job: dict) -> None:
                 return
         structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name)
         enforce_client_first_name(structured, effective_first_name)
+        # Soft fidelity warnings: extract and remove from data so they don't pollute the render
+        fidelity_soft_warnings = structured.pop("_fidelity_soft_warnings", None)
         timings["hermes_structuring"] = perf_counter() - stage_start
 
         stage_start = perf_counter()
@@ -316,6 +326,9 @@ def process_job(job: dict) -> None:
         if final_qa_status == "failed":
             fail_job(job, str(qa_report), "qa_failed")
             return
+        # If we have fidelity soft warnings, force draft_ready even if QA passed
+        if fidelity_soft_warnings and final_qa_status == "passed":
+            final_qa_status = "draft"
         request_status = "draft_ready" if final_qa_status == "draft" else "ready"
         version_qa_status = "draft" if final_qa_status == "draft" else "passed"
 
@@ -332,6 +345,8 @@ def process_job(job: dict) -> None:
         event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
         if request_status == "draft_ready":
             event_payload["layout_warnings"] = layout_warnings
+        if fidelity_soft_warnings:
+            event_payload["fidelity_warnings"] = fidelity_soft_warnings
         emit_event(request_id, request_status, event_payload)
         timings["upload_and_finalize"] = perf_counter() - stage_start
         timings["total"] = perf_counter() - total_start

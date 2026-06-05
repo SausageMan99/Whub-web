@@ -1111,6 +1111,13 @@ def _add_structural_integrity_issues(data: dict, issues: list[dict]) -> None:
             })
 
 
+# Soft fidelity codes: formatting/coverage issues that produce a draft rather than a hard block.
+SOFT_FIDELITY_CODES = frozenset({
+    "title_absent_from_source",
+    "experience_location_missing_from_json",
+})
+
+
 def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: bool = False, forbidden_identity_terms: list[str] | None = None) -> None:
     """Block hallucinations and rewritten experience content.
 
@@ -1264,7 +1271,15 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
                 })
 
     if issues:
-        raise StructuringError(f"Fidélité source insuffisante: {issues}")
+        hard_issues = [i for i in issues if i.get("code") not in SOFT_FIDELITY_CODES]
+        soft_issues = [i for i in issues if i.get("code") in SOFT_FIDELITY_CODES]
+        if hard_issues:
+            codes = sorted(set(i["code"] for i in issues))
+            raise StructuringError(f"Fidélité source insuffisante: fidelity_issues=[{','.join(codes)}]")
+        # Soft issues only : on continue, le PDF part en draft avec les warnings
+        data["_fidelity_soft_warnings"] = [
+            {"code": i["code"], "message": i["message"]} for i in soft_issues
+        ]
 
 
 def _extract_json(raw: str) -> dict:

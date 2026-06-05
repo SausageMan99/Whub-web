@@ -159,9 +159,10 @@ class TestRunQA:
             "skills": [],
             "experiences": [{"date": "Juin 2023 – A ce jour", "role": "GROUPE KLESIA — Chef de projet", "company_highlight": "GROUPE KLESIA", "sections": []}],
         }
-        with pytest.raises(StructuringError) as exc_info:
-            validate_source_fidelity(source_text, data)
-        assert "experience_location_missing_from_json" in str(exc_info.value)
+        validate_source_fidelity(source_text, data)
+        assert data.get("_fidelity_soft_warnings") == [
+            {"code": "experience_location_missing_from_json", "message": "Localisation de mission absente du JSON: Montreuil (93)"}
+        ]
 
         data["experiences"][0]["role"] = "GROUPE KLESIA — Montreuil (93) — Chef de projet"
         validate_source_fidelity(source_text, data)
