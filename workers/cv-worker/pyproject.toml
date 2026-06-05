@@ -9,7 +9,8 @@ dependencies = [
   "psycopg2-binary>=2.9",
   "storage3>=0.7",
   "pymupdf>=1.24",
-  "Pillow>=10"
+  "Pillow>=10",
+  "reportlab>=4"
 ]
 
 [project.scripts]
