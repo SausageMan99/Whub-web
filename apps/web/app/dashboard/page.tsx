@@ -1,17 +1,16 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AppShell, Panel } from "@/components/AppShell";
 import { Eyebrow } from "@/components/Brand";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
 
-export default async function DashboardPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+export const dynamic = "force-dynamic";
 
-  const { data: requests } = await supabase
+export default async function DashboardPage() {
+  const admin = createSupabaseAdminClient();
+
+  const { data: requests } = await admin
     .from("cv_requests")
     .select("id,title,candidate_first_name,status,priority,created_at")
     .order("created_at", { ascending: false })

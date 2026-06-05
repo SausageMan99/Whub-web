@@ -9,8 +9,8 @@ export default function HomePage() {
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-6 sm:px-8">
         <header className="flex items-center justify-between">
           <WhubMark />
-          <Link className="rounded-full border border-ink/10 bg-white/70 px-5 py-2.5 text-sm font-bold text-ink shadow-soft backdrop-blur hover:border-whub/30" href="/login">
-            Connexion
+          <Link className="rounded-full border border-ink/10 bg-white/70 px-5 py-2.5 text-sm font-bold text-ink shadow-soft backdrop-blur hover:border-whub/30" href="/dashboard">
+            Dashboard
           </Link>
         </header>
 

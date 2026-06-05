@@ -1,13 +1,12 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export type CreateRequestResult =
   | { ok: true; requestId: string }
-  | { ok: false; error: "profile_failed" | "request_failed" };
+  | { ok: false; error: "request_failed" };
 
 function logCreateRequestFailure(stage: string, requestId: string | null, error?: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "unknown");
@@ -20,22 +19,12 @@ function logCreateRequestFailure(stage: string, requestId: string | null, error?
   });
 }
 
-async function assertUser(admin: ReturnType<typeof createSupabaseAdminClient>, email: string) {
-  const { data: allowed, error } = await admin
-    .from("allowed_users")
-    .select("email,role")
-    .eq("email", email)
-    .maybeSingle();
-  if (error) throw new Error("config");
-  if (!allowed) throw new Error("not_allowed");
-  return allowed.role ?? "member";
-}
+const PORTAL_ORIGIN = "web_portal";
 
 function buildDefaultTitle(_fileName: string) {
   return "CV source";
 }
 
-const PORTAL_ORIGIN = "web_portal";
 const PORTAL_WORKFLOW = "telegram_whub_cv_generation";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const PDF_MAGIC_HEADER = Buffer.from("%PDF-");
@@ -54,13 +43,7 @@ export async function prepareUpload({ file, fileName, fileType }: { file: File; 
     redirect("/requests/new?error=pdf_required");
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) redirect("/login");
-
   const admin = createSupabaseAdminClient();
-  const email = user.email.toLowerCase();
-  await assertUser(admin, email);
 
   const requestId = crypto.randomUUID();
   const safeName = fileName.replace(/[^a-zA-Z0-9_.-]/g, "_");
@@ -79,16 +62,10 @@ export async function prepareUpload({ file, fileName, fileType }: { file: File; 
 }
 
 export async function createRequest(formData: FormData): Promise<CreateRequestResult> {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) redirect("/login");
-
   let requestId: string | null = null;
 
   try {
     const admin = createSupabaseAdminClient();
-    const email = user.email.toLowerCase();
-    const role = await assertUser(admin, email);
 
     requestId = String(formData.get("request_id") || "");
     const sourcePath = String(formData.get("source_path") || "");
@@ -105,20 +82,8 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
       return { ok: false, error: "request_failed" };
     }
 
-    const { error: profileError } = await admin.from("profiles").upsert({
-      id: user.id,
-      email,
-      role,
-    });
-
-    if (profileError) {
-      logCreateRequestFailure("profile_upsert", requestId, profileError);
-      return { ok: false, error: "profile_failed" };
-    }
-
     const { error } = await admin.from("cv_requests").insert({
       id: requestId,
-      created_by: user.id,
       title,
       candidate_first_name: candidateFirstName,
       origin: PORTAL_ORIGIN,

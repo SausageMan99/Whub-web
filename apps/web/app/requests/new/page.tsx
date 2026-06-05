@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
 import { AppShell, Panel } from "@/components/AppShell";
 import { Eyebrow } from "@/components/Brand";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import NewRequestForm from "./NewRequestForm";
 
 type NewRequestPageProps = {
@@ -11,10 +9,6 @@ type NewRequestPageProps = {
 export default async function NewRequestPage({ searchParams }: NewRequestPageProps) {
   const params = await searchParams;
   const rawError = Array.isArray(params?.error) ? params?.error[0] : params?.error;
-
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
 
   return (
     <AppShell active="new">

@@ -1,22 +1,21 @@
-import { redirect } from "next/navigation";
 import { AppShell, Panel } from "@/components/AppShell";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
 import { AutoRefreshWhenActive } from "@/components/AutoRefreshWhenActive";
 import { addComment, retryRequest } from "./actions";
 import { draftReadyTitle, hardFailureCopy, isHardFailureStatus, normalizeDraftWarnings } from "@/lib/request-detail-ui";
 
+export const dynamic = "force-dynamic";
+
 export default async function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const admin = createSupabaseAdminClient();
 
-  const { data: request } = await supabase.from("cv_requests").select("*").eq("id", id).single();
-  const { data: versions } = await supabase.from("cv_versions").select("*").eq("request_id", id).order("version_number", { ascending: false });
-  const { data: comments } = await supabase.from("cv_comments").select("*").eq("request_id", id).order("created_at", { ascending: true });
-  const { data: events } = await supabase.from("cv_events").select("event_type,created_at").eq("request_id", id).order("created_at", { ascending: true });
+  const { data: request } = await admin.from("cv_requests").select("*").eq("id", id).single();
+  const { data: versions } = await admin.from("cv_versions").select("*").eq("request_id", id).order("version_number", { ascending: false });
+  const { data: comments } = await admin.from("cv_comments").select("*").eq("request_id", id).order("created_at", { ascending: true });
+  const { data: events } = await admin.from("cv_events").select("event_type,created_at").eq("request_id", id).order("created_at", { ascending: true });
 
   if (!request) {
     return (

@@ -1,24 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-
-async function requireAllowedUser() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) throw new Error("Not authenticated");
-
-  const admin = createSupabaseAdminClient();
-  const { data: allowed, error } = await admin
-    .from("allowed_users")
-    .select("email,role")
-    .eq("email", user.email.toLowerCase())
-    .maybeSingle();
-
-  if (error || !allowed) throw new Error("Not allowed");
-  return { admin, user, role: allowed.role ?? "member" };
-}
 
 export async function addComment(formData: FormData) {
   const body = String(formData.get("body") || "").trim();
@@ -27,21 +10,19 @@ export async function addComment(formData: FormData) {
   const requestId = String(formData.get("request_id") || "").trim();
   if (!requestId) throw new Error("Missing request id");
 
-  const { admin, user, role } = await requireAllowedUser();
+  const admin = createSupabaseAdminClient();
   const { data: request, error: lookupError } = await admin
     .from("cv_requests")
-    .select("id,current_version_id,status,created_by")
+    .select("id,current_version_id,status")
     .eq("id", requestId)
     .maybeSingle();
 
   if (lookupError || !request) throw new Error("Request not found");
-  if (request.created_by !== user.id && role !== "admin") throw new Error("Forbidden");
 
   const versionId = request.current_version_id ?? null;
   const { error: commentError } = await admin.from("cv_comments").insert({
     request_id: requestId,
     version_id: versionId,
-    author_id: user.id,
     body,
     comment_type: "revision",
   });
@@ -71,8 +52,6 @@ export async function addComment(formData: FormData) {
 
   const { error: eventError } = await admin.from("cv_events").insert({
     request_id: requestId,
-    actor_id: user.id,
-    actor_type: "user",
     event_type: "revision_requested",
     payload: {
       source_reused: true,
@@ -93,16 +72,15 @@ export async function retryRequest(formData: FormData) {
   const requestId = String(formData.get("request_id") || "").trim();
   if (!requestId) throw new Error("Missing request id");
 
-  const { admin, user, role } = await requireAllowedUser();
+  const admin = createSupabaseAdminClient();
   const { data: request, error: lookupError } = await admin
     .from("cv_requests")
-    .select("id,status,created_by")
+    .select("id,status")
     .eq("id", requestId)
     .maybeSingle();
 
   if (lookupError || !request) throw new Error("Request not found");
   if (request.status !== "failed") throw new Error("Request is not retryable");
-  if (request.created_by !== user.id && role !== "admin") throw new Error("Forbidden");
 
   const now = new Date().toISOString();
   const { data: updatedRows, error } = await admin
@@ -126,8 +104,6 @@ export async function retryRequest(formData: FormData) {
 
   const { error: eventError } = await admin.from("cv_events").insert({
     request_id: requestId,
-    actor_id: user.id,
-    actor_type: "user",
     event_type: "retry_requested",
     payload: { previous_status: request.status },
   });

@@ -1,23 +1,9 @@
-import { redirect } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildCvDownloadFilename } from "@/lib/cv-ui";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string; versionId: string }> }) {
   const { id, versionId } = await params;
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user?.email) redirect("/login");
-
   const admin = createSupabaseAdminClient();
-  const email = user.email.toLowerCase();
-  const { data: allowed, error: allowedError } = await admin
-    .from("allowed_users")
-    .select("email")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (allowedError || !allowed) redirect("/login?error=not_allowed");
 
   const { data: version, error } = await admin
     .from("cv_versions")
@@ -53,5 +39,5 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     return new Response("Impossible de générer le lien sécurisé", { status: 500 });
   }
 
-  redirect(signed.signedUrl);
+  return Response.redirect(signed.signedUrl);
 }
