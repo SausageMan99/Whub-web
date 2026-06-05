@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     # ── Hermes AI ──────────────────────────────────────────────────────
     hermes_cli_path: str = "hermes"
     hermes_profile: str = "default"
-    whub_primary_model: str = "minimax/minimax-m3"
+    whub_primary_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     whub_primary_provider: str = "openrouter"
-    # 2025-06-05: fallback supprimé — MiniMax M3 est le seul modèle de structuration
+    # Nemotron 3 Ultra free via OpenRouter
 
     # ── Rendering assets ───────────────────────────────────────────────
     whub_renderer_path: str = str(DEFAULT_WHUB_RENDERER_PATH)
