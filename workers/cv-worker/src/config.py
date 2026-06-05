@@ -49,8 +49,8 @@ class Settings(BaseSettings):
     # ── Hermes AI ──────────────────────────────────────────────────────
     hermes_cli_path: str = "hermes"
     hermes_profile: str = "default"
-    whub_primary_model: str = "gpt-5.5"
-    whub_primary_provider: str = "openai-codex"
+    whub_primary_model: str = "minimax/minimax-m3"
+    whub_primary_provider: str = "openrouter"
     # 2025-06-05: fallback supprimé — MiniMax M3 est le seul modèle de structuration
 
     # ── Rendering assets ───────────────────────────────────────────────
