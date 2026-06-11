@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# W hub CV Factory — pre-push gate.
+# Blocks git push if the build or the quality loop fails.
+# Bypass in real emergencies with: git push --no-verify
+
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+echo "=== Pre-push gate — build web ==="
+npm run build --workspace @whub-cv-factory/web
+
+echo
+echo "=== Pre-push gate — quality loop ==="
+./scripts/verify_quality_loop.sh
+
+echo
+echo "=== Pre-push gate — secrets scan ==="
+# Scan only staged + working tree changes that are about to be pushed.
+# Local-only: relies on git diff between HEAD and the working tree.
+if git diff --cached --quiet; then
+  DIFF_TARGET="HEAD"
+else
+  DIFF_TARGET="--cached"
+fi
+if git diff "$DIFF_TARGET" | grep -E '^\+' | grep -iE '(api_key|secret|password|token|passwd)\s*=\s*["'\''][^"'\'']{6,}["'\'']' >/dev/null; then
+  echo "ERROR: hardcoded secret detected in the diff."
+  echo "Bypass with: git push --no-verify"
+  exit 1
+fi
+
+echo
+echo "=== Pre-push gate — PASS ==="
