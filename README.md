@@ -558,6 +558,371 @@ Regarder `cv_versions`, `current_version_id`, `qa_status` et les événements `c
 - Un test local n'est pas suffisant si le code dépend de fichiers non commités.
 - Le worker doit être reconstructible depuis un clone propre du dépôt.
 
+## Schéma détaillé du fonctionnement
+
+Cette section rassemble tout ce qu'il faut connaître pour interroger le projet de manière précise : modèle de données, cycle de vie d'une demande, événements émis, structure des rapports qualité, buckets de stockage, RPC, et catégorisation des erreurs.
+
+### 1. Architecture logique
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│  NAVIGATEUR W hub (utilisateur authentifié ou dev no-auth)         │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │ HTTPS
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Next.js (apps/web) — Vercel                                        │
+│  ├─ app/  : routes App Router (login, dashboard, requests/*)       │
+│  ├─ lib/  : supabase admin, queue BullMQ, rate-limit, helpers UI   │
+│  └─ actions.ts : server actions (prepareUpload, createRequest,      │
+│                  addComment, retryRequest)                          │
+└──────┬──────────────────────────────────┬────────────────────────────┘
+       │ Service Role (admin)            │ Tentative d'enqueue BullMQ
+       ▼                                  ▼
+┌──────────────────────┐         ┌──────────────────────┐
+│  Supabase Postgres   │         │  Redis (optionnel)   │
+│  + Storage (4 buckets)│        │  BullMQ              │
+└──────┬───────────────┘         └──────────┬───────────┘
+       │ RPC whub_worker                    │
+       │ claim_next_cv_request              │
+       ▼                                    │
+┌──────────────────────────────────────────┴─────────────────────────┐
+│  Worker Python (systemd : whub-cv-worker.service, sur le VPS)        │
+│  ├─ main.py          : boucle poll + process_job                    │
+│  ├─ extraction.py    : PyMuPDF                                       │
+│  ├─ source_sanitizer : retrait contacts/liens/adresses              │
+│  ├─ quality_report.py: QualityReportBuilder + classify_source_profile│
+│  ├─ structuring.py   : appel Hermes (minimax-m3) + assert_no_contact│
+│  ├─ layout/          : packing + variants + retry                   │
+│  ├─ rendering.py     : appelle renderer/whub_cv_renderer.py         │
+│  ├─ qa.py            : run_qa, classify_qa_report                   │
+│  └─ storage.py       : upload input.json / final.pdf / qa.json     │
+└──────┬──────────────────────────────────────────────────────────────┘
+       │ INSERT/UPDATE
+       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Supabase Postgres — tables applicatives                            │
+│  cv_requests · cv_versions · cv_comments · cv_events                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Le worker n'a qu'un seul chemin d'entrée vers la base : le rôle Postgres `whub_worker` (RPC + service role via `WORKER_DATABASE_URL`). Redis/BullMQ est secondaire ; si Redis tombe, le polling Postgres continue.
+
+### 2. Modèle de données (Postgres)
+
+```text
+allowed_users          profiles                 cv_requests
+┌─────────────┐        ┌──────────────┐         ┌──────────────────────────────────────┐
+│ email PK    │◀──FK──▶│ id PK        │◀──FK────│ id PK                                │
+│ role        │        │ email        │         │ created_by FK → profiles.id          │
+│ created_at  │        │ full_name    │         │ title                                │
+└─────────────┘        │ role         │         │ candidate_first_name                 │
+                       │ created_at   │         │ candidate_internal_label             │
+                       └──────────────┘         │ source_file_path                     │
+                                                │ source_file_name                     │
+                                                │ source_file_mime / size              │
+                                                │ instructions                         │
+                                                │ priority ∈ {normal, high, urgent}    │
+                                                │ status (cf. §3)                      │
+                                                │ current_version_id (FK optionnelle)  │
+                                                │ worker_locked_at / worker_locked_by  │
+                                                │ worker_attempts                      │
+                                                │ last_error                           │
+                                                │ submitted_at / started_at / ready_at │
+                                                │ created_at / updated_at              │
+                                                └──────┬───────────────────────┬───────┘
+                                                       │                       │
+                                                       ▼                       ▼
+                          cv_versions                              cv_events
+                          ┌────────────────────────────────┐      ┌────────────────────────┐
+                          │ id PK                          │      │ id PK                  │
+                          │ request_id FK                  │      │ request_id FK          │
+                          │ version_number                 │      │ actor_id FK (nullable) │
+                          │ structured_json                │      │ actor_type ∈           │
+                          │ renderer_input_path            │      │   {user, worker, sys}  │
+                          │ final_pdf_path                 │      │ event_type (cf. §4)    │
+                          │ qa_status ∈ {pending,passed,   │      │ payload (jsonb)        │
+                          │              failed,draft}     │      │ created_at             │
+                          │ qa_report (jsonb)              │      └────────────────────────┘
+                          │ generated_by                   │
+                          │ generated_at                   │
+                          └────────────────────────────────┘
+
+                          cv_comments
+                          ┌────────────────────────────────┐
+                          │ id PK                          │
+                          │ request_id FK                  │
+                          │ version_id FK (nullable)      │
+                          │ author_id FK → profiles.id     │
+                          │ body                           │
+                          │ comment_type ∈                 │
+                          │   {general, revision, qa,      │
+                          │    internal, history}          │
+                          │ metadata (jsonb) — depuis 017  │
+                          │ resolved, resolved_at          │
+                          │ created_at                     │
+                          └────────────────────────────────┘
+```
+
+Les versions ont `unique(request_id, version_number)`. Les commentaires de révision `metadata.category` sont filtrés par allowlist côté server action.
+
+### 3. Machine à états d'une demande
+
+```text
+              ┌──────────┐
+              │ submitted│
+              └────┬─────┘
+                   │ claim_next_cv_request()
+                   ▼
+              ┌───────────┐
+              │ processing│
+              └────┬──────┘
+                   │
+       ┌───────────┼─────────────┬──────────────┐
+       │                           │             │
+       ▼                           ▼             ▼
+┌─────────────────┐  ┌──────────────────┐  ┌──────────────┐
+│ needs_human_    │  │      failed      │  │  qa_failed   │
+│ review          │  │  + event_type    │  │ (layout hard)│
+│ (extraction     │  │  = "failed"      │  └──────┬───────┘
+│  trop pauvre)   │  └────────┬─────────┘         │
+└──────┬──────────┘           │                   │
+       │                      │ unlock_job()      │ unlock_job()
+       │                      │ (RPC, whub_worker │ (nouvelle politique)
+       │                      │  + service_role)  │
+       │                      ▼                   │
+       │                 ┌──────────┐            │
+       │                 │ submitted│            │
+       │                 └──────────┘            │
+       │ unlock_job()                            │
+       └──────────▶ submitted                    │
+                                                │
+   (depuis ready / draft_ready via commentaire)  │
+                                                ▼
+                                       ┌──────────────────┐
+                                       │ revision_requested│
+                                       └────────┬─────────┘
+                                                │
+                                                ▼
+                                       (re-claim, re-processing)
+                                                │
+                                                ▼
+                                       ┌──────────────────┐
+                                       │   draft_ready    │──▶ téléchargeable + correction
+                                       └────────┬─────────┘
+                                                ▼
+                                       ┌──────────────────┐
+                                       │      ready       │──▶ PDF final validé
+                                       └────────┬─────────┘
+                                                │
+                                                ▼
+                                       ┌──────────────────┐
+                                       │   cancelled      │ / archived (action manuelle)
+                                       └──────────────────┘
+```
+
+Statuts finaux (verrouillés sauf intervention) :
+
+`ready`, `failed`, `qa_failed`, `dead_letter`, `cancelled`, `archived`, `needs_human_review` (avant retry).
+
+### 4. Séquence d'événements `cv_events` pour un run nominal
+
+```text
+worker_claimed               → le worker a lock la demande
+extraction_done              → texte PDF extrait (payload: {chars: N})
+quality_source_profiled      → profil source classifié (payload: {source_profile, scores, metrics})
+source_sanitized             → counts de sanitization (payload: {removed_email_count, removed_phone_count, …})
+layout_variant_selected      → uniquement si attempts_count > 1 (payload: {selected, attempts_count})
+draft_ready  OU  ready       → fin de run (payload: {version_id, version_number, layout_warnings?, fidelity_warnings?})
+```
+
+En cas d'échec :
+
+```text
+failed        → payload: {error, error_category, fidelity_issues?, contact_categories?, contact_paths?}
+qa_failed     → idem avec last_error court
+needs_human_review → payload: {source_profile, reason: "extraction_low_confidence"}
+```
+
+L'événement `unlocked` est émis par la RPC `unlock_job` quand on remet une demande en `submitted`.
+
+### 5. Pipeline worker — étapes et timings
+
+Chaque run de `process_job` mesure ces timings et les log en fin de course :
+
+```text
+download_source              (téléchargement depuis cv-sources)
+extract_text                 (PyMuPDF)
+load_comments                (SELECT cv_comments non résolus)
+hermes_structuring           (appel modèle + repair + coalesce)
+render_pdf_qa_layout_variants (layout: base + retry)
+upload_and_finalize          (save_version + INSERT cv_versions)
+```
+
+Et en plus, les events profil / sanitization sont émis au fil de l'eau.
+
+### 6. Buckets de stockage et leur rôle
+
+```text
+cv-sources/        {request_id}/source/{filename}    → PDF candidat uploadé (privé)
+cv-renderer-inputs/ {request_id}/v{N}/input.json     → JSON structuré envoyé au renderer
+cv-finals/         {request_id}/v{N}/cv-whub.pdf     → PDF final W hub
+cv-artifacts/      {request_id}/v{N}/qa.json         → rapport QA complet (raw)
+```
+
+Politiques : `cv-sources` est privé, `cv-renderer-inputs` et `cv-finals` ont une policy publique en lecture pour permettre le download via URL signée longue.
+
+### 7. RPC Supabase
+
+```text
+claim_next_cv_request(worker_name)        -- whub_worker + service_role + postgres
+  → SELECT … WHERE status='submitted' … FOR UPDATE SKIP LOCKED
+  → UPDATE status='processing', worker_locked_at=now, worker_locked_by=worker_name,
+                       worker_attempts=worker_attempts+1
+  → retourne la ligne complète
+
+unlock_job(p_request_id)                  -- whub_worker + service_role + postgres (plus PUBLIC/anon/authenticated)
+  → SELECT … WHERE status IN ('failed','dead_letter','needs_human_review') FOR UPDATE
+  → UPDATE status='submitted', worker_attempts=0, last_error=null, worker_locked_*=null
+  → INSERT cv_events(event_type='unlocked')
+  → retourne la ligne complète
+```
+
+### 8. Profils source détectés
+
+`quality_report.classify_source_profile` classe le texte brut :
+
+```text
+ats             ≥ 3 markers TJM/dispo/mobilité/permis/salaire
+scanned         < 250 chars et 0 marker ATS
+senior_long     > 9000 chars ou ≥ 10 markers mission/projet/client/exp…
+two_column      short_line_ratio > 0.58 et > 45 lignes
+normal          défaut
+graphic         (réservé)
+risky           (réservé)
+unknown         (fallback)
+```
+
+Le score d'extraction démarre à 88/100, descend à 72 pour `two_column`/`risky`, à 35 pour `scanned`. En dessous de 500 chars sur un profil scanné, ou sous 250 chars / 5 lignes, `should_require_human_review` renvoie `True` → la demande passe en `needs_human_review` sans appel LLM.
+
+### 9. Catégories d'erreurs (cf. `classify_structuring_error`)
+
+Chaque erreur est classée en une seule catégorie avec un message public safe :
+
+```text
+contact_leak                   → email/téléphone/LinkedIn/GitHub dans le JSON
+identity_leak                  → nom de famille candidat dans zone interdite
+source_fidelity                → reformulation, hallucination, fait absent du CV source
+source_sanitization            → sanitizer a retiré trop de contenu
+structuring_invalid_json       → JSON Hermès ou renderer invalide/incomplet
+layout_density                 → page_too_dense, page_too_sparse, overflow, orphan
+renderer_asset                 → logo/watermark/asset manquant
+missing_candidate_first_name   → pas de pattern Prénom NOM détectable
+transient_model_failure        → timeout, fallback, crash
+```
+
+La catégorie est exposée dans `cv_events.payload.error_category` (clé standardisée). L'utilisateur final ne voit que le message public, jamais la stack.
+
+### 10. Structure du `cv_versions.qa_report`
+
+Le rapport attaché à chaque version contient un bloc `quality_report` ajouté en fin de process :
+
+```text
+{
+  source_profile: "senior_long",
+  scores: {
+    extraction: 88,
+    layout: 76,
+    fidelity: 100,
+    overall: 76     // = min(layout, fidelity)
+  },
+  metrics: {
+    raw_chars, sanitized_chars, line_count,
+    pages, attempts_count, total_duration_seconds,
+    mission_markers, ats_markers, short_line_ratio,
+    final_qa_status
+  },
+  hard_blockers: [ { code, stage, ... } ],   // bloquent la publication
+  soft_warnings: [ { code, stage, page?, ... } ],  // affichés en UI, n bloquent pas
+  layout_issues: [ { code, page, message } ]      // détail brut (privé, jamais affiché)
+}
+```
+
+`assert_quality_report_is_redacted` refuse tout rapport contenant un email, téléphone, URL ou LinkedIn/GitHub détectable. Cette contrainte est testée.
+
+### 11. Pages Next.js et leur contrat
+
+```text
+/                              → landing (auth-dev redirect)
+/login                         → formulaire code d'accès (no-auth en dev)
+/auth/callback                 → handler magic link (peu utilisé en dev no-auth)
+/dashboard                     → liste des cv_requests (status, priorité, demandeur)
+/requests/new                  → formulaire d'upload + consigne
+/requests/[id]                 → détail : avancement, version courante, versions précédentes,
+                                qualité CV, commentaires, retry, download
+/requests/[id]/download/[versionId]  → signed URL cv-finals, content-disposition filename
+```
+
+Server actions (`apps/web/app/requests/*/actions.ts`) : `prepareUpload`, `createRequest`, `addComment`, `retryRequest`. Toutes passent par `createSupabaseAdminClient()` (service role) et sont rate-limited via `lib/rate-limit`.
+
+### 12. Files d'attente
+
+```text
+Web (lib/queue) ──tentative──▶ BullMQ (Redis) ─────┐
+                                                  │ (si Redis OK)
+                                                  ▼
+                                Worker queue consumer (src/queue/consumer.py)
+                                                  │
+                                                  └─ sinon fallback : polling Postgres
+
+Postgres (cv_requests WHERE status='submitted')  ◀── worker poll_with_backoff() 10s
+```
+
+BullMQ côté web, c'est du best-effort. La source de vérité opérationnelle reste Postgres.
+
+### 13. Requêtes utiles pour audit et amélioration
+
+Quelques patterns SQL reproductibles via `supabase db query --linked` :
+
+```sql
+-- 1. Demandes bloquées plus de 5 minutes en processing
+select id, status, worker_locked_at, worker_locked_by, last_error
+from cv_requests
+where status = 'processing'
+  and worker_locked_at < now() - interval '5 minutes';
+
+-- 2. Profil source dominant sur les 7 derniers jours
+select payload->>'source_profile' as profile, count(*) as n
+from cv_events
+where event_type = 'quality_source_profiled'
+  and created_at > now() - interval '7 days'
+group by 1 order by n desc;
+
+-- 3. Catégories d'échec sur 30 jours
+select payload->>'error_category' as category, count(*) as n
+from cv_events
+where event_type in ('failed','qa_failed')
+  and created_at > now() - interval '30 days'
+group by 1 order by n desc;
+
+-- 4. Versions avec score global < 60 (qualité suspecte)
+select request_id, version_number, qa_status,
+       (qa_report->'quality_report'->'scores'->>'overall')::int as overall
+from cv_versions
+where (qa_report->'quality_report'->'scores'->>'overall')::int < 60
+order by generated_at desc
+limit 20;
+
+-- 5. Demandes retryable en attente d'action humaine
+select id, status, last_error, candidate_first_name
+from cv_requests
+where status in ('failed','dead_letter','needs_human_review')
+  and updated_at < now() - interval '1 hour'
+order by updated_at;
+```
+
+Ces requêtes couvrent : incidents worker bloqués, observabilité qualité, audit d'erreurs, scoring de versions, file d'attente humaine.
+
 ## Workflow recommandé avant release
 
 1. Vérifier le diff Git.
