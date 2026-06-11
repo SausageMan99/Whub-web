@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import json
 import logging
 import os
@@ -8,7 +9,7 @@ import unicodedata
 from copy import deepcopy
 from pathlib import Path
 from time import perf_counter
-from typing import Callable, cast
+from typing import Any, Callable, cast
 
 from .config import settings
 
@@ -82,6 +83,49 @@ EXPERIENCE_LOCATION_RE = re.compile(
 
 class StructuringError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class ContactLeakDiagnostic:
+    categories: tuple[str, ...]
+    paths: tuple[str, ...]
+
+    def __str__(self) -> str:
+        return f"contact_leak_diagnostic(categories={self.categories}, paths={self.paths})"
+
+
+def detect_contact_in_json(data: dict) -> ContactLeakDiagnostic:
+    """Recursively detect contact patterns and return a safe redacted diagnostic.
+
+    The returned object only contains category names and JSON paths. It never
+    includes the raw candidate contact value.
+    """
+    categories: list[str] = []
+    paths: list[str] = []
+
+    def _walk(node: object, path: str) -> None:
+        if isinstance(node, str):
+            text = node
+            for category, detector in CONTACT_DETECTORS:
+                if detector.search(text):
+                    if category not in categories:
+                        categories.append(category)
+                    if path and path not in paths:
+                        paths.append(path)
+                    break
+            return
+        if isinstance(node, list):
+            for index, item in enumerate(node):
+                child_path = f"{path}[{index}]"
+                _walk(item, child_path)
+            return
+        if isinstance(node, dict):
+            for key, value in node.items():
+                child_path = f"{path}.{key}" if path else str(key)
+                _walk(value, child_path)
+
+    _walk(data, "")
+    return ContactLeakDiagnostic(tuple(sorted(categories)), tuple(sorted(paths)))
 
 
 STRUCTURING_ERROR_PUBLIC_MESSAGES = {
@@ -194,10 +238,11 @@ def compact_extracted_text(text: str) -> str:
 
 
 def assert_no_contact_in_json(data: dict) -> None:
-    text = json.dumps(data, ensure_ascii=False)
-    categories = [category for category, detector in CONTACT_DETECTORS if detector.search(text)]
-    if categories:
-        raise StructuringError(f"Coordonnées détectées dans JSON renderer: {categories}")
+    diagnostic = detect_contact_in_json(data)
+    if diagnostic.categories:
+        exc = StructuringError(f"Coordonnées détectées dans JSON renderer: {diagnostic.categories}")
+        setattr(exc, "contact_diagnostic", diagnostic)
+        raise exc
 
 
 def sanitize_contact_in_json(data: dict) -> dict:
@@ -1518,7 +1563,85 @@ def split_cv_text_into_blocks(text: str, target_chars: int = LONG_CV_BLOCK_TARGE
     blocks: list[dict] = []
     for block in repair_long_cv_blocks(raw_blocks):
         blocks.extend(_split_oversized_block(block, target_chars))
-    return repair_long_cv_blocks(blocks)
+    return _coalesce_heading_only_blocks(repair_long_cv_blocks(blocks))
+
+
+def _is_heading_only_block(block: dict) -> bool:
+    """A block is 'heading-only' if it has exactly one non-empty line AND that
+    line is a recognised, all-uppercase section heading. Such a block carries
+    no information on its own and would only confuse the structuring model if
+    sent to Hermes in isolation (it can return malformed JSON on 10-char
+    inputs, which is what the previous production bug looked like).
+    """
+    non_empty = [line.strip() for line in str(block.get("text") or "").splitlines() if line.strip()]
+    if len(non_empty) != 1:
+        return False
+    line = non_empty[0]
+    if len(line) > 50:
+        return False
+    if _heading_kind(line) is None:
+        return False
+    folded = "".join(c for c in unicodedata.normalize("NFD", line) if unicodedata.category(c) != "Mn")
+    return folded == folded.upper() and any(c.isalpha() for c in folded)
+
+
+def _coalesce_heading_only_blocks(blocks: list[dict]) -> list[dict]:
+    """Merge every heading-only block into a neighbouring content block.
+
+    Strategy: a heading-only block is absorbed by the closest neighbour that
+    has actual content. If the previous block exists and is not itself
+    heading-only, prepend the heading to that block. Otherwise append it to
+    the next non-heading-only block. This keeps the visible section heading
+    inside the merged block so the structuring model can still anchor on it,
+    while guaranteeing no model call is ever made with a 10-char payload.
+    """
+    if not blocks:
+        return blocks
+    coalesced: list[dict] = []
+    for block in blocks:
+        if not _is_heading_only_block(block):
+            coalesced.append(block)
+            continue
+        heading_text = str(block.get("text") or "").strip()
+        # Prefer the previous non-heading-only block.
+        for index in range(len(coalesced) - 1, -1, -1):
+            if not _is_heading_only_block(coalesced[index]):
+                target = coalesced[index]
+                target["text"] = f"{target['text'].rstrip()}\n{heading_text}\n"
+                break
+        else:
+            # No previous non-heading-only block: forward-merge into next.
+            # The block is dropped because there's nothing to merge into yet
+            # in `coalesced`; the next loop iteration will keep the heading
+            # with the next content block via the 'next neighbour' path below.
+            coalesced.append(block)
+            continue
+
+    # Second pass: any heading-only blocks that survived the forward-only case
+    # (i.e. they were the first content of a run) are merged forward into the
+    # next non-heading-only neighbour. We do this by walking the list and
+    # pulling headings forward.
+    final_blocks: list[dict] = []
+    i = 0
+    while i < len(coalesced):
+        block = coalesced[i]
+        if not _is_heading_only_block(block):
+            final_blocks.append(block)
+            i += 1
+            continue
+        heading_text = str(block.get("text") or "").strip()
+        # Find the next non-heading-only block.
+        j = i + 1
+        while j < len(coalesced) and _is_heading_only_block(coalesced[j]):
+            j += 1
+        if j < len(coalesced):
+            target = coalesced[j]
+            target["text"] = f"{heading_text}\n{target['text'].lstrip()}"
+            i = j + 1
+        else:
+            # No content block after: drop the orphan heading.
+            i += 1
+    return final_blocks
 
 
 def assemble_structured_blocks(parts: list[dict], candidate_first_name: str | None = None) -> dict:
