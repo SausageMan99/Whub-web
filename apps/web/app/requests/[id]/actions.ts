@@ -119,7 +119,9 @@ export async function retryRequest(formData: FormData): Promise<CreateRequestRes
     .maybeSingle();
 
   if (lookupError || !request) throw new Error("Request not found");
-  if (request.status !== "failed" && request.status !== "dead_letter") throw new Error("Request is not retryable");
+  if (!["failed", "dead_letter", "needs_human_review"].includes(request.status)) {
+    throw new Error("Request is not retryable");
+  }
 
   // Use the unlock_job RPC to reset the request
   const { data: unlockedRequest, error: unlockError } = await admin.rpc("unlock_job", {

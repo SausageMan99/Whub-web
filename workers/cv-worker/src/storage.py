@@ -1,18 +1,39 @@
 from pathlib import Path
 from datetime import datetime, timezone
 import json
-from typing import TypedDict
+from typing import Any, TypedDict
 from .config import settings
 from .supabase_client import client
-
 
 class SavedVersion(TypedDict):
     id: str
     version_number: int
 
-def upload_bytes(bucket: str, path: str, data: bytes, content_type: str) -> str:
-    client.storage.from_(bucket).upload(path, data, {"content-type": content_type, "upsert": "true"})
+
+def upload_bytes(bucket: str, path: str, data: bytes, content_type: str, *, owner: str | None = None) -> str:
+    """Upload bytes to storage. If owner is provided, set metadata.owner for RLS policies."""
+    storage_client = client.storage
+    options: dict[str, Any] = {"content-type": content_type, "upsert": "true"}
+    if owner:
+        options["metadata"] = {"owner": owner}
+    storage_client.from_(bucket).upload(path, data, options)
     return path
+
+
+def upload_file(bucket: str, path: str, file_path: Path, content_type: str, *, owner: str | None = None) -> str:
+    """Upload file to storage with optional owner metadata."""
+    storage_client = client.storage
+    options: dict[str, Any] = {"content-type": content_type, "upsert": "true"}
+    if owner:
+        options["metadata"] = {"owner": owner}
+    storage_client.from_(bucket).upload(path, file_path.read_bytes(), options)
+    return path
+
+
+def download_bytes(bucket: str, path: str) -> bytes:
+    """Download bytes from storage."""
+    return client.storage.from_(bucket).download(path)
+
 
 def save_version(
     request_id: str,
@@ -22,6 +43,7 @@ def save_version(
     *,
     request_status: str = "ready",
     qa_status: str = "passed",
+    owner: str,
 ) -> SavedVersion:
     if request_status not in {"ready", "draft_ready"}:
         raise ValueError(f"unsupported version request_status: {request_status}")
@@ -40,12 +62,13 @@ def save_version(
     }).execute().data[0]
     version_number = int(version["version_number"])
 
+    # Owner for RLS policies: use request's created_by (passed as owner parameter)
     input_path = f"{request_id}/v{version_number}/input.json"
     final_path = f"{request_id}/v{version_number}/cv-whub.pdf"
     qa_path = f"{request_id}/v{version_number}/qa.json"
-    upload_bytes(settings.cv_renderer_inputs_bucket, input_path, json.dumps(structured_json, ensure_ascii=False, indent=2).encode(), "application/json")
-    upload_bytes(settings.cv_finals_bucket, final_path, pdf_path.read_bytes(), "application/pdf")
-    upload_bytes(settings.cv_artifacts_bucket, qa_path, json.dumps(qa_report, ensure_ascii=False, indent=2).encode(), "application/json")
+    upload_bytes(settings.cv_renderer_inputs_bucket, input_path, json.dumps(structured_json, ensure_ascii=False, indent=2).encode(), "application/json", owner=owner)
+    upload_bytes(settings.cv_finals_bucket, final_path, pdf_path.read_bytes(), "application/pdf", owner=owner)
+    upload_bytes(settings.cv_artifacts_bucket, qa_path, json.dumps(qa_report, ensure_ascii=False, indent=2).encode(), "application/json", owner=owner)
     client.table("cv_versions").update({
         "renderer_input_path": input_path,
         "final_pdf_path": final_path,
@@ -61,5 +84,5 @@ def save_version(
     return {"id": version["id"], "version_number": version_number}
 
 
-def save_success(request_id: str, structured_json: dict, pdf_path: Path, qa_report: dict) -> str:
-    return save_version(request_id, structured_json, pdf_path, qa_report, request_status="ready", qa_status="passed")["id"]
+def save_success(request_id: str, structured_json: dict, pdf_path: Path, qa_report: dict, owner: str) -> str:
+    return save_version(request_id, structured_json, pdf_path, qa_report, request_status="ready", qa_status="passed", owner=owner)["id"]

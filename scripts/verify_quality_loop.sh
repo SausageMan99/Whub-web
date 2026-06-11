@@ -19,11 +19,11 @@ uv run pytest \
   tests/test_main_quality_report.py \
   tests/test_main_needs_human_review.py \
   tests/test_draft_ready.py \
-  tests/test_qa_layout_policy.py \
   tests/test_main_layout_retry.py \
   tests/test_main_error_taxonomy.py \
   tests/test_eval_runner.py \
   tests/test_quality_digest.py \
+  tests/test_structuring_block_coalescing.py \
   -q
 
 echo
