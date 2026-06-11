@@ -8,6 +8,8 @@ const styles: Record<string, string> = {
   draft_ready: "bg-amber-100 text-amber-800 ring-amber-200",
   revision_requested: "bg-blue-100 text-blue-800 ring-blue-200",
   failed: "bg-red-100 text-red-800 ring-red-200",
+  dead_letter: "bg-red-200 text-red-900 ring-red-300",
+  needs_human_review: "bg-blue-100 text-blue-800 ring-blue-200",
   cancelled: "bg-stone-100 text-stone-600 ring-stone-200",
   archived: "bg-stone-100 text-stone-500 ring-stone-200"
 };

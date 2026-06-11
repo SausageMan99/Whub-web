@@ -164,9 +164,9 @@ test('addComment — records a revision request linked to the current version', 
   assert.deepEqual(state.commentInsert, {
     request_id: 'req1',
     version_id: 'v1',
-    author_id: 'u1',
     body: 'Passe en V2 en aérant la page 2.',
     comment_type: 'revision',
+    metadata: { category: 'other' },
   });
   assert.equal(state.requestUpdate?.status, 'revision_requested');
   assert.equal(state.requestUpdate?.worker_locked_at, null);
@@ -193,7 +193,61 @@ test('addComment — ignores blank messages', async () => {
   assert.deepEqual(state.revalidated, []);
 });
 
-test('addComment — rejects unauthenticated users', async () => {
+test('addComment — still records a revision request in no-auth mode', async () => {
   reset(false);
-  await assert.rejects(() => addComment(makeForm()), /Not allowed|Not authenticated/);
+
+  await addComment(makeForm());
+
+  assert.equal(state.commentInsert?.request_id, 'req1');
+  assert.equal(state.commentInsert?.version_id, 'v1');
+  assert.equal(state.commentInsert?.comment_type, 'revision');
+  assert.equal(state.commentInsert?.author_id, undefined);
+  assert.equal(state.requestUpdate?.status, 'revision_requested');
+  assert.equal(state.requestUpdate?.worker_locked_at, null);
+  assert.equal(state.requestUpdate?.worker_locked_by, null);
+  assert.equal(state.eventInsert?.event_type, 'revision_requested');
+  const payload = state.eventInsert?.payload as Record<string, unknown> | undefined;
+  assert.equal(payload?.source_reused, true);
+  assert.equal(payload?.version_id, 'v1');
+  assert.equal(payload?.version_number, 1);
+  assert.equal(payload?.qa_status, 'passed');
+  assert.equal(payload?.from_status, 'ready');
+});
+
+test('addComment — records a structured category in metadata when provided', async () => {
+  reset();
+
+  const form = new FormData();
+  form.set('request_id', 'req1');
+  form.set('body', 'La page 4 est trop vide.');
+  form.set('category', 'layout_sparse_page');
+
+  await addComment(form);
+
+  const insert = state.commentInsert as Record<string, unknown> | null;
+  assert.ok(insert, 'comment must be inserted');
+  assert.deepEqual(insert?.metadata, { category: 'layout_sparse_page' });
+});
+
+test('addComment — rejects unknown category and falls back to "other"', async () => {
+  reset();
+
+  const form = new FormData();
+  form.set('request_id', 'req1');
+  form.set('body', 'Note diverse.');
+  form.set('category', 'totally-not-allowed');
+
+  await addComment(form);
+
+  const insert = state.commentInsert as Record<string, unknown> | null;
+  assert.deepEqual(insert?.metadata, { category: 'other' });
+});
+
+test('addComment — no category yields the "other" fallback in metadata', async () => {
+  reset();
+
+  await addComment(makeForm());
+
+  const insert = state.commentInsert as Record<string, unknown> | null;
+  assert.deepEqual(insert?.metadata, { category: 'other' });
 });

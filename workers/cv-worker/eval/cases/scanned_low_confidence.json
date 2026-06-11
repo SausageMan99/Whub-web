@@ -1,0 +1,11 @@
+{
+  "id": "scanned_low_confidence",
+  "profile": "scanned",
+  "input_kind": "text",
+  "input_path": "fixtures/scanned_low_confidence.txt",
+  "assertions": {
+    "expected_status": "needs_human_review",
+    "forbidden_patterns": ["@"],
+    "disallowed_qa_codes": ["contact_leak"]
+  }
+}

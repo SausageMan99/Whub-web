@@ -19,16 +19,21 @@ from .structuring import (
     infer_forbidden_candidate_identity_terms,
     classify_structuring_error,
     StructuringError,
+    ContactLeakDiagnostic,
     _infer_first_name_from_source,
     _CandidateFirstNameInferenceError,
 )
 from .rendering import render_pdf
 from .qa import run_qa, classify_qa_report
 from .storage import save_version
-from .layout_packing import build_layout_packing_options
-from .layout_variants import run_bounded_layout_variant_loop
+from .layout import build_layout_packing_options, run_layout
 from .preflight import run_startup_preflight
 from .source_sanitizer import sanitize_source_text, SourceSanitizationError
+from .quality_report import (
+    QualityReportBuilder,
+    classify_source_profile,
+    should_require_human_review,
+)
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
@@ -154,6 +159,11 @@ def fail_job(job: dict, error: str | Exception, status: str = "failed") -> None:
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }).eq("id", job["id"]).execute()
     event_payload: dict[str, Any] = {"error": safe_error, "error_category": classified["category"]}
+    if classified["category"] == "contact_leak":
+        diagnostic = getattr(error, "contact_diagnostic", None)
+        if isinstance(diagnostic, ContactLeakDiagnostic) and diagnostic.categories:
+            event_payload["contact_categories"] = list(diagnostic.categories)
+            event_payload["contact_paths"] = list(diagnostic.paths) if diagnostic.paths else []
     # Extract safe fidelity issue codes from the error message
     error_str = str(error)
     fidelity_match = re.search(r"fidelity_issues=\[([^\]]+)\]", error_str)
@@ -177,6 +187,88 @@ def forbidden_candidate_name_parts(candidate_first_name: str | None, source_text
         if candidate not in forbidden:
             forbidden.append(candidate)
     return forbidden
+
+
+def _build_source_quality_payload(text: str, raw_chars: int, sanitized_chars: int) -> dict[str, Any]:
+    """Build a redacted ``quality_source_profiled`` event payload.
+
+    The payload only carries counts, scores, and the source profile name. It
+    must never embed the source text or any contact-like value.
+    """
+    profile = classify_source_profile(text)
+    builder = QualityReportBuilder(request_id="event_payload")
+    builder.set_source_profile(profile["profile"])
+    builder.add_metric("raw_chars", raw_chars)
+    builder.add_metric("sanitized_chars", sanitized_chars)
+    builder.add_metric("line_count", profile["line_count"])
+    builder.add_metric("mission_markers", profile["mission_markers"])
+    builder.add_metric("ats_markers", profile["ats_markers"])
+    builder.add_metric("short_line_ratio", profile["short_line_ratio"])
+    extraction_score = (
+        35
+        if profile["profile"] == "scanned"
+        else 72
+        if profile["profile"] in {"two_column", "risky"}
+        else 88
+    )
+    builder.add_score("extraction", extraction_score)
+    report = builder.to_dict(stage="extraction")
+    return {
+        "source_profile": report["source_profile"],
+        "scores": report["scores"],
+        "metrics": report["metrics"],
+        "hard_blockers": report["hard_blockers"],
+        "soft_warnings": report["soft_warnings"],
+    }
+
+
+def _attach_final_quality_report(
+    *,
+    qa_report: dict[str, Any],
+    request_id: str,
+    source_profile: str,
+    final_qa_status: str,
+    layout_warnings: list[dict[str, Any]],
+    attempts_count: int,
+    total_duration_seconds: float,
+    fidelity_soft_warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return ``qa_report`` enriched with a redacted ``quality_report`` block.
+
+    The block is the canonical quality summary read by the web cockpit and by
+    any future analytics. It must never contain raw contact values; the
+    builder enforces that contract.
+    """
+    builder = QualityReportBuilder(request_id=request_id)
+    builder.set_source_profile(source_profile)
+    builder.add_metric("pages", int(qa_report.get("pages") or 0))
+    builder.add_metric("attempts_count", attempts_count)
+    builder.add_metric("total_duration_seconds", round(float(total_duration_seconds), 2))
+    builder.add_metric("final_qa_status", final_qa_status)
+
+    layout_score = max(0, 100 - (len(layout_warnings) * 12))
+    builder.add_score("layout", layout_score)
+    builder.add_score("fidelity", 82 if fidelity_soft_warnings else 100)
+    overall = min(builder.scores.get("layout", 0), builder.scores.get("fidelity", 0))
+    builder.add_score("overall", overall)
+
+    if final_qa_status == "failed":
+        builder.add_hard_blocker("qa_failed", stage="qa")
+
+    for issue in layout_warnings:
+        if not isinstance(issue, dict):
+            continue
+        code = str(issue.get("code") or "layout_warning")
+        page = issue.get("page")
+        extra = {"page": int(page)} if isinstance(page, int) else {}
+        builder.add_soft_warning(code, stage="layout", **extra)
+
+    for warning in fidelity_soft_warnings or []:
+        builder.add_soft_warning(str(warning), stage="fidelity")
+
+    updated = dict(qa_report)
+    updated["quality_report"] = builder.to_dict(stage="final")
+    return updated
 
 
 def _build_safe_sanitization_event_payload(report) -> dict:
@@ -241,6 +333,30 @@ def process_job(job: dict) -> None:
         timings["extract_text"] = perf_counter() - stage_start
         emit_event(request_id, "extraction_done", {"chars": len(text)})
 
+        # Short-circuit to ``needs_human_review`` when the raw extraction is
+        # too short or too uncertain to safely auto-generate. We check BEFORE
+        # sanitization so that an almost-empty source never explodes the
+        # sanitizer with a low-quality failure and surfaces a clearer
+        # ``needs_human_review`` status instead.
+        raw_profile = classify_source_profile(text)
+        if should_require_human_review(raw_profile):
+            source_profile = raw_profile["profile"]
+            client.table("cv_requests").update({
+                "status": "needs_human_review",
+                "last_error": "Extraction peu fiable : validation humaine requise avant génération.",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", request_id).execute()
+            source_profile_payload = _build_source_quality_payload(
+                text, raw_chars=len(text), sanitized_chars=0
+            )
+            emit_event(request_id, "quality_source_profiled", source_profile_payload)
+            emit_event(
+                request_id,
+                "needs_human_review",
+                {"source_profile": source_profile, "reason": "extraction_low_confidence"},
+            )
+            return
+
         try:
             sanitization = sanitize_source_text(text, job.get("candidate_first_name"))
         except SourceSanitizationError as exc:
@@ -248,6 +364,11 @@ def process_job(job: dict) -> None:
             return
         sanitized_text = sanitization.text
         emit_event(request_id, "source_sanitized", _build_safe_sanitization_event_payload(sanitization.report))
+        source_profile_payload = _build_source_quality_payload(
+            text, raw_chars=len(text), sanitized_chars=len(sanitized_text)
+        )
+        source_profile = source_profile_payload["source_profile"]
+        emit_event(request_id, "quality_source_profiled", source_profile_payload)
 
         stage_start = perf_counter()
         comments_res = client.table("cv_comments").select("body,comment_type").eq("request_id", request_id).eq("resolved", False).execute()
@@ -287,38 +408,29 @@ def process_job(job: dict) -> None:
         assert_no_contact_in_json(structured)
         layout_options = build_layout_packing_options(structured)
         forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
-        variant_selection = run_bounded_layout_variant_loop(
-            structured=structured,
-            workdir=workdir,
-            base_options=layout_options,
-            render_pdf=render_pdf,
-            run_qa=run_qa,
-            forbidden_names=forbidden_names,
-            source_text=sanitized_text,
-        )
+        try:
+            layout_result = run_layout(
+                structured=structured,
+                workdir=workdir,
+                render_pdf=render_pdf,
+                run_qa=run_qa,
+                forbidden_names=forbidden_names,
+                source_text=sanitized_text,
+                base_options=layout_options,
+            )
+        except RuntimeError as exc:
+            fail_job(job, str(exc), "qa_failed")
+            return
         timings["render_pdf_qa_layout_variants"] = perf_counter() - stage_start
-        if variant_selection.hard_failure is not None:
-            fail_job(job, str(variant_selection.hard_failure.qa_report), "qa_failed")
-            return
-        if variant_selection.selected is None or variant_selection.selected_pdf is None or variant_selection.selected_report is None:
-            fail_job(job, "No layout variant produced a QA report", "failed")
-            return
-        pdf = variant_selection.selected_pdf
-        qa_report = variant_selection.selected_report
-        if len(variant_selection.attempts) > 1:
+        pdf = layout_result.pdf
+        qa_report = layout_result.qa_report
+        if layout_result.attempts_count > 1:
             emit_event(
                 request_id,
                 "layout_variant_selected",
                 {
-                    "selected": variant_selection.selected.name,
-                    "attempts": [
-                        {
-                            "name": attempt.name,
-                            "status": attempt.status,
-                            "score": attempt.score,
-                        }
-                        for attempt in variant_selection.attempts
-                    ],
+                    "selected": layout_result.selected_variant,
+                    "attempts_count": layout_result.attempts_count,
                 },
             )
 
@@ -332,6 +444,20 @@ def process_job(job: dict) -> None:
         request_status = "draft_ready" if final_qa_status == "draft" else "ready"
         version_qa_status = "draft" if final_qa_status == "draft" else "passed"
 
+        # Compute total duration before save_version so the final quality_report
+        # is persisted alongside the version row instead of added afterwards.
+        total_duration_seconds = perf_counter() - total_start
+        qa_report = _attach_final_quality_report(
+            qa_report=qa_report,
+            request_id=request_id,
+            source_profile=source_profile,
+            final_qa_status=final_qa_status,
+            layout_warnings=layout_warnings,
+            attempts_count=layout_result.attempts_count,
+            total_duration_seconds=total_duration_seconds,
+            fidelity_soft_warnings=fidelity_soft_warnings,
+        )
+
         stage_start = perf_counter()
         saved_version = save_version(
             request_id,
@@ -340,6 +466,7 @@ def process_job(job: dict) -> None:
             qa_report,
             request_status=request_status,
             qa_status=version_qa_status,
+            owner=job.get("created_by") or settings.worker_name,
         )
         client.table("cv_comments").update({"resolved": True}).eq("request_id", request_id).eq("comment_type", "revision").execute()
         event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
@@ -349,7 +476,7 @@ def process_job(job: dict) -> None:
             event_payload["fidelity_warnings"] = fidelity_soft_warnings
         emit_event(request_id, request_status, event_payload)
         timings["upload_and_finalize"] = perf_counter() - stage_start
-        timings["total"] = perf_counter() - total_start
+        timings["total"] = total_duration_seconds
         log.info("job timings request_id=%s %s", request_id, " ".join(f"{key}={value:.2f}s" for key, value in timings.items()))
     finally:
         if workdir.exists():

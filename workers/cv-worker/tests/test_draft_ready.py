@@ -6,7 +6,7 @@ from src.qa import classify_qa_report
 from src.qa import QAError
 from src import main as worker_main
 from src import storage
-from src.layout_variants import LayoutVariantAttempt, LayoutVariantSelection
+from src.layout import LayoutResult
 
 
 _MINIMAL_CV_SOURCE = "\n".join(
@@ -158,6 +158,7 @@ def test_save_version_persists_draft_status_and_full_qa_report(monkeypatch, tmp_
         qa_report,
         request_status="draft_ready",
         qa_status="draft",
+        owner="test-owner",
     )
 
     assert version == {"id": "version-1", "version_number": 3}
@@ -180,7 +181,7 @@ def test_save_version_rejects_unsafe_status_pairs(tmp_path, request_status, qa_s
     pdf_path.write_bytes(b"%PDF draft")
 
     with pytest.raises(ValueError):
-        storage.save_version("request-1", {}, pdf_path, _report(), request_status=request_status, qa_status=qa_status)
+        storage.save_version("request-1", {}, pdf_path, _report(), request_status=request_status, qa_status=qa_status, owner="test-owner")
 
 
 def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_path):
@@ -191,6 +192,7 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
     pdf_path.write_bytes(b"%PDF draft")
 
     monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(worker_main.settings, "worker_name", "whub-cv-worker-hermes-local")
     monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
     monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: _MINIMAL_CV_SOURCE)
     monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: {"name": "ZAHIA", "formations": [], "skills": [], "experiences": []})
@@ -209,11 +211,46 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
 
     monkeypatch.setattr(worker_main.client, "table", lambda table: _CommentsTable())
 
+    def _mock_run_layout(**kwargs):
+        return LayoutResult(
+            pdf=pdf_path,
+            qa_report=report,
+            layout_options=kwargs.get("base_options", {}),
+            attempts_count=2,
+            selected_variant="layout_retry",
+        )
+
+    monkeypatch.setattr(worker_main, "run_layout", _mock_run_layout)
+
     worker_main.process_job({"id": "request-1", "candidate_first_name": "ZAHIA", "instructions": ""})
 
-    assert saved["kwargs"] == {"request_status": "draft_ready", "qa_status": "draft"}
-    assert saved["args"][3] == report
-    assert ("draft_ready", {"version_id": "version-1", "version_number": 1, "layout_warnings": report["layout_issues"]}) in events
+    expected_kwargs = {"request_status": "draft_ready", "qa_status": "draft", "owner": "whub-cv-worker-hermes-local"}
+    assert saved["kwargs"] == expected_kwargs
+    saved_qa_report = saved["args"][3]
+    # Original report fields must be preserved.
+    for key, value in report.items():
+        assert saved_qa_report[key] == value
+    # New auto-evaluation loop must have attached a redacted quality_report.
+    assert isinstance(saved_qa_report["quality_report"], dict)
+    assert saved_qa_report["quality_report"]["source_profile"] in {
+        "normal",
+        "senior_long",
+        "ats",
+        "scanned",
+        "two_column",
+        "graphic",
+        "risky",
+        "unknown",
+    }
+    assert saved_qa_report["quality_report"]["stage"] == "final"
+    assert saved_qa_report["quality_report"]["metrics"]["attempts_count"] == 2
+    assert {w["code"] for w in saved_qa_report["quality_report"]["soft_warnings"]} >= {
+        "page_too_dense"
+    }
+    assert (
+        "draft_ready",
+        {"version_id": "version-1", "version_number": 1, "layout_warnings": report["layout_issues"]},
+    ) in events
 
 
 def test_process_job_revision_includes_previous_version_history(monkeypatch, tmp_path):
@@ -284,6 +321,12 @@ def test_process_job_mixed_hard_and_soft_blocks_as_qa_failed(monkeypatch, tmp_pa
 
     monkeypatch.setattr(worker_main.client, "table", lambda table: _CommentsTable())
 
+    def _mock_run_layout(**kwargs):
+        # Replicate the original behavior: fail_job receives str(qa_report)
+        raise RuntimeError(str(report))
+
+    monkeypatch.setattr(worker_main, "run_layout", _mock_run_layout)
+
     worker_main.process_job({"id": "request-1", "candidate_first_name": "ZAHIA", "instructions": ""})
 
     assert failures == [(str(report), "qa_failed")]
@@ -318,16 +361,15 @@ def test_process_job_sanitizes_source_text_before_structuring(monkeypatch, tmp_p
         captured["forbidden_args"] = (candidate_first_name, source_text)
         return []
 
-    def _layout_loop(**kwargs):
-        captured["layout_source_text"] = kwargs["source_text"]
-        attempt = LayoutVariantAttempt(
-            name="base",
+    def _mock_run_layout(**kwargs):
+        captured["layout_source_text"] = kwargs.get("source_text")
+        return LayoutResult(
             pdf=pdf_path,
             qa_report=_report(passed=True),
-            status="passed",
-            layout_options=kwargs["base_options"],
+            layout_options=kwargs.get("base_options", {}),
+            attempts_count=1,
+            selected_variant="base",
         )
-        return LayoutVariantSelection(selected=attempt, attempts=[attempt])
 
     monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
     monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
@@ -335,7 +377,9 @@ def test_process_job_sanitizes_source_text_before_structuring(monkeypatch, tmp_p
     monkeypatch.setattr(worker_main, "build_whub_json", _build_whub_json)
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
-    monkeypatch.setattr(worker_main, "run_bounded_layout_variant_loop", _layout_loop)
+    monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
+    monkeypatch.setattr(worker_main, "run_qa", Mock(return_value=_report(passed=True)))
+    monkeypatch.setattr(worker_main, "run_layout", _mock_run_layout)
     monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", _forbidden)
     monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: {"id": "version-1", "version_number": 1})
     monkeypatch.setattr(
@@ -396,15 +440,14 @@ def test_process_job_infers_first_name_when_portal_omits_it(monkeypatch, tmp_pat
         captured["forbidden_args"] = (candidate_first_name, source_text)
         return []
 
-    def _layout_loop(**kwargs):
-        attempt = LayoutVariantAttempt(
-            name="base",
+    def _mock_run_layout(**kwargs):
+        return LayoutResult(
             pdf=pdf_path,
             qa_report=_report(passed=True),
-            status="passed",
-            layout_options=kwargs["base_options"],
+            layout_options=kwargs.get("base_options", {}),
+            attempts_count=1,
+            selected_variant="base",
         )
-        return LayoutVariantSelection(selected=attempt, attempts=[attempt])
 
     monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
     monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
@@ -413,7 +456,8 @@ def test_process_job_infers_first_name_when_portal_omits_it(monkeypatch, tmp_pat
     monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
     monkeypatch.setattr(worker_main, "enforce_client_first_name", _enforce_client_first_name)
     monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
-    monkeypatch.setattr(worker_main, "run_bounded_layout_variant_loop", _layout_loop)
+    monkeypatch.setattr(worker_main, "run_qa", Mock(return_value=_report(passed=True)))
+    monkeypatch.setattr(worker_main, "run_layout", _mock_run_layout)
     monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", _forbidden)
     monkeypatch.setattr(
         worker_main, "save_version",

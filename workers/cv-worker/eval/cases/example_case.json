@@ -1,0 +1,17 @@
+{
+  "id": "example_senior_long_layout",
+  "profile": "senior_long",
+  "input_kind": "text",
+  "input_path": "fixtures/example_senior_long_layout.txt",
+  "assertions": {
+    "expected_status": "ready",
+    "required_terms": ["React", "AWS", "Architecte solution"],
+    "forbidden_patterns": ["@", "linkedin\\.com", "06[0-9 ]{8}"],
+    "max_pages": 5,
+    "disallowed_qa_codes": [
+      "contact_leak",
+      "candidate_identity_term_exposed",
+      "text_overflow"
+    ]
+  }
+}

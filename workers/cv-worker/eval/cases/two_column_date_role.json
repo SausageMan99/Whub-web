@@ -1,0 +1,20 @@
+{
+  "id": "two_column_date_role_preservation",
+  "profile": "senior_long",
+  "input_kind": "text",
+  "input_path": "fixtures/two_column_date_role.txt",
+  "assertions": {
+    "expected_status": "ready",
+    "required_terms": [
+      "2022",
+      "2025",
+      "Client Banque",
+      "2020",
+      "2022",
+      "Client Assurance"
+    ],
+    "forbidden_patterns": ["@", "linkedin\\.com"],
+    "max_pages": 4,
+    "disallowed_qa_codes": ["contact_leak", "candidate_identity_term_exposed"]
+  }
+}

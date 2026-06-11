@@ -4,7 +4,14 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
 import { AutoRefreshWhenActive } from "@/components/AutoRefreshWhenActive";
 import { addComment, retryRequest } from "./actions";
-import { draftReadyTitle, hardFailureCopy, isHardFailureStatus, normalizeDraftWarnings } from "@/lib/request-detail-ui";
+import {
+  draftReadyTitle,
+  hardFailureCopy,
+  isHardFailureStatus,
+  normalizeDraftWarnings,
+  normalizeQualitySummary,
+  safeRetryCopy,
+} from "@/lib/request-detail-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +41,14 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const draftTitle = draftReadyTitle(request.status);
   const draftWarnings = draftTitle ? normalizeDraftWarnings(latestVersion?.qa_report) : [];
   const hardFailure = hardFailureCopy(request.status);
+  const retryBlock = safeRetryCopy(request.status, request.candidate_first_name);
   const canDownloadGeneratedPdf = !isHardFailureStatus(request.status);
+  const qualitySummary = normalizeQualitySummary(latestVersion?.qa_report);
+
+  async function retryRequestAction(formData: FormData) {
+    "use server";
+    await retryRequest(formData);
+  }
 
   return (
     <AppShell active="detail">
@@ -47,11 +61,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
         </div>
         <div className="flex flex-col items-start gap-3">
           <StatusBadge status={request.status} events={eventTypes} />
-          {request.status === "failed" && (
-            <form action={retryRequest}>
+          {retryBlock && (
+            <form action={retryRequestAction}>
               <input type="hidden" name="request_id" value={id} />
               <button className="rounded-2xl bg-ink px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5">
-                Relancer la génération
+                {retryBlock.label}
               </button>
             </form>
           )}
@@ -99,6 +113,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               <p className="mt-2 text-sm font-semibold text-ink/50">Un point qualité de mise en page a été détecté. Indique la correction souhaitée ci-dessous.</p>
             )}
           </div>
+          {retryBlock && (
+            <p className="text-xs font-semibold text-ink/50">{retryBlock.hint}</p>
+          )}
           <form action={addComment} className="mt-5 space-y-3 border-t border-amber-200 pt-5">
             <input type="hidden" name="request_id" value={id} />
             <label className="block text-sm font-black text-ink" htmlFor="draft-feedback">Correction post-génération — crée V{nextVersionNumber}</label>
@@ -113,6 +130,64 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           <p className="text-xs font-black uppercase tracking-[0.28em] text-red-700">Sortie bloquée</p>
           <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">{hardFailure.title}</h2>
           <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-ink/60">{hardFailure.body}</p>
+          {hardFailure.action && (
+            <form action={hardFailure.action.href ?? retryRequestAction} className="mt-5">
+              <input type="hidden" name="request_id" value={id} />
+              <button
+                type="submit"
+                className="rounded-2xl bg-ink px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5"
+              >
+                {hardFailure.action.label}
+              </button>
+            </form>
+          )}
+        </Panel>
+      )}
+
+      {qualitySummary && (
+        <Panel className="mt-6 p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.28em] text-whub">Qualité CV</p>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-ink">{qualitySummary.sourceProfileLabel}</h2>
+              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-ink/50">Synthèse automatique redacted : aucun contact candidat ni extrait source n'est affiché.</p>
+            </div>
+            <div className="shrink-0 rounded-2xl bg-whub/10 px-6 py-4 text-right">
+              <p className="text-xs font-black uppercase text-whub/70">Score global</p>
+              <p className="text-3xl font-black text-whub">{qualitySummary.scores.overall}/100</p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-porcelain/70 p-4">
+              <p className="text-xs font-black uppercase text-ink/40">Extraction</p>
+              <p className="mt-1 text-xl font-black">{qualitySummary.scores.extraction}/100</p>
+            </div>
+            <div className="rounded-2xl bg-porcelain/70 p-4">
+              <p className="text-xs font-black uppercase text-ink/40">Fidélité</p>
+              <p className="mt-1 text-xl font-black">{qualitySummary.scores.fidelity}/100</p>
+            </div>
+            <div className="rounded-2xl bg-porcelain/70 p-4">
+              <p className="text-xs font-black uppercase text-ink/40">Mise en page</p>
+              <p className="mt-1 text-xl font-black">{qualitySummary.scores.layout}/100</p>
+            </div>
+          </div>
+          {qualitySummary.metrics.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {qualitySummary.metrics.map((metric) => (
+                <span key={metric} className="rounded-full bg-ink/[0.04] px-3 py-1 text-xs font-black text-ink/50">{metric}</span>
+              ))}
+            </div>
+          )}
+          {qualitySummary.warnings.length > 0 && (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+              <p className="font-black text-ink">Points qualité détectés</p>
+              <ul className="mt-2 space-y-1 text-sm font-semibold text-ink/65">
+                {qualitySummary.warnings.map((warning) => (
+                  <li key={warning}>· {warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Panel>
       )}
 

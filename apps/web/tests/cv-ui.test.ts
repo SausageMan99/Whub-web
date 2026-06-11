@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCvDownloadFilename, getCvProgress } from '../lib/cv-ui';
+import { buildCvDownloadFilename, getCvProgress, getCvStatusLabel } from '../lib/cv-ui';
 
 /* ---------- buildCvDownloadFilename ---------- */
 
@@ -90,7 +90,7 @@ test('getCvProgress — failed', () => {
   assert.deepEqual(getCvProgress('failed', []), {
     percent: 100,
     label: 'À corriger',
-    helper: 'La génération n’a pas pu aboutir. Corrige la source ou la consigne avant de relancer.',
+    helper: "La génération n'a pas pu aboutir. Corrige la source ou la consigne avant de relancer.",
   });
 });
 
@@ -124,4 +124,23 @@ test('getCvProgress — archived', () => {
     label: 'Archivé',
     helper: 'Cette demande n\u2019est plus en production.',
   });
+});
+
+test('getCvStatusLabel — needs_human_review uses business wording', () => {
+  assert.equal(getCvStatusLabel('needs_human_review', []), 'Validation humaine');
+  // Even if events would have promoted it to a different status, the
+  // needs_human_review status itself always wins on the label.
+  assert.equal(
+    getCvStatusLabel('needs_human_review', ['ready', 'extraction_done']),
+    'Validation humaine',
+  );
+});
+
+test('getCvProgress — needs_human_review exposes a clear helper', () => {
+  const progress = getCvProgress('needs_human_review', []);
+  assert.equal(progress.label, 'Validation humaine');
+  assert.match(progress.helper, /humain|relire|vérifier/i);
+  // The progress bar should not look "100% finished" because no PDF was
+  // produced. Pick a mid-range value.
+  assert.ok(progress.percent >= 0 && progress.percent < 100, 'must not be 100');
 });

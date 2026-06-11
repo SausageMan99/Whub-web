@@ -29,12 +29,9 @@ test('request detail page — renders draft_ready, completed and hard failure st
     },
   });
 
-  t.mock.module('@/lib/supabase/server', {
+  t.mock.module('@/lib/supabase/admin', {
     namedExports: {
-      createSupabaseServerClient: async () => ({
-        auth: {
-          getUser: async () => ({ data: { user: { id: 'u1', email: 'test@whub.fr' } } }),
-        },
+      createSupabaseAdminClient: () => ({
         from(table: string) {
           return {
             select() {
@@ -110,9 +107,10 @@ test('request detail page — renders draft_ready, completed and hard failure st
   assert.match(failedHtml, /À corriger — génération impossible/);
   assert.match(failedHtml, /Relancer la génération/);
 
-  const qaFailedHtml = await render('qa_failed');
+  const qaFailedHtml = await render("qa_failed");
   assert.match(qaFailedHtml, /Contrôle qualité — PDF non livrable/);
-  assert.doesNotMatch(qaFailedHtml, /Relancer la génération/);
+  assert.match(qaFailedHtml, /Relancer la génération/);
   assert.match(qaFailedHtml, /PDF bloqué/);
   assert.doesNotMatch(qaFailedHtml, /Télécharger le brouillon/);
+  assert.doesNotMatch(qaFailedHtml, /payload|stack|json|trace/i);
 });

@@ -1,0 +1,15 @@
+Prénom NOM
+Développeur Full Stack Java React
+Disponibilité immédiate
+TJM 620
+Mobilité Paris
+Permis B
+Email: candidat@example.com
+Téléphone: 0601020304
+
+EXPÉRIENCES PROFESSIONNELLES
+2022 - 2025 — Développeur Full Stack — Client Banque
+Missions clés : développement Java Spring Boot, React, tests unitaires, CI/CD.
+
+COMPÉTENCES
+Java, Spring Boot, React, TypeScript, Docker, Kubernetes

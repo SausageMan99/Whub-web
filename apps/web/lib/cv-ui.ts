@@ -6,6 +6,7 @@ export type CvStatus =
   | "draft_ready"
   | "revision_requested"
   | "failed"
+  | "dead_letter"
   | "cancelled"
   | "archived"
   | string;
@@ -35,10 +36,14 @@ export function buildCvDownloadFilename(candidateName: string | null | undefined
 export function getCvStatusLabel(status: CvStatus, eventTypes: string[] = []) {
   const events = new Set(eventTypes);
 
-  if (status === "ready" || events.has("ready")) return "Prêt à télécharger";
+  // An explicit final status always wins over historical events. If the
+  // current row says ``needs_human_review`` or ``draft_ready``, do not let
+  // an earlier ``ready`` event from a previous attempt re-label the row.
+  if (status === "needs_human_review") return "Validation humaine";
   if (status === "draft_ready") return "Brouillon prêt";
+  if (status === "ready" || events.has("ready")) return "Prêt à télécharger";
   if (status === "qa_failed") return "Contrôle qualité";
-  if (status === "failed" || status === "revision_requested") return "À corriger";
+  if (status === "failed" || status === "dead_letter" || status === "revision_requested") return "À corriger";
   if (events.has("extraction_done")) return "Mise au format W hub";
   if (status === "processing" || events.has("worker_claimed")) return "Analyse du CV";
   if (status === "submitted") return "En attente";
@@ -67,11 +72,19 @@ export function getCvProgress(status: CvStatus, eventTypes: string[] = []): CvPr
     };
   }
 
-  if (status === "failed") {
+  if (status === "needs_human_review") {
+    return {
+      percent: 50,
+      label,
+      helper: "Le CV source demande une vérification humaine avant de relancer la génération. Aucun PDF n'a été produit."
+    };
+  }
+
+  if (status === "failed" || status === "dead_letter") {
     return {
       percent: 100,
       label,
-      helper: "La génération n’a pas pu aboutir. Corrige la source ou la consigne avant de relancer."
+      helper: "La génération n'a pas pu aboutir. Corrige la source ou la consigne avant de relancer."
     };
   }
 

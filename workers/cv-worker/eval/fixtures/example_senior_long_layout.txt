@@ -1,0 +1,7 @@
+Prénom NOM
+Architecte solution cloud et devops senior
+Compétences: React, Next.js, AWS, GCP, Docker, Kubernetes
+Expériences: pilotage de projets data et industrialisation de plateformes internes.
+Réalisations: migration applicative, automatisation CI/CD, sécurisation des déploiements.
+Formation: école d'ingénieur, certifications cloud, ateliers agiles et mentorat technique.
+Langues: français, anglais professionnel, communication avec équipes produit et métier.

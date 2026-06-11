@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from src import main as worker_main
 from src.source_sanitizer import SourceSanitizationError
-from src.structuring import classify_structuring_error, StructuringError
+from src.structuring import classify_structuring_error, StructuringError, ContactLeakDiagnostic
 
 
 class _FakeQuery:
@@ -137,10 +137,30 @@ class TestSourceSanitizationErrorTaxonomy:
 
         monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
         monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+        # Long enough to pass the new ``needs_human_review`` short-circuit
+        # but composed mostly of contact data + Hellowork metadata that the
+        # sanitizer must strip. After stripping, sanitized text becomes too
+        # short and triggers ``SourceSanitizationError``.
         monkeypatch.setattr(
             worker_main,
             "extract_pdf_text",
-            lambda source: "Jean Dupont jean.dupont@example.com +33 6 12 34 56 78",
+            lambda source: (
+                "Jean Dupont\n"
+                "Architecte logiciel senior\n"
+                "Expérience professionnelle chez un grand client du secteur bancaire\n"
+                "Missions principales: conception d'architectures microservices python java\n"
+                "Compétences techniques: python java spring boot docker kubernetes aws\n"
+                "Disponibilité immédiate\n"
+                "TJM 650\n"
+                "Mobilité Paris\n"
+                "Permis B\n"
+                "Email: jean.dupont@example.com\n"
+                "Téléphone: +33 6 12 34 56 78\n"
+                "LinkedIn: linkedin.com/in/jean\n"
+                "GitHub: github.com/jeandupont\n"
+                "Site personnel: portfolio.example/raw-cv\n"
+                "CV téléchargé depuis Hellowork le 12/05/2026\n"
+            ),
         )
         monkeypatch.setattr(worker_main, "fail_job", _fail_job)
         monkeypatch.setattr(
@@ -212,9 +232,6 @@ class TestMissingCandidateFirstNameErrorTaxonomy:
         monkeypatch.setattr(worker_main, "client", fake_client)
         monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
         monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
-        # Anonymized CV source: at least 400 chars, no identity line in first 50 lines.
-        # Each line has mixed case (uppercase-after-lowercase tokens), so
-        # _looks_like_standalone_identity_line returns False for every line.
         monkeypatch.setattr(
             worker_main,
             "extract_pdf_text",
@@ -249,7 +266,38 @@ class TestMissingCandidateFirstNameErrorTaxonomy:
                 "Prénom candidat absent et non inférable depuis le CV source.",
             )
         ]
-        assert [event for event, _payload in events] == ["worker_claimed", "extraction_done", "source_sanitized"]
+        assert [event for event, _payload in events] == [
+            "worker_claimed",
+            "extraction_done",
+            "source_sanitized",
+            "quality_source_profiled",
+        ]
         assert not build_whub_json_called, "build_whub_json should NOT be called when first name cannot be inferred"
         failure_repr = repr(failures)
         assert "Expérience professionnelle" not in failure_repr
+
+
+class TestContactLeakEventPayload:
+    def test_fail_job_persists_safe_contact_leak_diagnostic(self, monkeypatch):
+        fake_client = _FakeClient()
+        events = []
+        monkeypatch.setattr(worker_main, "client", fake_client)
+        monkeypatch.setattr(worker_main, "emit_event", lambda request_id, status, payload=None: events.append((request_id, status, payload)))
+
+        error = StructuringError("Coordonnées détectées dans JSON renderer: ['email']")
+        setattr(error, "contact_diagnostic", ContactLeakDiagnostic(("email",), ("experiences[0].sections[0].content[0]",)))
+
+        worker_main.fail_job({"id": "req-1"}, error, "failed")
+
+        persisted = fake_client.query.payload["last_error"]
+        event_payload = events[0][2]
+
+        assert persisted == "Coordonnées détectées dans la structuration du CV."
+        assert event_payload == {
+            "error": persisted,
+            "error_category": "contact_leak",
+            "contact_categories": ["email"],
+            "contact_paths": ["experiences[0].sections[0].content[0]"],
+        }
+        assert "jean.dupont@example.com" not in event_payload.get("contact_categories", "")
+        assert "06" not in event_payload.get("contact_paths", "")

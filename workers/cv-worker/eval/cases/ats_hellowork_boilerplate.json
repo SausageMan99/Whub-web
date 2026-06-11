@@ -1,0 +1,23 @@
+{
+  "id": "ats_hellowork_boilerplate",
+  "profile": "ats",
+  "input_kind": "text",
+  "input_path": "fixtures/ats_hellowork_boilerplate.txt",
+  "assertions": {
+    "expected_status": "ready",
+    "required_terms": ["Java", "Spring Boot", "React", "Client Banque"],
+    "forbidden_patterns": [
+      "@",
+      "0601020304",
+      "linkedin\\.com",
+      "TJM 620",
+      "Permis B"
+    ],
+    "max_pages": 3,
+    "disallowed_qa_codes": [
+      "contact_leak",
+      "candidate_identity_term_exposed",
+      "text_overflow"
+    ]
+  }
+}
