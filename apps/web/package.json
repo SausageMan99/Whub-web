@@ -12,6 +12,8 @@
   "dependencies": {
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
+    "bullmq": "^5.78.0",
+    "ioredis": "^5.11.1",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"

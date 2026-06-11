@@ -3,10 +3,11 @@
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { cvJobProducer, CVJobData } from "@/lib/queue";
 
 export type CreateRequestResult =
   | { ok: true; requestId: string }
-  | { ok: false; error: "request_failed" };
+  | { ok: false; error: "request_failed" | "queue_unavailable"; queueError?: string };
 
 function logCreateRequestFailure(stage: string, requestId: string | null, error?: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "unknown");
@@ -100,6 +101,27 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
     if (error) {
       logCreateRequestFailure("cv_requests_insert", requestId, error);
       return { ok: false, error: "request_failed" };
+    }
+
+    // Enqueue to BullMQ for queue-based worker processing
+    try {
+      const jobData: CVJobData = {
+        requestId,
+        candidateFirstName: candidateFirstName || null,
+        instructions,
+        priority: (priority as "urgent" | "high" | "normal") || "normal",
+        sourceFilePath: sourcePath,
+        sourceFileName: fileName,
+        sourceFileMime: fileMime,
+        sourceFileSize: fileSize,
+        createdBy: PORTAL_ORIGIN,
+        submittedAt: new Date().toISOString(),
+        enqueuedAt: new Date().toISOString(),
+        attempt: 0,
+      };
+      await cvJobProducer.enqueue(jobData);
+    } catch (queueError) {
+      console.warn("BullMQ enqueue unavailable; request remains submitted for polling worker fallback", { requestId, error: queueError });
     }
 
     return { ok: true, requestId };
