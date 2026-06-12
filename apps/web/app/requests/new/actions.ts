@@ -7,7 +7,7 @@ import { cvJobProducer, CVJobData } from "@/lib/queue";
 
 export type CreateRequestResult =
   | { ok: true; requestId: string }
-  | { ok: false; error: "request_failed" | "queue_unavailable"; queueError?: string };
+  | { ok: false; error: "request_failed" | "candidate_first_name_required" | "queue_unavailable"; queueError?: string };
 
 function logCreateRequestFailure(stage: string, requestId: string | null, error?: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "unknown");
@@ -81,6 +81,11 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
     if (!requestId || !sourcePath) {
       logCreateRequestFailure("missing_upload_metadata", requestId || null);
       return { ok: false, error: "request_failed" };
+    }
+
+    if (!candidateFirstName) {
+      logCreateRequestFailure("missing_candidate_first_name", requestId || null);
+      return { ok: false, error: "candidate_first_name_required" };
     }
 
     const { error } = await admin.from("cv_requests").insert({

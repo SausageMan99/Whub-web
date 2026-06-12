@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { prepareUpload, createRequest } from "./actions";
 
 const errorMessages: Record<string, string> = {
+  candidate_first_name_required: "Ajoute le prénom du candidat avant d’envoyer le CV.",
   file_required: "Ajoute un PDF source avant de créer la demande.",
   pdf_required: "Le fichier doit être un PDF.",
   file_too_large: "Le PDF doit faire 10 Mo maximum.",
@@ -28,6 +29,13 @@ export default function NewRequestForm({ initialError }: { initialError?: string
 
     try {
       const form = new FormData(e.currentTarget);
+      const candidateFirstName = String(form.get("candidate_first_name") || "").trim();
+      if (!candidateFirstName) {
+        setErrorCode("candidate_first_name_required");
+        setIsSubmitting(false);
+        return;
+      }
+
       const file = form.get("file") as File | null;
       if (!file || file.size === 0) {
         setErrorCode("file_required");
@@ -78,6 +86,7 @@ export default function NewRequestForm({ initialError }: { initialError?: string
       meta.set("source_file_name", file.name);
       meta.set("source_file_size", String(file.size));
       meta.set("source_file_mime", file.type);
+      meta.set("candidate_first_name", candidateFirstName);
       meta.set("instructions", String(form.get("instructions") || ""));
 
       const result = await createRequest(meta);
@@ -136,6 +145,21 @@ export default function NewRequestForm({ initialError }: { initialError?: string
             <span>Dépose un PDF ou clique pour choisir ton CV source.</span>
           )}
         </div>
+      </label>
+
+      <label className="block">
+        <span className="text-sm font-black text-ink">Prénom du candidat</span>
+        <input
+          name="candidate_first_name"
+          type="text"
+          autoComplete="off"
+          required
+          className="mt-2 w-full rounded-3xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold placeholder:text-ink/28"
+          placeholder="Ex : Jérémy"
+        />
+        <p className="mt-2 text-xs font-semibold leading-5 text-ink/45">
+          Ce prénom sert à anonymiser correctement le CV client. Le nom de famille et les coordonnées restent retirés.
+        </p>
       </label>
 
       <label className="block">

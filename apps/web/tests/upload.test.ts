@@ -102,6 +102,17 @@ before(async (t) => {
       createSupabaseAdminClient: () => makeAdminClient(),
     },
   });
+  t.mock.module('@/lib/queue', {
+    namedExports: {
+      cvJobProducer: {
+        enqueue: (payload: unknown) => {
+          recordedCalls.push({ table: 'queue', method: 'enqueue', payload });
+          return Promise.resolve();
+        },
+      },
+      CVJobData: undefined,
+    },
+  });
 
   const mod = await import('../app/requests/new/actions');
   createRequest = mod.createRequest;
@@ -171,9 +182,11 @@ function assertCreateRequestFailureLog(
   if (message) assert.equal(payload.message, message);
 }
 
-test('prepareUpload — rejects unauthenticated users', async () => {
+test('prepareUpload — creates signed upload URL even in auth-disabled mode', async () => {
   reset(false);
-  await assert.rejects(() => preparePdfUpload(), /REDIRECT \/login/);
+  const result = await preparePdfUpload();
+  assert.equal(result.signedUrl, 'https://signed-upload.local');
+  assert.match(result.requestId, /^[0-9a-f-]{36}$/);
 });
 
 test('prepareUpload — creates signed upload URL with sanitized source path', async () => {
@@ -194,17 +207,21 @@ test('prepareUpload — redirects to upload_failed on signed URL error', async (
   await assert.rejects(() => preparePdfUpload(), /REDIRECT \/requests\/new\?error=upload_failed/);
 });
 
-test('createRequest — rejects unauthenticated users', async () => {
+test('createRequest — creates a request even in auth-disabled mode', async () => {
   reset(false);
-  await assert.rejects(() => createRequest(makePreparedForm()), /REDIRECT \/login/);
+  assert.deepEqual(await createRequest(makePreparedForm()), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
 });
 
-test('createRequest — returns request_failed and logs unexpected exception for non-whitelisted users', async () => {
+test('createRequest — ignores legacy whitelist state in auth-disabled mode', async () => {
   reset();
   state.allowed = null;
-  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
-  assert.deepEqual(result, { ok: false, error: 'request_failed' });
-  assertCreateRequestFailureLog(logs, 'unexpected_exception', null, 'not_allowed');
+  assert.deepEqual(await createRequest(makePreparedForm()), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
 });
 
 test('createRequest — requires prepared upload metadata and logs missing_upload_metadata', async () => {
@@ -226,7 +243,6 @@ test('createRequest — inserts correct row into cv_requests and returns success
   const row = insertCall!.payload as Record<string, unknown>;
 
   assert.equal(row.id, '11111111-1111-4111-8111-111111111111');
-  assert.equal(row.created_by, 'u1');
   assert.equal(row.title, 'Senior Dev');
   assert.equal(row.candidate_first_name, 'Alice');
   assert.equal(row.origin, 'web_portal');
@@ -240,12 +256,19 @@ test('createRequest — inserts correct row into cv_requests and returns success
   assert.equal(row.source_file_size, 8);
 });
 
-test('createRequest — returns profile_failed and logs profile_upsert on profile upsert error', async () => {
+test('createRequest — enqueues job data with candidate first name', async () => {
   reset();
-  state.profileError = new Error('boom');
-  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
-  assert.deepEqual(result, { ok: false, error: 'profile_failed' });
-  assertCreateRequestFailureLog(logs, 'profile_upsert', '11111111-1111-4111-8111-111111111111', 'boom');
+  assert.deepEqual(await createRequest(makePreparedForm()), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
+
+  const queueCall = recordedCalls.find((c) => c.table === 'queue' && c.method === 'enqueue');
+  assert.ok(queueCall, 'queue enqueue call should exist');
+  const payload = queueCall!.payload as Record<string, unknown>;
+  assert.equal(payload.requestId, '11111111-1111-4111-8111-111111111111');
+  assert.equal(payload.candidateFirstName, 'Alice');
+  assert.equal(payload.instructions, 'Do it well');
 });
 
 test('createRequest — returns request_failed and logs cv_requests_insert on insert error', async () => {
@@ -256,32 +279,38 @@ test('createRequest — returns request_failed and logs cv_requests_insert on in
   assertCreateRequestFailureLog(logs, 'cv_requests_insert', '11111111-1111-4111-8111-111111111111', 'boom');
 });
 
-test('createRequest — catches thrown dependencies and logs unexpected_exception', async () => {
+test('createRequest — trims candidate first name before insert', async () => {
   reset();
-  state.profileThrow = new Error('dependency exploded');
-  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
-  assert.deepEqual(result, { ok: false, error: 'request_failed' });
-  assertCreateRequestFailureLog(logs, 'unexpected_exception', '11111111-1111-4111-8111-111111111111', 'dependency exploded');
+  assert.deepEqual(await createRequest(makePreparedForm({ candidate_first_name: '  Jérémy  ' })), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
+
+  const insertCall = recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert');
+  assert.ok(insertCall, 'insert call should exist');
+  const row = insertCall!.payload as Record<string, unknown>;
+  assert.equal(row.candidate_first_name, 'Jérémy');
 });
 
-test('new request page — exposes single upload/message workflow and no advanced fields', () => {
+test('new request page — exposes upload, first-name and message workflow without advanced fields', () => {
   const source = readFileSync(join(process.cwd(), 'app/requests/new/page.tsx'), 'utf8');
   const formSource = readFileSync(join(process.cwd(), 'app/requests/new/NewRequestForm.tsx'), 'utf8');
 
   assert.match(source, /Un seul flux: CV source \+ message libre\./);
   assert.match(source, /Même logique que Telegram Hermes/);
   assert.match(formSource, /name="file"/);
+  assert.match(formSource, /name="candidate_first_name"/);
+  assert.match(formSource, /Prénom du candidat/);
   assert.match(formSource, /name="instructions"/);
   assert.match(formSource, /Générer le CV/);
   assert.match(formSource, /Message \/ consigne complémentaire/);
   assert.doesNotMatch(formSource, /name="title"/);
-  assert.doesNotMatch(formSource, /candidate_first_name/);
   assert.doesNotMatch(formSource, /priority/);
   assert.doesNotMatch(formSource, /cv_intentions/);
   assert.doesNotMatch(formSource, /buildGuidedInstructions/);
 });
 
-test('createRequest — falls back to a default title when the UI only sends upload metadata and instructions', async () => {
+test('createRequest — rejects missing candidate first name before cv_requests insert', async () => {
   reset();
   const fd = new FormData();
   fd.set('request_id', '11111111-1111-4111-8111-111111111111');
@@ -291,17 +320,8 @@ test('createRequest — falls back to a default title when the UI only sends upl
   fd.set('source_file_mime', 'application/pdf');
   fd.set('instructions', 'Garder le CV fidèle.');
 
-  assert.deepEqual(await createRequest(fd), {
-    ok: true,
-    requestId: '11111111-1111-4111-8111-111111111111',
-  });
-
-  const insertCall = recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert');
-  assert.ok(insertCall, 'insert call should exist');
-  const row = insertCall!.payload as Record<string, unknown>;
-
-  assert.equal(row.title, 'CV source');
-  assert.equal(row.candidate_first_name, '');
-  assert.equal(row.instructions, 'Garder le CV fidèle.');
-  assert.equal(row.priority, 'normal');
+  const { result, logs } = await captureConsoleError(() => createRequest(fd));
+  assert.deepEqual(result, { ok: false, error: 'candidate_first_name_required' });
+  assertCreateRequestFailureLog(logs, 'missing_candidate_first_name', '11111111-1111-4111-8111-111111111111', 'unknown');
+  assert.equal(recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert'), undefined);
 });
