@@ -51,3 +51,29 @@ def build_coverage_ledger(document: SourceDocument) -> CoverageLedger:
             )
         )
     return CoverageLedger(entries=entries)
+
+
+def _token_set(text: str) -> set[str]:
+    return set(_tokens(text))
+
+
+def compare_required_block_coverage(
+    document: SourceDocument,
+    rendered_text: str,
+    *,
+    min_overlap: float = 0.65,
+) -> list[dict[str, int | str]]:
+    rendered_tokens = _token_set(rendered_text)
+    missing: list[dict[str, int | str]] = []
+    for block in document.required_blocks():
+        source_tokens = _token_set(block.text)
+        if not source_tokens:
+            continue
+        overlap = len(source_tokens & rendered_tokens) / len(source_tokens)
+        if overlap < min_overlap:
+            missing.append({
+                "block_id": block.id,
+                "block_type": block.type,
+                "source_order": block.source_order,
+            })
+    return missing
