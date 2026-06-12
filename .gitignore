@@ -12,3 +12,5 @@ supabase/.temp/
 *.egg-info/
 *.tsbuildinfo
 .vercel
+ops/*.jsonl
+ops/cv-quality-latest.md
