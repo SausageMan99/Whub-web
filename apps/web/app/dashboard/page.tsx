@@ -4,6 +4,7 @@ import { Eyebrow } from "@/components/Brand";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
+import { buildContentPreservingBadgeIndex, type CvEvent } from "@/lib/content-preserving-diagnostics";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,16 @@ export default async function DashboardPage() {
     .limit(50);
 
   const items = requests ?? [];
+  const requestIds = items.map((request) => request.id);
+  const { data: contentPreservingEvents } = requestIds.length > 0
+    ? await admin
+        .from("cv_events")
+        .select("request_id,event_type,metadata,created_at")
+        .in("request_id", requestIds)
+        .like("event_type", "content_preserving_%")
+        .order("created_at", { ascending: false })
+    : { data: [] };
+  const cpBadges = buildContentPreservingBadgeIndex((contentPreservingEvents ?? []) as CvEvent[]);
   const ready = items.filter((r) => r.status === "ready").length;
   const inProgress = items.filter((r) => ["submitted", "processing", "revision_requested"].includes(r.status)).length;
   const urgent = items.filter((r) => r.priority === "urgent").length;
@@ -86,11 +97,21 @@ export default async function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((r) => (
+                {items.map((r) => {
+                  const cpBadge = cpBadges[r.id];
+                  const cpBadgeClass = cpBadge?.tone === 'warning'
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-800';
+                  return (
                   <tr key={r.id} className="border-t border-ink/6 transition hover:bg-whub/[0.025]">
                     <td className="px-6 py-5">
                       <p className="font-black text-ink">{r.title || "Sans titre"}</p>
                       <p className="mt-1 text-xs font-semibold text-ink/38">ID {r.id.slice(0, 8)}</p>
+                      {cpBadge?.present && cpBadge.label && (
+                        <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${cpBadgeClass}`}>
+                          {cpBadge.label}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-5 font-bold text-ink/70">{r.candidate_first_name || "—"}</td>
                     <td className="px-4 py-5"><StatusBadge status={r.status} /></td>
@@ -99,7 +120,8 @@ export default async function DashboardPage() {
                     <td className="px-4 py-5 font-semibold text-ink/45">{new Date(r.created_at).toLocaleDateString("fr-FR")}</td>
                     <td className="px-6 py-5 text-right"><Link className="font-black text-whub" href={`/requests/${r.id}`}>Ouvrir</Link></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

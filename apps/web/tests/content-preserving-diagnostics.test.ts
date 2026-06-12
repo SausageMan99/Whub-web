@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildContentPreservingBadgeIndex,
   extractContentPreservingDiagnostics,
+  formatCompactContentPreservingBadge,
   formatDiagnosticForUser,
   type CvEvent,
 } from '../lib/content-preserving-diagnostics';
@@ -135,3 +137,90 @@ test('content-preserving diagnostics — missing required blocks count singular 
   assert.match(joined, /Bloc manquant:?\s*1/);
   assert.doesNotMatch(joined, /Blocs manquants/);
 });
+
+test('content-preserving diagnostics — compact badge shows OK variant', () => {
+  const badge = formatCompactContentPreservingBadge({
+    present: true,
+    variant: 'compact',
+    density: 'normal',
+    missingBlocksCount: 0,
+  });
+  assert.deepEqual(badge, { present: true, label: 'CP · compacte · OK', tone: 'ok' });
+});
+
+test('content-preserving diagnostics — compact badge shows missing block count only', () => {
+  const badge = formatCompactContentPreservingBadge({
+    present: true,
+    variant: 'deterministic_content_preserving',
+    density: 'normal',
+    missingBlocksCount: 2,
+  });
+  assert.deepEqual(badge, { present: true, label: 'CP · préservée · 2 blocs manquants', tone: 'warning' });
+  assert.doesNotMatch(badge.label ?? '', /[a-f0-9]{12}/i);
+});
+
+test('content-preserving diagnostics — compact badge prioritizes fallback state', () => {
+  const badge = formatCompactContentPreservingBadge({
+    present: true,
+    variant: 'natural',
+    density: 'normal',
+    missingBlocksCount: 0,
+    usedFallback: true,
+    fallbackCategory: 'invalid_response',
+  });
+  assert.deepEqual(badge, { present: true, label: 'CP · repli auto', tone: 'warning' });
+});
+
+test('content-preserving diagnostics — dashboard badge index groups by request and keeps latest event', () => {
+  const index = buildContentPreservingBadgeIndex([
+    {
+      request_id: 'req-a',
+      event_type: 'content_preserving_shadow_evaluated',
+      metadata: { chosen_strategy: 'natural', missing_required_blocks_count: 3, used_fallback: false },
+      created_at: '2026-06-12T08:00:00.000Z',
+    },
+    {
+      request_id: 'req-a',
+      event_type: 'content_preserving_shadow_evaluated',
+      metadata: { chosen_strategy: 'compact', missing_required_blocks_count: 0, used_fallback: false },
+      created_at: '2026-06-12T10:00:00.000Z',
+    },
+    {
+      request_id: 'req-b',
+      event_type: 'content_preserving_shadow_evaluated',
+      metadata: { chosen_strategy: 'sidebar_heavy', missing_required_blocks_count: 1, used_fallback: false },
+      created_at: '2026-06-12T09:00:00.000Z',
+    },
+    {
+      request_id: 'req-c',
+      event_type: 'worker_claimed',
+      metadata: { chosen_strategy: 'compact' },
+      created_at: '2026-06-12T09:00:00.000Z',
+    },
+  ]);
+
+  assert.deepEqual(index['req-a'], { present: true, label: 'CP · compacte · OK', tone: 'ok' });
+  assert.deepEqual(index['req-b'], { present: true, label: 'CP · latérale · 1 bloc manquant', tone: 'warning' });
+  assert.equal(index['req-c'], undefined);
+});
+
+test('content-preserving diagnostics — compact badge never leaks raw metadata PII', () => {
+  const index = buildContentPreservingBadgeIndex([
+    {
+      request_id: 'req-pii',
+      event_type: 'content_preserving_shadow_evaluated',
+      metadata: {
+        chosen_strategy: 'compact',
+        missing_required_blocks_count: 0,
+        used_fallback: false,
+        missing_required_blocks_fingerprints: ['deadbeefcafe'],
+        raw_error: 'secret@example.com 0612345678 https://linkedin.com/in/secret',
+      },
+      created_at: '2026-06-12T09:00:00.000Z',
+    },
+  ]);
+  const label = index['req-pii']?.label ?? '';
+  assert.equal(label, 'CP · compacte · OK');
+  assert.doesNotMatch(label, /secret@example\.com|0612345678|linkedin\.com|deadbeefcafe/i);
+});
+

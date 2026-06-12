@@ -11,9 +11,16 @@ export type ContentPreservingDiagnostics = {
 };
 
 export type CvEvent = {
+  request_id?: string | null;
   event_type?: string | null;
   metadata?: Record<string, unknown> | null;
   created_at?: string | null;
+};
+
+export type CompactContentPreservingBadge = {
+  present: boolean;
+  label?: string;
+  tone?: 'ok' | 'warning' | 'muted';
 };
 
 const VARIANT_KEYS = [
@@ -31,6 +38,22 @@ const FALLBACK_CATEGORIES = [
   'invalid_response',
   'validation_failed',
 ] as const;
+
+const VARIANT_LABELS: Record<NonNullable<ContentPreservingDiagnostics['variant']>, string> = {
+  natural: 'naturelle',
+  compact: 'compacte',
+  sidebar_heavy: 'latérale',
+  experience_first: 'expériences',
+  deterministic_content_preserving: 'préservée',
+};
+
+const DETAIL_VARIANT_LABELS: Record<NonNullable<ContentPreservingDiagnostics['variant']>, string> = {
+  natural: 'naturelle',
+  compact: 'compacte',
+  sidebar_heavy: 'latérale renforcée',
+  experience_first: 'expériences d’abord',
+  deterministic_content_preserving: 'préservée',
+};
 
 function getString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -92,6 +115,43 @@ export function extractContentPreservingDiagnostics(events: CvEvent[]): ContentP
   };
 }
 
+export function formatCompactContentPreservingBadge(d: ContentPreservingDiagnostics): CompactContentPreservingBadge {
+  if (!d.present || !d.variant) return { present: false };
+
+  if (d.usedFallback) {
+    return { present: true, label: 'CP · repli auto', tone: 'warning' };
+  }
+
+  const missing = typeof d.missingBlocksCount === 'number' ? Math.max(0, Math.floor(d.missingBlocksCount)) : 0;
+  if (missing > 0) {
+    const suffix = missing === 1 ? '1 bloc manquant' : `${missing} blocs manquants`;
+    return { present: true, label: `CP · ${VARIANT_LABELS[d.variant]} · ${suffix}`, tone: 'warning' };
+  }
+
+  return { present: true, label: `CP · ${VARIANT_LABELS[d.variant]} · OK`, tone: 'ok' };
+}
+
+export function buildContentPreservingBadgeIndex(events: CvEvent[]): Record<string, CompactContentPreservingBadge> {
+  const byRequest = new Map<string, CvEvent[]>();
+  for (const event of events) {
+    if (!event.request_id) continue;
+    if (typeof event.event_type !== 'string' || !event.event_type.startsWith('content_preserving_')) continue;
+    const list = byRequest.get(event.request_id) ?? [];
+    list.push(event);
+    byRequest.set(event.request_id, list);
+  }
+
+  const result: Record<string, CompactContentPreservingBadge> = {};
+  for (const [requestId, requestEvents] of byRequest.entries()) {
+    const diagnostics = extractContentPreservingDiagnostics(requestEvents);
+    const badge = formatCompactContentPreservingBadge(diagnostics);
+    if (badge.present) {
+      result[requestId] = badge;
+    }
+  }
+  return result;
+}
+
 export function formatDiagnosticForUser(d: ContentPreservingDiagnostics): string[] {
   if (!d.present) return [];
   const lines: string[] = [];
@@ -102,16 +162,8 @@ export function formatDiagnosticForUser(d: ContentPreservingDiagnostics): string
     lines.push('Diagnostic mise en page');
   }
 
-  const variantLabels: Record<NonNullable<ContentPreservingDiagnostics['variant']>, string> = {
-    natural: 'naturelle',
-    compact: 'compacte',
-    sidebar_heavy: 'latérale renforcée',
-    experience_first: 'expériences d’abord',
-    deterministic_content_preserving: 'préservée',
-  };
-
   if (d.variant) {
-    lines.push(`Variante: ${variantLabels[d.variant]}`);
+    lines.push(`Variante: ${DETAIL_VARIANT_LABELS[d.variant]}`);
   }
 
   if (d.density) {
