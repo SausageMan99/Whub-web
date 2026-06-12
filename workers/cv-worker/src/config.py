@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     whub_fonts_dir: str = str(DEFAULT_WHUB_FONTS_DIR)
     tmp_dir: str = "/tmp/whub-cv-factory"
     log_level: str = "INFO"
+    whub_content_preserving_pipeline: bool = False
+    whub_content_preserving_shadow: bool = False
 
     @field_validator("whub_renderer_path", mode="before")
     @classmethod
