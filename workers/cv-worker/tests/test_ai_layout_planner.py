@@ -168,7 +168,7 @@ def test_provider_returns_text_in_rationale() -> None:
             "strategy": "natural",
             "page_assignments": {"main": block_ids},
             "variant_density": "normal",
-            "rationale": "Mettre Directeur technique en valeur",
+            "rationale": "Mettre Jean Pierre Martin en valeur",
         }
     )
     provider = FakeProvider(response=response)

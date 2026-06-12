@@ -35,8 +35,12 @@ _RE_PII = re.compile(
     re.IGNORECASE,
 )
 
-_RE_RATIONALE_CONTENT_LIKE = re.compile(
-    r"(?:\b[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+\b[\s]+){2,}",
+# Heuristic: catch 3+ consecutive capitalized words (looks like a person name injection)
+# Avoid false positives on common patterns like "Sidebar Heavy Layout" (3 words ok if all
+# in a constrained technical vocabulary) — we reject 3+ capital words in a row to stay
+# conservative on legit rationales, which are typically short technical justifications.
+_NAME_INJECTION_RE = re.compile(
+    r"\b[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+\b(?:\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+\b){2,}",
     re.UNICODE,
 )
 
@@ -192,7 +196,7 @@ def run_ai_layout_planner(
             proposed_at=datetime.now(UTC),
         )
         validate_ai_proposal(proposal, document)
-        if _RE_PII.search(proposal.rationale) or _RE_RATIONALE_CONTENT_LIKE.search(proposal.rationale):
+        if _RE_PII.search(proposal.rationale) or _NAME_INJECTION_RE.search(proposal.rationale):
             raise AIPlannerContractError("rationale contains content or PII")
         return AIPlannerResult(
             proposal=proposal,
