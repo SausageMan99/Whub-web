@@ -12,6 +12,8 @@ import {
   normalizeQualitySummary,
   safeRetryCopy,
 } from "@/lib/request-detail-ui";
+import { extractContentPreservingDiagnostics, type CvEvent } from "@/lib/content-preserving-diagnostics";
+import { ContentPreservingStatus } from "@/components/content-preserving-status";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +24,11 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const { data: request } = await admin.from("cv_requests").select("*").eq("id", id).single();
   const { data: versions } = await admin.from("cv_versions").select("*").eq("request_id", id).order("version_number", { ascending: false });
   const { data: comments } = await admin.from("cv_comments").select("*").eq("request_id", id).order("created_at", { ascending: true });
-  const { data: events } = await admin.from("cv_events").select("event_type,created_at").eq("request_id", id).order("created_at", { ascending: true });
+  const { data: events } = await admin
+    .from("cv_events")
+    .select("event_type, metadata, created_at")
+    .eq("request_id", id)
+    .order("created_at", { ascending: true });
 
   if (!request) {
     return (
@@ -44,6 +50,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
   const retryBlock = safeRetryCopy(request.status, request.candidate_first_name);
   const canDownloadGeneratedPdf = !isHardFailureStatus(request.status);
   const qualitySummary = normalizeQualitySummary(latestVersion?.qa_report);
+  const cpDiagnostics = extractContentPreservingDiagnostics((events ?? []) as CvEvent[]);
 
   async function retryRequestAction(formData: FormData) {
     "use server";
@@ -188,6 +195,9 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
               </ul>
             </div>
           )}
+          <div className="mt-5">
+            <ContentPreservingStatus diagnostics={cpDiagnostics} />
+          </div>
         </Panel>
       )}
 
