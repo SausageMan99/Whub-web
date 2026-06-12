@@ -14,6 +14,7 @@ _HEADER_RULES: list[tuple[re.Pattern[str], BlockType]] = [
 
 _DATE_RE = re.compile(r"\b(19|20)\d{2}\b.*\b(19|20)\d{2}|\baujourd[’']?hui\b", re.IGNORECASE)
 _ROLE_RE = re.compile(r"\b(d[ée]veloppeur|consultant|architecte|ing[ée]nieur|chef de projet|tech lead|lead)\b", re.IGNORECASE)
+_CONTINUATION_RE = re.compile(r"^(r[ée]alisations? cl[ée]s?|missions?|livrables?|environnement technique)\b", re.IGNORECASE)
 
 
 def _header_type(text: str) -> BlockType | None:
@@ -51,7 +52,12 @@ def classify_sections(document: SourceDocument) -> SourceDocument:
             current_type = header
             classified.append(_replace_type(block, "other"))
             continue
-        block_type = "experience" if _looks_like_experience(block.text) else current_type
+        if classified and classified[-1].type == "experience" and _CONTINUATION_RE.search(block.text.strip()):
+            block_type = "experience"
+        elif _looks_like_experience(block.text):
+            block_type = "experience"
+        else:
+            block_type = current_type
         classified.append(_replace_type(block, block_type))
     return SourceDocument(
         blocks=classified,

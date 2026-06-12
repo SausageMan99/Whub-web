@@ -23,3 +23,14 @@ def test_classification_preserves_text_verbatim():
     doc = SourceDocument(blocks=[b(1, "EXPÉRIENCES"), b(2, text)])
     classified = classify_sections(doc)
     assert classified.blocks[1].text == text
+
+
+def test_experience_continuation_stays_experience():
+    doc = SourceDocument(blocks=[
+        b(1, "EXPÉRIENCES"),
+        b(2, "2020 - 2023 Développeur Java Client A"),
+        b(3, "Réalisations clés : développement API, maintenance"),
+        b(4, "Environnement technique : Java, Spring, AWS"),
+    ])
+    classified = classify_sections(doc)
+    assert [block.type for block in classified.blocks[1:]] == ["experience", "experience", "experience"]
