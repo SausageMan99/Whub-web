@@ -116,6 +116,91 @@ def _run_content_preserving_shadow(
         log.warning("content_preserving_shadow failed request_id=%s err=%r", request_id, exc)
 
 
+def _run_content_preserving_active(
+    request_id: str,
+    sanitized_text: str,
+    candidate_first_name: str | None,
+    job: dict,
+    workdir: Path,
+) -> str:
+    """Run the content-preserving pipeline end-to-end and save the version.
+
+    Returns ``"ok"`` on success, ``"failed"`` if the pipeline errors out
+    (in which case the job is recorded as failed via ``fail_job``).
+    The existing pipeline is NOT called when this returns ``"ok"`` —
+    the new pipeline owns the rest of the job.
+    """
+    try:
+        raw_doc = _text_blocks_to_source_document(sanitized_text)
+        sanitized = sanitize_document(
+            raw_doc,
+            candidate_first_name=candidate_first_name or "",
+            forbidden_identity_terms=[],
+        )
+        classified = classify_sections(sanitized.document)
+        out_dir = workdir / "content_preserving_active"
+        result = render_best_content_preserving_variant(
+            classified,
+            candidate_first_name=candidate_first_name or "CV",
+            output_dir=out_dir,
+        )
+
+        structured: dict[str, Any] = {
+            "name": candidate_first_name or "CV",
+            "formations": [],
+            "skills": [],
+            "experiences": [
+                {
+                    "date": "",
+                    "role": block.text,
+                    "company_highlight": "",
+                    "sections": [],
+                }
+                for block in classified.ordered_blocks()
+                if block.required and block.type == "experience"
+            ],
+            "content_preserving": {
+                "variant": result.variant,
+                "missing_required_blocks": result.missing_required_blocks,
+            },
+        }
+
+        qa_report: dict[str, Any] = {
+            "pages": 1,
+            "has_logo": False,
+            "has_watermark": False,
+            "layout_issues": [],
+            "content_preserving": True,
+        }
+
+        has_missing = bool(result.missing_required_blocks)
+        request_status = "draft_ready" if has_missing else "ready"
+        qa_status = "draft" if has_missing else "passed"
+
+        saved = save_version(
+            request_id,
+            structured,
+            result.final_pdf_path,
+            qa_report,
+            request_status=request_status,
+            qa_status=qa_status,
+            owner=job.get("created_by") or settings.worker_name,
+        )
+
+        event_payload: dict[str, Any] = {
+            "version_id": saved["id"],
+            "version_number": saved["version_number"],
+            "layout_variant": result.variant,
+        }
+        if has_missing:
+            event_payload["missing_required_blocks"] = result.missing_required_blocks
+        emit_event(request_id, request_status, event_payload)
+        return "ok"
+    except Exception as exc:  # noqa: BLE001 - surface as a clean failed job
+        fail_job(job, exc, "failed")
+        return "failed"
+
+
 class CircuitBreaker:
     """Simple circuit breaker for the worker polling path."""
 
@@ -446,6 +531,19 @@ def process_job(job: dict) -> None:
         )
         source_profile = source_profile_payload["source_profile"]
         emit_event(request_id, "quality_source_profiled", source_profile_payload)
+
+        # Active content-preserving pipeline. Off by default. When on, the
+        # new pipeline owns the rest of the job and the existing pipeline is
+        # NOT called.
+        if settings.whub_content_preserving_pipeline:
+            active_status = _run_content_preserving_active(
+                request_id,
+                sanitized_text,
+                job.get("candidate_first_name"),
+                job,
+                workdir,
+            )
+            return
 
         # Shadow evaluation of the content-preserving pipeline. Never changes
         # the delivered output. Off by default.
