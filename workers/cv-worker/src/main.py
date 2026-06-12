@@ -34,9 +34,86 @@ from .quality_report import (
     classify_source_profile,
     should_require_human_review,
 )
+from .content_blocks import BlockType, ContentBlock, SourceDocument
+from .content_preserving_pipeline import render_best_content_preserving_variant
+from .section_classifier import classify_sections
+from .source_coverage import compare_required_block_coverage
+from .block_sanitizer import sanitize_document
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
+
+
+def _text_blocks_to_source_document(text: str, *, default_type: BlockType = "other") -> SourceDocument:
+    """Convert a sanitized text blob to a ``SourceDocument``.
+
+    This is the simplest possible blockifier for the content-preserving
+    shadow/active path: one block per non-empty paragraph. Real production
+    wiring should eventually use ``extract_visual_text_blocks(pdf_path)``
+    with the actual PDF; this helper exists so the integration can be
+    tested end-to-end without a real PDF and without coupling the new
+    pipeline to the existing structuring path.
+    """
+    paragraphs = [chunk.strip() for chunk in re.split(r"\n\s*\n", text or "") if chunk.strip()]
+    if not paragraphs:
+        return SourceDocument(blocks=[])
+    blocks: list[ContentBlock] = []
+    for index, paragraph in enumerate(paragraphs, start=1):
+        blocks.append(
+            ContentBlock.from_text(
+                default_type,
+                source_order=index,
+                page=0,
+                text=paragraph,
+            )
+        )
+    return SourceDocument(blocks=blocks)
+
+
+def _run_content_preserving_shadow(
+    request_id: str,
+    sanitized_text: str,
+    candidate_first_name: str | None,
+    workdir: Path,
+) -> None:
+    """Evaluate the content-preserving pipeline in shadow mode.
+
+    Shadow mode never changes the delivered output, never updates
+    ``current_version_id``, and never calls ``save_version``. It only
+    emits a redacted ``content_preserving_shadow_evaluated`` event so an
+    operator can compare the new pipeline against the existing one.
+    Any exception is caught and converted to a redacted
+    ``content_preserving_shadow_failed`` event.
+    """
+    try:
+        raw_doc = _text_blocks_to_source_document(sanitized_text)
+        sanitized = sanitize_document(
+            raw_doc,
+            candidate_first_name=candidate_first_name or "",
+            forbidden_identity_terms=[],
+        )
+        classified = classify_sections(sanitized.document)
+        out_dir = workdir / "content_preserving_shadow"
+        result = render_best_content_preserving_variant(
+            classified,
+            candidate_first_name=candidate_first_name or "CV",
+            output_dir=out_dir,
+        )
+        emit_event(
+            request_id,
+            "content_preserving_shadow_evaluated",
+            {
+                "variant": result.variant,
+                "missing_required_blocks_count": len(result.missing_required_blocks),
+            },
+        )
+    except Exception as exc:  # noqa: BLE001 - shadow must never break the main job
+        emit_event(
+            request_id,
+            "content_preserving_shadow_failed",
+            {"error_category": "content_preserving_shadow_error"},
+        )
+        log.warning("content_preserving_shadow failed request_id=%s err=%r", request_id, exc)
 
 
 class CircuitBreaker:
@@ -369,6 +446,16 @@ def process_job(job: dict) -> None:
         )
         source_profile = source_profile_payload["source_profile"]
         emit_event(request_id, "quality_source_profiled", source_profile_payload)
+
+        # Shadow evaluation of the content-preserving pipeline. Never changes
+        # the delivered output. Off by default.
+        if settings.whub_content_preserving_shadow:
+            _run_content_preserving_shadow(
+                request_id,
+                sanitized_text,
+                job.get("candidate_first_name"),
+                workdir,
+            )
 
         stage_start = perf_counter()
         comments_res = client.table("cv_comments").select("body,comment_type").eq("request_id", request_id).eq("resolved", False).execute()
