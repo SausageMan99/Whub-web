@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { renderToString } from 'react-dom/server';
+
+test('request detail page — exposes telegram-style status, download and correction composer in source', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'app/requests/[id]/page.tsx'),
+    'utf8',
+  );
+
+  assert.match(source, /Avancement/);
+  assert.match(source, /Télécharger/);
+  assert.match(source, /Consignes/);
+  assert.match(source, /Correction/);
+  assert.match(source, /Créer V\{nextVersionNumber\}/);
+
+  assert.doesNotMatch(source, /Modifier les compétences/);
+  assert.doesNotMatch(source, /Modifier les expériences/);
+  assert.doesNotMatch(source, /Modifier les formations/);
+});
 
 test('request detail page — renders draft_ready, completed and hard failure states', async (t) => {
   let request: any = null;
