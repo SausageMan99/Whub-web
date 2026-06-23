@@ -73,7 +73,8 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
     const fileName = String(formData.get("source_file_name") || "");
     const fileSize = Number(formData.get("source_file_size") || 0);
     const fileMime = String(formData.get("source_file_mime") || "application/pdf");
-    const title = String(formData.get("title") || "").trim() || buildDefaultTitle(fileName);
+    // Telegram-like contract: title is server-fixed, never read from public form input.
+    const title = buildDefaultTitle(fileName);
     const candidateFirstName = String(formData.get("candidate_first_name") || "").trim();
     const priority = String(formData.get("priority") || "normal").trim() || "normal";
     const instructions = String(formData.get("instructions") || "").trim();

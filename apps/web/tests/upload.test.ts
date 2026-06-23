@@ -243,7 +243,8 @@ test('createRequest — inserts correct row into cv_requests and returns success
   const row = insertCall!.payload as Record<string, unknown>;
 
   assert.equal(row.id, '11111111-1111-4111-8111-111111111111');
-  assert.equal(row.title, 'Senior Dev');
+  // Telegram-like contract: title is server-fixed, never user-controlled.
+  assert.equal(row.title, 'CV source');
   assert.equal(row.candidate_first_name, 'Alice');
   assert.equal(row.origin, 'web_portal');
   assert.equal(row.workflow, 'telegram_whub_cv_generation');
@@ -254,6 +255,11 @@ test('createRequest — inserts correct row into cv_requests and returns success
   assert.equal(row.source_file_name, 'cv.pdf');
   assert.equal(row.source_file_mime, 'application/pdf');
   assert.equal(row.source_file_size, 8);
+  // Telegram-like contract: portal must never store structured CRM fields.
+  assert.equal(row.skills, undefined);
+  assert.equal(row.experiences, undefined);
+  assert.equal(row.formations, undefined);
+  assert.equal(row.candidate_title, undefined);
 });
 
 test('createRequest — enqueues job data with candidate first name', async () => {
