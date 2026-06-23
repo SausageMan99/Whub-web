@@ -336,3 +336,18 @@ test('createRequest — rejects missing candidate first name before cv_requests 
   assertCreateRequestFailureLog(logs, 'missing_candidate_first_name', '11111111-1111-4111-8111-111111111111', 'unknown');
   assert.equal(recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert'), undefined);
 });
+
+test('createRequest — accepts empty instructions and stores an empty string', async () => {
+  reset();
+  const form = makePreparedForm({ instructions: '   ' });
+
+  assert.deepEqual(await createRequest(form), {
+    ok: true,
+    requestId: '11111111-1111-4111-8111-111111111111',
+  });
+
+  const insertCall = recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert');
+  assert.ok(insertCall, 'insert call should exist');
+  const row = insertCall!.payload as Record<string, unknown>;
+  assert.equal(row.instructions, '');
+});
