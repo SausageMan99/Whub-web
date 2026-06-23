@@ -1,6 +1,21 @@
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 
+interface RevisionRequestRow {
+  id: string;
+  created_by?: string | null;
+  current_version_id: string | null;
+  status: string;
+  candidate_first_name?: string;
+  instructions?: string;
+  priority?: string;
+  source_file_path?: string;
+  source_file_name?: string;
+  source_file_mime?: string;
+  source_file_size?: number;
+  submitted_at?: string;
+}
+
 let state = {
   user: { id: 'u1', email: 'test@whub.fr' } as { id: string; email: string } | null,
   allowed: { email: 'test@whub.fr', role: 'member' } as { email: string; role: string } | null,
@@ -9,7 +24,15 @@ let state = {
     created_by: 'u1',
     current_version_id: 'v1',
     status: 'ready',
-  } as { id: string; created_by: string; current_version_id: string | null; status: string } | null,
+    candidate_first_name: 'Alice',
+    instructions: 'Garde fidèle.',
+    priority: 'normal',
+    source_file_path: 'req1/source/cv.pdf',
+    source_file_name: 'cv.pdf',
+    source_file_mime: 'application/pdf',
+    source_file_size: 8,
+    submitted_at: '2026-06-23T10:00:00.000Z',
+  } as RevisionRequestRow | null,
   currentVersion: {
     id: 'v1',
     version_number: 1,
@@ -19,6 +42,8 @@ let state = {
   requestUpdate: null as Record<string, unknown> | null,
   eventInsert: null as Record<string, unknown> | null,
   revalidated: [] as string[],
+  queueEnqueue: null as Record<string, unknown> | null,
+  queueShouldThrow: false,
 };
 
 function makeAdminClient() {
@@ -124,6 +149,18 @@ before(async (t) => {
       createSupabaseAdminClient: () => makeAdminClient(),
     },
   });
+  t.mock.module('@/lib/queue', {
+    namedExports: {
+      cvJobProducer: {
+        enqueue: (payload: Record<string, unknown>) => {
+          if (state.queueShouldThrow) return Promise.reject(new Error('queue down'));
+          state.queueEnqueue = payload;
+          return Promise.resolve();
+        },
+      },
+      CVJobData: undefined,
+    },
+  });
 
   const mod = await import('../app/requests/[id]/actions');
   addComment = mod.addComment;
@@ -137,6 +174,14 @@ function reset(authenticated = true) {
     created_by: 'u1',
     current_version_id: 'v1',
     status: 'ready',
+    candidate_first_name: 'Alice',
+    instructions: 'Garde fidèle.',
+    priority: 'normal',
+    source_file_path: 'req1/source/cv.pdf',
+    source_file_name: 'cv.pdf',
+    source_file_mime: 'application/pdf',
+    source_file_size: 8,
+    submitted_at: '2026-06-23T10:00:00.000Z',
   };
   state.currentVersion = {
     id: 'v1',
@@ -147,6 +192,8 @@ function reset(authenticated = true) {
   state.requestUpdate = null;
   state.eventInsert = null;
   state.revalidated = [];
+  state.queueEnqueue = null;
+  state.queueShouldThrow = false;
 }
 
 function makeForm(requestId = 'req1', body = 'Passe en V2 en aérant la page 2.') {
@@ -250,4 +297,32 @@ test('addComment — no category yields the "other" fallback in metadata', async
 
   const insert = state.commentInsert as Record<string, unknown> | null;
   assert.deepEqual(insert?.metadata, { category: 'other' });
+});
+
+test('addComment — enqueues revision job with same source and new revision_requested status', async () => {
+  reset();
+
+  await addComment(makeForm('req1', 'Change juste le titre en Tech Lead Java.'));
+
+  assert.equal(state.requestUpdate?.status, 'revision_requested');
+  assert.ok(state.queueEnqueue, 'revision should enqueue a job when queue is available');
+  assert.equal(state.queueEnqueue?.requestId, 'req1');
+  assert.equal(state.queueEnqueue?.candidateFirstName, 'Alice');
+  assert.equal(state.queueEnqueue?.instructions, 'Garde fidèle.');
+  assert.equal(state.queueEnqueue?.sourceFilePath, 'req1/source/cv.pdf');
+  assert.equal(state.queueEnqueue?.sourceFileName, 'cv.pdf');
+  assert.equal(state.queueEnqueue?.sourceFileMime, 'application/pdf');
+  assert.equal(state.queueEnqueue?.sourceFileSize, 8);
+});
+
+test('addComment — keeps revision_requested when queue enqueue fails', async () => {
+  reset();
+  state.queueShouldThrow = true;
+
+  await addComment(makeForm('req1', 'Aère la page 2 sans retirer de contenu.'));
+
+  assert.equal(state.commentInsert?.body, 'Aère la page 2 sans retirer de contenu.');
+  assert.equal(state.requestUpdate?.status, 'revision_requested');
+  assert.equal(state.eventInsert?.event_type, 'revision_requested');
+  assert.equal(state.queueEnqueue, null);
 });

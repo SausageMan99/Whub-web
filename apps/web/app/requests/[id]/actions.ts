@@ -43,7 +43,9 @@ export async function addComment(formData: FormData) {
   const admin = createSupabaseAdminClient();
   const { data: request, error: lookupError } = await admin
     .from("cv_requests")
-    .select("id,current_version_id,status")
+    .select(
+      "id,current_version_id,status,candidate_first_name,instructions,priority,source_file_path,source_file_name,source_file_mime,source_file_size,created_by,submitted_at",
+    )
     .eq("id", requestId)
     .maybeSingle();
 
@@ -95,6 +97,32 @@ export async function addComment(formData: FormData) {
   });
 
   if (eventError) throw new Error("Revision event failed");
+
+  // Best-effort enqueue to BullMQ for immediate V2/V3 processing.
+  // Queue failure is non-fatal: status remains revision_requested and the
+  // polling worker claim will pick it up as a fallback.
+  try {
+    const jobData: CVJobData = {
+      requestId: request.id,
+      candidateFirstName: request.candidate_first_name || null,
+      instructions: request.instructions || "",
+      priority: (request.priority as "urgent" | "high" | "normal") || "normal",
+      sourceFilePath: request.source_file_path,
+      sourceFileName: request.source_file_name,
+      sourceFileMime: request.source_file_mime,
+      sourceFileSize: request.source_file_size,
+      createdBy: request.created_by || PORTAL_ORIGIN,
+      submittedAt: request.submitted_at || new Date().toISOString(),
+      enqueuedAt: new Date().toISOString(),
+      attempt: 0,
+    };
+    await cvJobProducer.enqueue(jobData);
+  } catch (queueError) {
+    console.warn(
+      "BullMQ revision enqueue unavailable; request remains revision_requested for polling worker fallback",
+      { requestId, error: queueError },
+    );
+  }
 
   revalidatePath(`/requests/${requestId}`);
   revalidatePath("/dashboard");
