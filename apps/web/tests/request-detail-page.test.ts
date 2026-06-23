@@ -115,7 +115,7 @@ test('request detail page — renders draft_ready, completed and hard failure st
   assert.match(draftHtml, /Créer V/);
 
   const readyHtml = await render('ready');
-  assert.match(readyHtml, /Prêt à télécharger/);
+  assert.match(readyHtml, /PDF prêt/);
   assert.match(readyHtml, /Télécharger/);
   assert.match(readyHtml, /Créer V/);
   assert.match(readyHtml, /même source pour V2\/V3/);

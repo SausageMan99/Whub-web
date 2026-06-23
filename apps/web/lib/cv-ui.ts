@@ -39,13 +39,14 @@ export function getCvStatusLabel(status: CvStatus, eventTypes: string[] = []) {
   // An explicit final status always wins over historical events. If the
   // current row says ``needs_human_review`` or ``draft_ready``, do not let
   // an earlier ``ready`` event from a previous attempt re-label the row.
-  if (status === "needs_human_review") return "Validation humaine";
-  if (status === "draft_ready") return "Brouillon prêt";
-  if (status === "ready" || events.has("ready")) return "Prêt à télécharger";
+  if (status === "needs_human_review") return "Validation humaine requise";
+  if (status === "draft_ready") return "Brouillon à relire";
+  if (status === "ready" || events.has("ready")) return "PDF prêt";
   if (status === "qa_failed") return "Contrôle qualité";
-  if (status === "failed" || status === "dead_letter" || status === "revision_requested") return "À corriger";
-  if (events.has("extraction_done")) return "Mise au format W hub";
-  if (status === "processing" || events.has("worker_claimed")) return "Analyse du CV";
+  if (status === "failed" || status === "dead_letter") return "Bloqué";
+  if (status === "revision_requested") return "Correction demandée";
+  if (events.has("extraction_done")) return "Génération en cours";
+  if (status === "processing" || events.has("worker_claimed")) return "Génération en cours";
   if (status === "submitted") return "En attente";
   if (status === "cancelled") return "Annulé";
   if (status === "archived") return "Archivé";

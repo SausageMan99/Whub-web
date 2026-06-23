@@ -41,7 +41,7 @@ test('getCvProgress — submitted', () => {
 test('getCvProgress — processing with worker_claimed', () => {
   assert.deepEqual(getCvProgress('processing', ['worker_claimed']), {
     percent: 35,
-    label: 'Analyse du CV',
+    label: 'Génération en cours',
     helper: 'Le worker W hub analyse le CV source et prépare la structuration.',
   });
 });
@@ -49,7 +49,7 @@ test('getCvProgress — processing with worker_claimed', () => {
 test('getCvProgress — worker_claimed event alone', () => {
   assert.deepEqual(getCvProgress('submitted', ['worker_claimed']), {
     percent: 35,
-    label: 'Analyse du CV',
+    label: 'Génération en cours',
     helper: 'Le worker W hub analyse le CV source et prépare la structuration.',
   });
 });
@@ -57,7 +57,7 @@ test('getCvProgress — worker_claimed event alone', () => {
 test('getCvProgress — extraction_done event', () => {
   assert.deepEqual(getCvProgress('processing', ['extraction_done']), {
     percent: 60,
-    label: 'Mise au format W hub',
+    label: 'Génération en cours',
     helper: 'Le contenu du CV source est structuré et prêt pour le contrôle qualité.',
   });
 });
@@ -65,7 +65,7 @@ test('getCvProgress — extraction_done event', () => {
 test('getCvProgress — ready status', () => {
   assert.deepEqual(getCvProgress('ready', []), {
     percent: 100,
-    label: 'Prêt à télécharger',
+    label: 'PDF prêt',
     helper: 'Le PDF final a passé la QA et peut être téléchargé.',
   });
 });
@@ -73,7 +73,7 @@ test('getCvProgress — ready status', () => {
 test('getCvProgress — ready event overrides status', () => {
   assert.deepEqual(getCvProgress('submitted', ['ready']), {
     percent: 100,
-    label: 'Prêt à télécharger',
+    label: 'PDF prêt',
     helper: 'Le PDF final a passé la QA et peut être téléchargé.',
   });
 });
@@ -81,7 +81,7 @@ test('getCvProgress — ready event overrides status', () => {
 test('getCvProgress — draft_ready', () => {
   assert.deepEqual(getCvProgress('draft_ready', []), {
     percent: 100,
-    label: 'Brouillon prêt',
+    label: 'Brouillon à relire',
     helper: 'Le PDF peut être téléchargé pour relecture, avec des points qualité à corriger avant envoi client.',
   });
 });
@@ -89,7 +89,7 @@ test('getCvProgress — draft_ready', () => {
 test('getCvProgress — failed', () => {
   assert.deepEqual(getCvProgress('failed', []), {
     percent: 100,
-    label: 'À corriger',
+    label: 'Bloqué',
     helper: "La génération n'a pas pu aboutir. Corrige la source ou la consigne avant de relancer.",
   });
 });
@@ -105,7 +105,7 @@ test('getCvProgress — qa_failed', () => {
 test('getCvProgress — revision_requested', () => {
   assert.deepEqual(getCvProgress('revision_requested', []), {
     percent: 20,
-    label: 'À corriger',
+    label: 'Correction demandée',
     helper: 'Une correction a été demandée pour lancer la prochaine version.',
   });
 });
@@ -127,18 +127,28 @@ test('getCvProgress — archived', () => {
 });
 
 test('getCvStatusLabel — needs_human_review uses business wording', () => {
-  assert.equal(getCvStatusLabel('needs_human_review', []), 'Validation humaine');
+  assert.equal(getCvStatusLabel('needs_human_review', []), 'Validation humaine requise');
   // Even if events would have promoted it to a different status, the
   // needs_human_review status itself always wins on the label.
   assert.equal(
     getCvStatusLabel('needs_human_review', ['ready', 'extraction_done']),
-    'Validation humaine',
+    'Validation humaine requise',
   );
+});
+
+test('getCvStatusLabel — telegram-equivalent status mapping (P4.2 contract)', () => {
+  assert.equal(getCvStatusLabel('submitted', []), 'En attente');
+  assert.equal(getCvStatusLabel('processing', ['worker_claimed']), 'Génération en cours');
+  assert.equal(getCvStatusLabel('revision_requested', []), 'Correction demandée');
+  assert.equal(getCvStatusLabel('ready', []), 'PDF prêt');
+  assert.equal(getCvStatusLabel('draft_ready', []), 'Brouillon à relire');
+  assert.equal(getCvStatusLabel('needs_human_review', []), 'Validation humaine requise');
+  assert.equal(getCvStatusLabel('failed', []), 'Bloqué');
 });
 
 test('getCvProgress — needs_human_review exposes a clear helper', () => {
   const progress = getCvProgress('needs_human_review', []);
-  assert.equal(progress.label, 'Validation humaine');
+  assert.equal(progress.label, 'Validation humaine requise');
   assert.match(progress.helper, /humain|relire|vérifier/i);
   // The progress bar should not look "100% finished" because no PDF was
   // produced. Pick a mid-range value.
