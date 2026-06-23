@@ -304,8 +304,13 @@ test('new request page — exposes upload, first-name and message workflow witho
   assert.match(formSource, /name="instructions"/);
   assert.match(formSource, /Générer le CV/);
   assert.match(formSource, /Message \/ consigne complémentaire/);
+  // Telegram-like contract: only file + candidate_first_name + instructions are user-controlled inputs.
   assert.doesNotMatch(formSource, /name="title"/);
-  assert.doesNotMatch(formSource, /priority/);
+  assert.doesNotMatch(formSource, /name="priority"/);
+  assert.doesNotMatch(formSource, /name="skills"/);
+  assert.doesNotMatch(formSource, /name="experiences"/);
+  assert.doesNotMatch(formSource, /name="formations"/);
+  assert.doesNotMatch(formSource, /name="candidate_title"/);
   assert.doesNotMatch(formSource, /cv_intentions/);
   assert.doesNotMatch(formSource, /buildGuidedInstructions/);
 });
