@@ -511,6 +511,67 @@ définition du besoin.
             validate_source_fidelity(source, data, forbidden_identity_terms=[])
 
 
+class TestHermesPromptInstructionsAndComments:
+    """Lock the Telegram-equivalent portal flow inside the worker structuring prompt.
+
+    The portal produces cv_requests rows with ``instructions`` (initial free
+    message) plus ``cv_comments`` revisions (V2/V3 corrections). The worker
+    prompt must carry both forward so the model treats the request like a
+    conversation rather than a one-shot transcription.
+    """
+
+    def test_hermes_prompt_includes_initial_instructions_and_revision_comments(self):
+        prompt = _hermes_prompt(
+            extracted_text="Alice Dupont\nDéveloppeuse Python\nMission: API FastAPI",
+            instructions="Mets en avant Python si présent dans le CV.",
+            comments=[{"comment_type": "revision", "body": "V2: change juste le titre en Tech Lead Python."}],
+            candidate_first_name="Alice",
+        )
+
+        # The initial free message must reach the prompt under a dedicated header.
+        assert "Consignes utilisateur:" in prompt
+        assert "Mets en avant Python si présent dans le CV." in prompt
+
+        # Unresolved revisions must reach the prompt under a dedicated header,
+        # distinct from the initial consignes.
+        assert "Commentaires/révisions non résolus:" in prompt
+        assert "V2: change juste le titre en Tech Lead Python." in prompt
+
+        # The fidelity rules must remain present so the model does not invent
+        # or rewrite content while honouring the targeted correction.
+        assert "Ne crée pas d'informations absentes du CV." in prompt
+        assert "Les modifications ciblées" in prompt
+
+    def test_hermes_prompt_with_no_instructions_or_comments_still_keeps_headers(self):
+        prompt = _hermes_prompt(
+            extracted_text="Alice Dupont\nDéveloppeuse Python",
+            instructions="",
+            comments=[],
+            candidate_first_name="Alice",
+        )
+
+        # Even an empty Telegram-style request must surface the headers so the
+        # model knows where the consignes and revisions would normally live.
+        assert "Consignes utilisateur:" in prompt
+        assert "Aucune consigne." in prompt
+        assert "Commentaires/révisions non résolus:" in prompt
+        assert "Aucun commentaire." in prompt
+
+    def test_hermes_prompt_carries_multiple_revisions_without_collapsing_them(self):
+        prompt = _hermes_prompt(
+            extracted_text="Alice Dupont\nDéveloppeuse Python",
+            instructions="Fidélité source.",
+            comments=[
+                {"comment_type": "revision", "body": "V2: corrige le titre en Tech Lead Python."},
+                {"comment_type": "revision", "body": "V3: aère la page 2 sans retirer de contenu."},
+            ],
+            candidate_first_name="Alice",
+        )
+
+        assert "V2: corrige le titre en Tech Lead Python." in prompt
+        assert "V3: aère la page 2 sans retirer de contenu." in prompt
+
+
 class TestInferForbiddenIdentityTerms:
     def test_missing_first_name_does_not_treat_business_sentence_as_identity_terms(self):
         source = """
