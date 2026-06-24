@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import fitz
 import pytest
 
-from src.extraction import download_source, extract_pdf_text, ExtractionError
+from src.extraction import download_source, extract_pdf_text, ExtractionError, _page_text_visual_order
 
 
 class TestDownloadSource:
@@ -28,6 +28,26 @@ class TestDownloadSource:
 
 
 class TestExtractPdfText:
+    def test_page_text_visual_order_sorts_blocks_by_position(self):
+        class FakePage:
+            def get_text(self, kind):
+                assert kind == "blocks"
+                return [
+                    (27.2, 251.1, 528.2, 307.1, "Mission CEA", 0, 0),
+                    (8.5, 118.0, 587.3, 133.6, "Ingénieur Système et Réseau, Nat System", 0, 0),
+                    (27.2, 138.9, 559.3, 224.9, "Mission Nat System", 0, 0),
+                    (8.5, 230.2, 587.3, 245.8, "Alternance - Ingénieur Réseau, CEA", 0, 0),
+                ]
+
+        result = _page_text_visual_order(FakePage())
+
+        assert result.splitlines() == [
+            "Ingénieur Système et Réseau, Nat System",
+            "Mission Nat System",
+            "Alternance - Ingénieur Réseau, CEA",
+            "Mission CEA",
+        ]
+
     def test_extract_pdf_text_returns_text(self, tmp_path: Path):
         pdf_path = tmp_path / "test.pdf"
         doc = fitz.open()
