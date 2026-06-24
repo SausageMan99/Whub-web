@@ -1,6 +1,7 @@
 from pathlib import Path
 from datetime import datetime, timezone
 import json
+import logging
 from typing import Any, TypedDict
 from .config import settings
 from .supabase_client import client
@@ -8,6 +9,9 @@ from .supabase_client import client
 class SavedVersion(TypedDict):
     id: str
     version_number: int
+
+
+log = logging.getLogger("whub-cv-worker.storage")
 
 
 def upload_bytes(bucket: str, path: str, data: bytes, content_type: str, *, owner: str | None = None) -> str:
@@ -66,11 +70,33 @@ def save_version(
     input_path = f"{request_id}/v{version_number}/input.json"
     final_path = f"{request_id}/v{version_number}/cv-whub.pdf"
     qa_path = f"{request_id}/v{version_number}/qa.json"
-    upload_bytes(settings.cv_renderer_inputs_bucket, input_path, json.dumps(structured_json, ensure_ascii=False, indent=2).encode(), "application/json", owner=owner)
-    upload_bytes(settings.cv_finals_bucket, final_path, pdf_path.read_bytes(), "application/pdf", owner=owner)
-    upload_bytes(settings.cv_artifacts_bucket, qa_path, json.dumps(qa_report, ensure_ascii=False, indent=2).encode(), "application/json", owner=owner)
+    # Critical artifacts first: the final PDF and QA report must be stored before
+    # the request can be marked ready/draft_ready. The renderer input JSON is a
+    # useful debug artifact, but Storage RLS/policy drift must not turn an
+    # already rendered + QA-passed CV into a failed request.
+    final_path = upload_bytes(settings.cv_finals_bucket, final_path, pdf_path.read_bytes(), "application/pdf", owner=owner)
+    qa_path = upload_bytes(settings.cv_artifacts_bucket, qa_path, json.dumps(qa_report, ensure_ascii=False, indent=2).encode(), "application/json", owner=owner)
+    renderer_input_path: str | None
+    try:
+        renderer_input_path = upload_bytes(
+            settings.cv_renderer_inputs_bucket,
+            input_path,
+            json.dumps(structured_json, ensure_ascii=False, indent=2).encode(),
+            "application/json",
+            owner=owner,
+        )
+    except Exception as exc:
+        renderer_input_path = None
+        log.warning(
+            "non-critical renderer input upload failed request_id=%s version=%s bucket=%s path=%s error=%s",
+            request_id,
+            version_number,
+            settings.cv_renderer_inputs_bucket,
+            input_path,
+            exc,
+        )
     client.table("cv_versions").update({
-        "renderer_input_path": input_path,
+        "renderer_input_path": renderer_input_path,
         "final_pdf_path": final_path,
     }).eq("id", version["id"]).execute()
     now = datetime.now(timezone.utc).isoformat()

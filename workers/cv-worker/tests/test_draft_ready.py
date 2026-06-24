@@ -184,6 +184,51 @@ def test_save_version_rejects_unsafe_status_pairs(tmp_path, request_status, qa_s
         storage.save_version("request-1", {}, pdf_path, _report(), request_status=request_status, qa_status=qa_status, owner="test-owner")
 
 
+def test_save_version_treats_renderer_input_upload_as_non_blocking(monkeypatch, tmp_path):
+    class FailingRendererInputBucket(_FakeStorageBucket):
+        def __init__(self, uploads, bucket):
+            super().__init__(uploads)
+            self.bucket = bucket
+
+        def upload(self, path, data, options):
+            if self.bucket == "cv-renderer-inputs":
+                raise RuntimeError("storage 400")
+            self.uploads.append({"bucket": self.bucket, "path": path, "data": data, "options": options})
+
+    class FailingRendererInputStorageRoot:
+        def __init__(self, uploads):
+            self.uploads = uploads
+
+        def from_(self, bucket):
+            return FailingRendererInputBucket(self.uploads, bucket)
+
+    fake_client = _FakeClient()
+    fake_client.storage = FailingRendererInputStorageRoot(fake_client.uploads)
+    monkeypatch.setattr(storage, "client", fake_client)
+    pdf_path = tmp_path / "ready.pdf"
+    pdf_path.write_bytes(b"%PDF ready")
+
+    version = storage.save_version(
+        "request-1",
+        {"name": "Oussama", "experiences": []},
+        pdf_path,
+        _report(passed=True),
+        request_status="ready",
+        qa_status="passed",
+        owner="test-owner",
+    )
+
+    assert version == {"id": "version-1", "version_number": 3}
+    request_update = next(op for op in fake_client.operations if op["table"] == "cv_requests")
+    version_update = [op for op in fake_client.operations if op["table"] == "cv_versions" and op["operation"] == "update"][-1]
+    assert request_update["payload"]["status"] == "ready"
+    assert request_update["payload"]["current_version_id"] == "version-1"
+    assert request_update["payload"]["last_error"] is None
+    assert version_update["payload"]["renderer_input_path"] is None
+    assert version_update["payload"]["final_pdf_path"] == "request-1/v3/cv-whub.pdf"
+    assert {u["bucket"] for u in fake_client.uploads} == {"cv-finals", "cv-artifacts"}
+
+
 def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_path):
     saved = {}
     events = []

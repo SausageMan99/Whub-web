@@ -251,22 +251,29 @@ class _WorkerDatabaseClient:
     that the worker actually uses: .rpc(), .table(), .storage.
     """
 
-    def __init__(self, db_url: str, supabase_url: str = "", supabase_anon_key: str = ""):
+    def __init__(
+        self,
+        db_url: str,
+        supabase_url: str = "",
+        supabase_anon_key: str = "",
+        supabase_service_role_key: str = "",
+    ):
         self.db_url = db_url
         self._conn: psycopg2.extensions.connection | None = None
         self._storage: SyncStorageClient | None = None
 
-        # Initialise storage sub-client (for file uploads).
-        # Uses anon key (public) — storage operations are protected
-        # by RLS policies on storage.objects.
+        # Initialise storage sub-client (for file uploads). Database access uses
+        # the constrained whub_worker Postgres role, but Storage REST policies
+        # require a server-side key for generated artifacts.
         self._supabase_url = supabase_url
-        if supabase_url and supabase_anon_key:
+        storage_key = supabase_service_role_key or supabase_anon_key
+        if supabase_url and storage_key:
             try:
                 self._storage = create_storage_client(
                     url=f"{supabase_url}/storage/v1",
                     headers={
-                        "apikey": supabase_anon_key,
-                        "Authorization": f"Bearer {supabase_anon_key}",
+                        "apikey": storage_key,
+                        "Authorization": f"Bearer {storage_key}",
                     },
                     is_async=False,
                 )
@@ -306,7 +313,7 @@ class _WorkerDatabaseClient:
         if self._storage is None:
             raise RuntimeError(
                 "Storage client not initialised. "
-                "Set supabase_url and supabase_anon_key in config."
+                "Set supabase_url and either supabase_service_role_key or supabase_anon_key in config."
             )
         return self._storage
 
@@ -323,6 +330,7 @@ def _fallback_to_rest() -> None:
     client = _RESTDatabaseClient(
         supabase_url=settings.supabase_url,
         supabase_anon_key=settings.supabase_anon_key,
+        supabase_service_role_key=settings.supabase_service_role_key,
     )
     log.info(
         "worker REST database client initialised (fallback mode)"
@@ -346,6 +354,7 @@ if _has_real_db:
             db_url=_db_url,
             supabase_url=settings.supabase_url,
             supabase_anon_key=settings.supabase_anon_key,
+            supabase_service_role_key=settings.supabase_service_role_key,
         )
         log.info(
             "worker database client initialised with dedicated role "

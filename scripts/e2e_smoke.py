@@ -9,6 +9,7 @@ Steps:
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -16,6 +17,30 @@ import time
 import urllib.request
 import urllib.parse
 from pathlib import Path
+
+# Test-bank case -> directory mapping. Keys are the short CLI names
+# consumed by scripts/cv_smoke_battery.py.
+CASE_DIRS: dict[str, str] = {
+    "oussama": "Oussama_RPA_copy_preservation",
+    "zahia": "Zahia_location_and_role_facts",
+    "thorez": "Thorez_realizations_and_tools_coverage",
+    "dense": "Dense_skills_pagination",
+    "sanitize": "Sanitizer_contact_strip",
+    "hodard": "Hodard_continuity",
+    "rayan": "Rayan_prod_e2e",
+    "amina": "AMINA_QA_Salesforce",
+}
+
+CASE_FIRST_NAMES: dict[str, str] = {
+    "oussama": "Oussama",
+    "zahia": "Zahia",
+    "thorez": "Nicolas",
+    "dense": "Oussama",
+    "sanitize": "Jean",
+    "hodard": "Florian",
+    "rayan": "Rayan",
+    "amina": "Amina",
+}
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -51,17 +76,36 @@ def sb_request(method: str, url: str, key: str, body=None, content_type=None, bi
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="W hub CV Factory E2E smoke")
+    parser.add_argument("--case", default=None, help="Test-bank case key (e.g. oussama)")
+    parser.add_argument("--label", default=None, help="Optional human label for the JSON payload")
+    parser.add_argument("--no-cleanup", action="store_true", help="Keep request and uploaded source for debugging")
+    args = parser.parse_args()
+
     here = Path(__file__).resolve().parents[1]
     env = load_env(here / "apps/web/.env.local")
     url = env["NEXT_PUBLIC_SUPABASE_URL"].rstrip("/")
     key = env["SUPABASE_SERVICE_ROLE_KEY"]
     print(f"[env] url={url} key_len={len(key)}")
 
-    pdf = here / "cv_olivier_input/cv_olivier_v1.pdf"
+    if args.case:
+        case_dir = CASE_DIRS.get(args.case)
+        if not case_dir:
+            print(f"unknown --case {args.case!r}; valid: {sorted(CASE_DIRS)}")
+            return 1
+        pdf = here / "cv_test_bank" / case_dir / "input.pdf"
+        label = args.label or case_dir
+        candidate_first_name = CASE_FIRST_NAMES[args.case]
+    else:
+        pdf = here / "cv_olivier_input/cv_olivier_v1.pdf"
+        label = args.label or "olivier_default"
+        candidate_first_name = "Smoke"
+
     if not pdf.exists():
         print(f"missing test pdf: {pdf}")
         return 1
     pdf_bytes = pdf.read_bytes()
+    print(f"[case] {args.case or 'default'} label={label}")
     print(f"[pdf] {pdf.name} size={len(pdf_bytes)}")
 
     bucket = "cv-sources"
@@ -74,8 +118,8 @@ def main() -> int:
     # Create a cv_requests row in submitted status.
     row = {
         "status": "submitted",
-        "instructions": "auto-eval e2e smoke",
-        "candidate_first_name": "Smoke",
+        "instructions": f"auto-eval e2e smoke case={args.case or 'default'} label={label}. fait des controle de qualite, qu\'il n\'y est pas de saut de page injustifier, que la mise en page soit bonne. que le contenue soit bien fidel.",
+        "candidate_first_name": candidate_first_name,
         "priority": "normal",
         "source_file_path": object_path,
         "source_file_name": pdf.name,
@@ -114,28 +158,41 @@ def main() -> int:
     print(f"[result] quality_source_profiled seen: {quality_event_seen}")
 
     versions = sb_request("GET", versions_url, key) or []
+    payload: dict = {
+        "label": label,
+        "request_id": request_id,
+        "status": final_status,
+        "quality_event_seen": quality_event_seen,
+    }
     if versions:
         v = versions[0]
         qr = (v.get("qa_report") or {}).get("quality_report")
-        print(f"[result] version={v.get('version_number')} qa_status={v.get('qa_status')}")
-        print(f"[result] quality_report keys: {sorted(qr.keys()) if qr else 'NONE'}")
+        payload["version"] = v.get("version_number")
+        payload["qa_status"] = v.get("qa_status")
         if qr:
-            print(f"[result] source_profile={qr.get('source_profile')}")
-            print(f"[result] scores={qr.get('scores')}")
-            print(f"[result] hard_blockers={qr.get('hard_blockers')}")
-            print(f"[result] soft_warnings={qr.get('soft_warnings')}")
-            print(f"[result] metrics={qr.get('metrics')}")
+            payload["qa_report_keys"] = sorted(qr.keys())
+            payload["source_profile"] = qr.get("source_profile")
+            payload["scores"] = qr.get("scores")
+            payload["hard_blockers"] = qr.get("hard_blockers")
+            payload["soft_warnings"] = qr.get("soft_warnings")
+            payload["metrics"] = qr.get("metrics")
     else:
-        print("[result] no cv_versions row created")
+        payload["version"] = None
+        payload["qa_status"] = None
+
+    print(f"[JSON] {json.dumps(payload, ensure_ascii=False)}")
 
     # Cleanup
-    sb_request("DELETE", f"{url}/rest/v1/cv_requests?id=eq.{request_id}", key, prefer="return=representation")
-    sb_request(
-        "DELETE",
-        f"{url}/storage/v1/object/{bucket}/{object_path}",
-        key,
-    )
-    print("[cleanup] OK")
+    if args.no_cleanup:
+        print(f"[cleanup] SKIPPED request_id={request_id} object_path={object_path}")
+    else:
+        sb_request("DELETE", f"{url}/rest/v1/cv_requests?id=eq.{request_id}", key, prefer="return=representation")
+        sb_request(
+            "DELETE",
+            f"{url}/storage/v1/object/{bucket}/{object_path}",
+            key,
+        )
+        print("[cleanup] OK")
 
     return 0 if (quality_event_seen and final_status) else 1
 

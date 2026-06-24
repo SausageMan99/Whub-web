@@ -209,14 +209,33 @@ class TestWorkerRoleConfinement:
         mock_bucket.upload.assert_called_once()
 
     @patch("src.supabase_client.create_storage_client")
-    def test_storage_uses_configured_anon_key_for_rest_client(self, mock_create_storage_client):
-        """Storage REST client should use the anon key, never a service-role fallback."""
+    def test_storage_prefers_service_role_key_when_configured(self, mock_create_storage_client):
+        """Storage uploads run server-side and should use service role when available."""
         from src.supabase_client import _WorkerDatabaseClient
 
         _WorkerDatabaseClient(
             "postgresql://whub_worker:***@localhost:5432/testdb",
             supabase_url="https://example.supabase.co",
             supabase_anon_key="anon-test-key",
+            supabase_service_role_key="service-test-key",
+        )
+
+        mock_create_storage_client.assert_called_once_with(
+            url="https://example.supabase.co/storage/v1",
+            headers={"apikey": "service-test-key", "Authorization": "Bearer service-test-key"},
+            is_async=False,
+        )
+
+    @patch("src.supabase_client.create_storage_client")
+    def test_storage_falls_back_to_anon_key_without_service_role(self, mock_create_storage_client):
+        """Local/dev configs without service role still initialise storage with anon."""
+        from src.supabase_client import _WorkerDatabaseClient
+
+        _WorkerDatabaseClient(
+            "postgresql://whub_worker:***@localhost:5432/testdb",
+            supabase_url="https://example.supabase.co",
+            supabase_anon_key="anon-test-key",
+            supabase_service_role_key="",
         )
 
         mock_create_storage_client.assert_called_once_with(
@@ -225,8 +244,8 @@ class TestWorkerRoleConfinement:
             is_async=False,
         )
 
-    def test_storage_requires_url_and_anon_key(self):
-        """Missing anon key should fail early when storage is accessed."""
+    def test_storage_requires_url_and_storage_key(self):
+        """Missing anon and service role keys should fail early when storage is accessed."""
         from src.supabase_client import _WorkerDatabaseClient
 
         client = _WorkerDatabaseClient(
@@ -235,7 +254,7 @@ class TestWorkerRoleConfinement:
             supabase_anon_key="",
         )
 
-        with pytest.raises(RuntimeError, match="supabase_url and supabase_anon_key"):
+        with pytest.raises(RuntimeError, match="supabase_service_role_key or supabase_anon_key"):
             _ = client.storage
 
     def test_table_select_with_order_and_limit(self):

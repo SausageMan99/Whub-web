@@ -15,7 +15,8 @@ DEFAULT_WHUB_FONTS_DIR = WORKER_ROOT / "assets" / "fonts" / "poppins"
 class Settings(BaseSettings):
     # ── Supabase / Database ────────────────────────────────────────────
     supabase_url: str
-    # Public anon key used only for Supabase Storage REST operations.
+    # Public anon key can be used for read-only/browser paths. Server-side
+    # Storage writes prefer supabase_service_role_key when configured.
     # Database access is always through worker_db_url / whub_worker.
     supabase_anon_key: str = ""
     # worker_database_url replaces supabase_service_role_key for the worker.
@@ -23,8 +24,8 @@ class Settings(BaseSettings):
     worker_database_url: str = Field(default="", validation_alias="WORKER_DATABASE_URL")
     # Legacy env/constructor name accepted during transition only.
     worker_db_url: str = Field(default="", validation_alias="WORKER_DB_URL")
-    # Kept for backward compatibility during transition; the worker no
-    # longer uses this.  Set to empty string to disable.
+    # Kept for Storage REST writes and backward compatibility. Database access
+    # still uses the dedicated whub_worker PostgreSQL role above.
     supabase_service_role_key: str = ""
 
     @model_validator(mode="after")

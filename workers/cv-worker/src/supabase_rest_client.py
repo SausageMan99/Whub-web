@@ -131,19 +131,21 @@ class _RESTDatabaseClient:
     _WorkerDatabaseClient when worker_database_url is not available.
     """
 
-    def __init__(self, supabase_url: str = "", supabase_anon_key: str = ""):
+    def __init__(self, supabase_url: str = "", supabase_anon_key: str = "", supabase_service_role_key: str = ""):
         self._storage = None
         self._supabase_url = supabase_url
 
-        # Init storage client if we have the URL
-        if supabase_url and supabase_anon_key:
+        # Init storage client if we have the URL. Prefer service role for
+        # server-side generated artifact writes; fallback to anon for dev.
+        storage_key = supabase_service_role_key or supabase_anon_key
+        if supabase_url and storage_key:
             try:
                 from storage3 import create_client as create_storage_client
                 self._storage = create_storage_client(
                     url=f"{supabase_url}/storage/v1",
                     headers={
-                        "apikey": supabase_anon_key,
-                        "Authorization": f"Bearer {supabase_anon_key}",
+                        "apikey": storage_key,
+                        "Authorization": f"Bearer {storage_key}",
                     },
                     is_async=False,
                 )
@@ -170,6 +172,7 @@ if settings.supabase_url and settings.supabase_anon_key:
     client = _RESTDatabaseClient(
         supabase_url=settings.supabase_url,
         supabase_anon_key=settings.supabase_anon_key,
+        supabase_service_role_key=settings.supabase_service_role_key,
     )
     log.info(
         "worker REST database client initialised (no direct psycopg2 connection)"
