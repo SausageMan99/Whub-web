@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import fitz
 import pytest
 
-from src.extraction import download_source, extract_pdf_text, ExtractionError, _page_text_visual_order
+from src.extraction import download_source, extract_pdf_text, ExtractionError, _page_text_visual_order, _normalize_pdf_text_chars
 
 
 class TestDownloadSource:
@@ -47,6 +47,37 @@ class TestExtractPdfText:
             "Alternance - Ingénieur Réseau, CEA",
             "Mission CEA",
         ]
+
+    def test_page_text_visual_order_keeps_two_column_main_content_contiguous(self):
+        class Rect:
+            width = 600
+
+        class FakePage:
+            rect = Rect()
+
+            def get_text(self, kind):
+                assert kind == "blocks"
+                return [
+                    (210, 100, 560, 110, "EXPÉRIENCES PROFESSIONNELLES", 0, 0),
+                    (210, 120, 560, 130, "Technicien Systèmes & Réseaux", 0, 0),
+                    (32, 125, 185, 135, "COMPÉTENCES", 0, 0),
+                    (210, 140, 560, 150, "Mission expérience 1", 0, 0),
+                    (32, 145, 185, 155, "Skill sidebar 1", 0, 0),
+                    (210, 160, 560, 170, "Mission expérience 2", 0, 0),
+                    (32, 165, 185, 175, "Skill sidebar 2", 0, 0),
+                    (210, 180, 560, 190, "FORMATION", 0, 0),
+                    (32, 185, 185, 195, "CERTIFICATIONS", 0, 0),
+                    (210, 200, 560, 210, "Projet BTS SIO", 0, 0),
+                ]
+
+        result = _page_text_visual_order(FakePage())
+        lines = result.splitlines()
+
+        assert lines.index("Mission expérience 2") < lines.index("COMPÉTENCES")
+        assert lines.index("Projet BTS SIO") < lines.index("Skill sidebar 1")
+
+    def test_normalize_pdf_text_chars_replaces_superscripts(self):
+        assert _normalize_pdf_text_chars("1ʳᵉ & 2ᵉ année") == "1re & 2e année"
 
     def test_extract_pdf_text_returns_text(self, tmp_path: Path):
         pdf_path = tmp_path / "test.pdf"

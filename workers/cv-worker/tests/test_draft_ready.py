@@ -298,6 +298,58 @@ def test_process_job_soft_layout_after_retry_saves_draft_ready(monkeypatch, tmp_
     ) in events
 
 
+def test_process_job_soft_fidelity_warnings_save_draft_ready(monkeypatch, tmp_path):
+    saved = {}
+    events = []
+    pdf_path = tmp_path / "output.pdf"
+    pdf_path.write_bytes(b"%PDF draft")
+
+    structured = {
+        "name": "FRANCK",
+        "formations": [],
+        "skills": [],
+        "experiences": [],
+        "_fidelity_soft_warnings": [
+            {"code": "experience_content_rewritten_or_absent_from_source", "message": "Reformulation détectée"},
+        ],
+    }
+
+    monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(worker_main.settings, "worker_name", "whub-cv-worker-hermes-local")
+    monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: _MINIMAL_CV_SOURCE)
+    monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: structured.copy())
+    monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
+    monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
+    monkeypatch.setattr(worker_main, "render_pdf", lambda *args, **kwargs: pdf_path)
+    monkeypatch.setattr(worker_main, "run_qa", Mock(return_value=_report()))
+    monkeypatch.setattr(worker_main, "emit_event", lambda request_id, event, payload=None: events.append((event, payload or {})))
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or {"id": "version-1", "version_number": 1})
+
+    class _CommentsTable:
+        def select(self, *_args): return self
+        def update(self, *_args, **_kwargs): return self
+        def eq(self, *_args): return self
+        def execute(self): return type("Res", (), {"data": []})()
+
+    monkeypatch.setattr(worker_main.client, "table", lambda table: _CommentsTable())
+
+    worker_main.process_job({"id": "request-1", "candidate_first_name": "FRANCK", "instructions": ""})
+
+    assert saved["kwargs"] == {"request_status": "draft_ready", "qa_status": "draft", "owner": "whub-cv-worker-hermes-local"}
+    quality = saved["args"][3]["quality_report"]
+    assert {w["code"] for w in quality["soft_warnings"]} >= {"experience_content_rewritten_or_absent_from_source"}
+    assert (
+        "draft_ready",
+        {
+            "version_id": "version-1",
+            "version_number": 1,
+            "layout_warnings": [],
+            "fidelity_warnings": [{"code": "experience_content_rewritten_or_absent_from_source", "message": "Reformulation détectée"}],
+        },
+    ) in events
+
+
 def test_process_job_revision_includes_previous_version_history(monkeypatch, tmp_path):
     captured = {}
     pdf_path = tmp_path / "revision.pdf"

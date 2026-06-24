@@ -159,7 +159,7 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
         category = "source_sanitization"
     elif re.search(r"\b(json hermes invalide|json renderer invalide|json renderer incomplet|sans json exploitable|cles manquantes|cl[eé]s manquantes|objet racine attendu|doit etre une liste)\b", normalized):
         category = "structuring_invalid_json"
-    elif re.search(r"\b(coordonnees|contact_hits|contact leak|email|linkedin|github|phone_fr|telephone)\b", normalized):
+    elif re.search(r"\b(coordonnees|contact leak|email|linkedin|github|phone_fr|telephone)\b", normalized):
         category = "contact_leak"
     elif re.search(r"\b(identity|identite|forbidden_name|nom complet|full_name|nom de famille|surname)\b", normalized):
         category = "identity_leak"
@@ -1161,6 +1161,11 @@ SOFT_FIDELITY_CODES = frozenset({
     "title_absent_from_source",
     "experience_location_missing_from_json",
     "experience_misclassified_as_formation",
+    # Telegram-like UX: source coverage/model-copy issues should not leave the
+    # user with a dead failed job. Render a draft and surface the warning so the
+    # operator can review/correct, instead of blocking before PDF generation.
+    "experience_content_rewritten_or_absent_from_source",
+    "source_coverage_missing_section",
 })
 
 

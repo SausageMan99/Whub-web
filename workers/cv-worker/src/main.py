@@ -14,6 +14,7 @@ from .extraction import download_source, extract_pdf_text
 from .structuring import (
     build_whub_json,
     assert_no_contact_in_json,
+    sanitize_contact_in_json,
     enforce_client_first_name,
     normalize_candidate_first_name,
     infer_forbidden_candidate_identity_terms,
@@ -393,7 +394,7 @@ def _attach_final_quality_report(
     layout_warnings: list[dict[str, Any]],
     attempts_count: int,
     total_duration_seconds: float,
-    fidelity_soft_warnings: list[str] | None = None,
+    fidelity_soft_warnings: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Return ``qa_report`` enriched with a redacted ``quality_report`` block.
 
@@ -426,7 +427,11 @@ def _attach_final_quality_report(
         builder.add_soft_warning(code, stage="layout", **extra)
 
     for warning in fidelity_soft_warnings or []:
-        builder.add_soft_warning(str(warning), stage="fidelity")
+        if isinstance(warning, dict):
+            code = str(warning.get("code") or "source_fidelity_warning")
+            builder.add_soft_warning(code, stage="fidelity")
+        else:
+            builder.add_soft_warning(str(warning), stage="fidelity")
 
     updated = dict(qa_report)
     updated["quality_report"] = builder.to_dict(stage="final")
@@ -590,6 +595,7 @@ def process_job(job: dict) -> None:
         timings["hermes_structuring"] = perf_counter() - stage_start
 
         stage_start = perf_counter()
+        structured = sanitize_contact_in_json(structured)
         assert_no_contact_in_json(structured)
         layout_options = build_layout_packing_options(structured)
         forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
