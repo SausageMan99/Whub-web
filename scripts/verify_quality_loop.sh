@@ -29,13 +29,12 @@ uv run pytest \
 echo
 echo "=== Web quality loop tests ==="
 cd "$ROOT/apps/web"
-npx tsx --test --experimental-test-module-mocks \
+npx tsx --test --experimental-test-module-mocks --test-reporter=spec \
   tests/cv-ui.test.ts \
   tests/request-detail-ui.test.ts \
   tests/request-detail-page.test.ts \
   tests/request-detail-quality.test.ts \
-  tests/revision-request.test.ts \
-  --test-reporter=spec
+  tests/revision-request.test.ts
 
 echo
 echo "=== Eval case schema validation ==="
