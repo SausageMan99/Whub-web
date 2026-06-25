@@ -66,4 +66,4 @@ jobs:
           SUPABASE_ANON_KEY: dummy
           WORKER_DATABASE_URL: postgresql://u:***@localhost:5432/db
         run: |
-          python3 -c "import src.main; print('IMPORT_OK')"
+          uv run python -c "import src.main; print('IMPORT_OK')"
