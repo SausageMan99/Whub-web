@@ -1,0 +1,31 @@
+IMED BEN HASSINE
+Chef de Projet Technique Java / Développeur Senior
+\faAt : benhassineimed@gmail.com
+\faPhone : O625532434
+\ f aMa pM arker :  1 Ru e du Marnois Noisy Le grand 93160
+\faLinkedin : linkedin.com/in/imed-ben-hassine-057a7894
+FORMATION
+2016 - Ingénieur en Génie du Logiciel et des Systèmes d’Information de l’Institut Supérieur d’informatique
+2013 - Licence fondamentale en informatique, 2éme de la promotion Institut Supérieur des Etudes Technologiques
+EXPERIENCE PROFESSIONNELLE
+BNP Parisbas
+Chef de Projet Technique / Développeur Senior Java
+z Novembre 2022 – janvier 2026
+Mission :Pilotage et évolution des applications ALM dédiées au calcul, au reporting et à la supervision des risques financiers de la banque.
+Vermeg
+Développeur analyste Java: Assurance Maif
+z Mars 2020 – Aout 2022
+Conception et développement d’une solution technique permettant la suppression et la gestion dynamique des données contractuelles sur la plateforme d’assurance SOLIFE.
+Environment technique: Java 11, Spring 3, Framework interne JF, maven 3, Jboss EAP3, Oracle 12g,Rest/Soap ,RabbitMQ
+CERTIFICATIONS
+Oracle Certifiée Associate Java SE 8
+COMPETENCES TECHNIQUES
+Java8
+Java17
+Spring Batch
+RabbitMQ
+LANGUES
+Français
+4
+Anglais
+4
