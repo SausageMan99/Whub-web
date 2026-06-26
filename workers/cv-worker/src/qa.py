@@ -153,6 +153,17 @@ def _looks_like_skill_heading(text: str) -> bool:
     return bool(SKILL_HEADING_RE.search(normalized))
 
 
+def _is_experience_sparse_metric(metric: dict[str, Any], page_count: int) -> bool:
+    page_index = int(metric["page"])
+    if not (1 < page_index < page_count):
+        return False
+    if not bool(metric.get("has_experience_heading")):
+        return False
+    used_ratio = float(metric.get("used_ratio", 1.0))
+    char_count = int(metric.get("char_count", 0))
+    return used_ratio <= 0.46 and char_count <= 1700
+
+
 def _page_text_stats(blocks: list[dict[str, Any]]) -> tuple[str, int, float, float]:
     texts = [_block_text(block) for block in blocks]
     text = "\n".join(texts)
@@ -364,18 +375,26 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 (used_ratio <= 0.40 and char_count <= 900)
                 or (bool(metric["starts_with_suite"]) and used_ratio <= 0.45)
                 or (blank_after_pt >= 430 and char_count <= 1200)
+                or _is_experience_sparse_metric(metric, page_count)
             )
         )
         if sparse_non_final:
+            experience_sparse = _is_experience_sparse_metric(metric, page_count)
+            message = (
+                f"Page {page_index} d'expérience trop peu remplie: {char_count} caractères, {block_count} blocs, hauteur utilisée {used_ratio:.0%}"
+                if experience_sparse
+                else f"Page {page_index} trop peu remplie: {char_count} caractères, {block_count} blocs, hauteur utilisée {used_ratio:.0%}"
+            )
             findings.append(_issue(
                 "page_too_sparse",
                 page_index,
-                f"Page {page_index} trop peu remplie: {char_count} caractères, {block_count} blocs, hauteur utilisée {used_ratio:.0%}",
+                message,
                 char_count=char_count,
                 block_count=block_count,
                 used_ratio=round(float(used_ratio), 3),
                 blank_after_pt=round(float(blank_after_pt), 1),
                 starts_with_suite=bool(metric["starts_with_suite"]),
+                experience_sparse=experience_sparse,
             ))
 
         in_skills_area = False
