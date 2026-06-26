@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CvProgressBar } from "@/components/CvProgressBar";
 import { AutoRefreshWhenActive } from "@/components/AutoRefreshWhenActive";
+import { RevisionComposer } from "@/components/RevisionComposer";
 import { addComment, retryRequest } from "./actions";
 import {
   draftReadyTitle,
@@ -123,12 +124,7 @@ export default async function RequestDetailPage({ params }: { params: Promise<{ 
           {retryBlock && (
             <p className="text-xs font-semibold text-ink/50">{retryBlock.hint}</p>
           )}
-          <form action={addComment} className="mt-5 space-y-3 border-t border-amber-200 pt-5">
-            <input type="hidden" name="request_id" value={id} />
-            <label className="block text-sm font-black text-ink" htmlFor="draft-feedback">Correction post-génération — crée V{nextVersionNumber}</label>
-            <textarea id="draft-feedback" name="body" rows={4} className="w-full resize-none rounded-2xl border border-amber-200 bg-white/80 px-4 py-3 text-sm font-semibold leading-6 placeholder:text-ink/28" placeholder={`Ex. V${nextVersionNumber} : aérer la page 2, garder toutes les expériences, réduire seulement le bloc compétences...`} />
-            <button className="rounded-2xl bg-whub px-5 py-3 font-black text-white shadow-violet">Créer V{nextVersionNumber}</button>
-          </form>
+          <RevisionComposer requestId={id} nextVersionNumber={nextVersionNumber} category="other" />
         </Panel>
       )}
 
