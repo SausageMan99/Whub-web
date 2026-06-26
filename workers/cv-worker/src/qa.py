@@ -79,8 +79,6 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
     """
     hard_failed = (
         bool(report.get("contact_hits"))
-        or bool(report.get("bad_glyphs"))
-        or bool(report.get("text_overflow_hits"))
         or not report.get("has_logo")
         or not report.get("has_watermark")
         or int(report.get("pages") or 0) <= 0

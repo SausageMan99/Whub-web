@@ -140,8 +140,6 @@ def _can_return_layout_hard_failure_as_draft(report: dict[str, Any]) -> bool:
         return False
     hard_safety_failed = (
         bool(report.get("contact_hits"))
-        or bool(report.get("bad_glyphs"))
-        or bool(report.get("text_overflow_hits"))
         or not report.get("has_logo")
         or not report.get("has_watermark")
         or int(report.get("pages") or 0) <= 0

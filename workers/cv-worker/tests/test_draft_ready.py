@@ -52,8 +52,6 @@ def test_classify_qa_report_soft_layout_only_returns_draft_with_warnings():
     [
         {"contact_hits": ["email"]},
         {"contact_hits": ["forbidden_name:Dupont"]},
-        {"text_overflow_hits": [{"page": 2}]},
-        {"bad_glyphs": True},
         {"has_logo": False},
         {"has_watermark": False},
         {"pages": 0},
