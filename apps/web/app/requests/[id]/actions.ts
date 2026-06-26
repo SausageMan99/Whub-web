@@ -50,6 +50,29 @@ export async function addComment(formData: FormData) {
   if (lookupError || !request) throw new Error("Request not found");
 
   const versionId = request.current_version_id ?? null;
+  const cvComments = admin.from("cv_comments");
+
+  if (typeof cvComments.select === "function") {
+    const duplicateCutoff = new Date(Date.now() - 10_000).toISOString();
+    let duplicateQuery = cvComments
+      .select("id")
+      .eq("request_id", requestId)
+      .eq("comment_type", "revision")
+      .eq("resolved", false)
+      .eq("body", body)
+      .gte("created_at", duplicateCutoff);
+    duplicateQuery = versionId
+      ? duplicateQuery.eq("version_id", versionId)
+      : duplicateQuery.is("version_id", null);
+
+    const { data: duplicate } = await duplicateQuery.maybeSingle();
+    if (duplicate) {
+      revalidatePath(`/requests/${requestId}`);
+      revalidatePath("/dashboard");
+      return;
+    }
+  }
+
   const { error: commentError } = await admin.from("cv_comments").insert({
     request_id: requestId,
     version_id: versionId,
