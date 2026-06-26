@@ -80,7 +80,6 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
     hard_failed = (
         bool(report.get("contact_hits"))
         or bool(report.get("bad_glyphs"))
-        or bool(report.get("content_integrity_issues"))
         or bool(report.get("text_overflow_hits"))
         or not report.get("has_logo")
         or not report.get("has_watermark")
@@ -90,8 +89,9 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
         return "failed", []
 
     layout_issues = [issue for issue in (report.get("layout_issues") or []) if isinstance(issue, dict)]
+    content_issues = [issue for issue in (report.get("content_integrity_issues") or []) if isinstance(issue, dict)]
     if report.get("_draft_ready_for_layout_hard_failure"):
-        return "draft", layout_issues or [{"code": "layout_quality_warning", "message": "Mise en page à relire."}]
+        return "draft", layout_issues + content_issues or [{"code": "layout_quality_warning", "message": "Mise en page à relire."}]
     unknown_layout = [issue for issue in layout_issues if issue.get("code") not in SOFT_LAYOUT_CODES]
     if unknown_layout:
         return "failed", []

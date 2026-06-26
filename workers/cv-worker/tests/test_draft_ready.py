@@ -53,7 +53,6 @@ def test_classify_qa_report_soft_layout_only_returns_draft_with_warnings():
         {"contact_hits": ["email"]},
         {"contact_hits": ["forbidden_name:Dupont"]},
         {"text_overflow_hits": [{"page": 2}]},
-        {"content_integrity_issues": [{"code": "json_fact_missing_from_pdf"}]},
         {"bad_glyphs": True},
         {"has_logo": False},
         {"has_watermark": False},
@@ -93,6 +92,18 @@ def test_classify_qa_report_marked_layout_hard_failure_returns_draft():
 
     assert status == "draft"
     assert warnings == report["layout_issues"]
+
+
+def test_classify_qa_report_marked_content_integrity_failure_returns_draft():
+    report = _report(
+        content_integrity_issues=[{"code": "json_fact_missing_from_pdf", "page": 2}],
+        _draft_ready_for_layout_hard_failure=True,
+    )
+
+    status, warnings = classify_qa_report(report)
+
+    assert status == "draft"
+    assert warnings == report["content_integrity_issues"]
 
 
 def test_run_layout_returns_draft_candidate_for_pure_layout_hard_failure(tmp_path):
