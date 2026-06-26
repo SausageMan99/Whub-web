@@ -719,15 +719,17 @@ def process_job(job: dict) -> None:
             fail_job(job, str(qa_report), "qa_failed")
             return
         if layout_only.get("layout_only_active"):
+            verify_warnings: list = []
             try:
                 verify_ok, verify_warnings = verify_layout_revision_improved(
-                    layout_only.get("prev_qa") or {},
-                    qa_report,
-                    layout_only.get("revision_comments") or [],
+                    previous_qa_report=layout_only.get("prev_qa") or {},
+                    new_qa_report=qa_report,
+                    comments=[c.get("body") or "" for c in (layout_only.get("revision_comments") or [])],
                 )
             except Exception as exc:  # noqa: BLE001
                 log.warning("layout_revision_verification_failed request_id=%s err=%r", request_id, exc)
                 verify_ok = False
+                verify_warnings = [{"code": "verification_error", "message": "Vérification de la révision impossible."}]
             if not verify_ok:
                 if final_qa_status == "ready":
                     final_qa_status = "draft"
