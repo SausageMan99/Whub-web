@@ -1103,6 +1103,19 @@ Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
         assert "Environnement technique` quand l'information existe" not in prompt
         assert "Corrige seulement les erreurs évidentes" not in prompt
 
+    def test_hermes_prompt_contains_skills_intelligence_contract(self):
+        prompt = _hermes_prompt("CV source", "", [], "Nicolas")
+
+        assert "SECTION COMPÉTENCES — INTELLIGENCE W HUB" in prompt
+        assert "la section `skills` n'est pas un inventaire brut" in prompt
+        assert "`EXPÉRIENCES`, `EXPERIENCES`, `FORMATIONS`, `LANGUES`" in prompt
+        assert "Une phrase longue avec verbe d'action, date, client, société ou mission" in prompt
+        assert "Taxonomie fermée pour `skills[].category`" in prompt
+        assert "`Stack principale`, `Langages`, `Frontend`, `Backend`" in prompt
+        assert "N'utilise jamais `Autres` comme catégorie normale" in prompt
+        assert "Préserve `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server`" in prompt
+        assert "langues/certifications séparées" in prompt
+
     def test_rejects_rewritten_experience_bullets_even_when_topic_matches_source(self):
         source = """
 Oussama ASSAOUI
