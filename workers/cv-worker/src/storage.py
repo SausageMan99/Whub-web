@@ -57,6 +57,10 @@ def save_version(
         raise ValueError("ready requests must have passed QA")
     if request_status == "draft_ready" and qa_status != "draft":
         raise ValueError("draft_ready requests must have draft QA status")
+    if request_status == "ready" and bool(qa_report.get("passed")) is not True:
+        raise ValueError("ready requests require qa_report.passed=true")
+    if request_status == "draft_ready" and bool(qa_report.get("passed")) is True:
+        raise ValueError("draft_ready requests must carry a non-passing QA report")
 
     version = client.table("cv_versions").insert({
         "request_id": request_id,
