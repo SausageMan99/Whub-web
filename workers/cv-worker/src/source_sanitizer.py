@@ -174,17 +174,28 @@ def _is_hellowork_or_ats_line(line: str) -> bool:
 
 
 def _is_header_address_line(line: str, in_header: bool, previous_line_was_street_address: bool) -> bool:
-    if ADDRESS_PREFIX_RE.search(line):
+    address_candidate = _strip_leading_contact_icon(line)
+    if ADDRESS_PREFIX_RE.search(address_candidate):
         return True
     if not in_header:
         return False
-    if STREET_RE.search(line):
+    if STREET_RE.search(address_candidate):
         return True
-    if previous_line_was_street_address and POSTAL_CITY_RE.search(line):
+    if previous_line_was_street_address and POSTAL_CITY_RE.search(address_candidate):
         return True
-    if POSTAL_CITY_RE.search(line) and not re.search(r"\b(?:mission|chez|client|exp[ée]rience|projet|remote|full-stack)\b", line, re.I):
+    if POSTAL_CITY_RE.search(address_candidate) and not re.search(r"\b(?:mission|chez|client|exp[ée]rience|projet|remote|full-stack)\b", address_candidate, re.I):
         return True
     return False
+
+
+def _strip_leading_contact_icon(line: str) -> str:
+    """Drop decorative PDF icon glyphs before address detection.
+
+    Hellowork-style exports can prefix email/phone/address lines with private-use
+    icon glyphs (for example ``3 rue de Genève``). Address detection should see
+    the business text after the icon, without mutating non-contact content.
+    """
+    return re.sub(r"^[^\w\dÀ-ÖØ-öø-ÿ]+", "", line or "").strip()
 
 
 def _sanitize_inline_contacts(line: str) -> tuple[str, dict[str, int]]:
@@ -203,7 +214,8 @@ def _cleanup_contact_residue(text: str) -> str:
     cleaned = re.sub(r"\(\s*(?:lien|site|url|portfolio|linkedin|github|contact)\s*:?\s*\)", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\b(?:lien|url)\s*:\s*(?=$|[),.;])", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\(\s*\)", "", cleaned)
-    cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s+([,;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s+\.(?!\s*(?:NET|Net|net)\b)", ".", cleaned)
     cleaned = re.sub(r"(?:\s*[-–—|•]\s*){2,}", " - ", cleaned)
     cleaned = re.sub(r"^[\s,;:|•\-–—]+|[\s,;:|•\-–—]+$", "", cleaned)
     cleaned = re.sub(r"[ \t]+", " ", cleaned).strip()

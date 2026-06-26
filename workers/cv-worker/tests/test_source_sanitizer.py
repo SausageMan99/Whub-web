@@ -148,6 +148,37 @@ Industrialisation GitHub Actions, emailing transactionnel, Node.js, .NET et API 
     assert result.report.removed_github_profile_count == 0
 
 
+def test_preserves_space_before_dotnet_framework_token():
+    raw = f"""
+{BUSINESS_CONTENT}
+Développeur full stack React .NET
+Développement d'applications .NET full stack et migration d'API .NET en .NET Core.
+"""
+
+    result = _sanitize(raw)
+
+    assert "React .NET" in result.text
+    assert "applications .NET full stack" in result.text
+    assert "API .NET en .NET Core" in result.text
+    assert "React.NET" not in result.text
+    assert "applications.NET" not in result.text
+
+
+def test_removes_icon_prefixed_header_address_line():
+    raw = f"""
+Jean Dupont
+3 rue de Genève
+74100 Annemasse
+{BUSINESS_CONTENT}
+"""
+
+    result = _sanitize(raw)
+
+    assert "3 rue de Genève" not in result.text
+    assert "74100 Annemasse" not in result.text
+    assert "Lead DevOps chez EDF" in result.text
+
+
 def test_removes_hellowork_boilerplate_lines_without_removing_experience_lines():
     raw = f"""
 CV téléchargé depuis Hellowork
@@ -462,7 +493,7 @@ Footer : document de candidature exporté depuis hellowork.com pour le profil ca
             "campagnes LinkedIn Ads et Google Ads",
             "API REST d'export de rapports",
             "Mars 2017 - Août 2020: Développeur web confirmé - Banque Nord Europe",
-            "modules Node.js et.NET",
+            "modules Node.js et .NET",
             "GitHub Actions",
             "LinkedIn Ads",
             "Th@Bot",

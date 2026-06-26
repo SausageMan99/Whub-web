@@ -27,6 +27,7 @@ from src.structuring import (
     extract_source_business_coverage_facts,
     extract_source_experience_coverage_items,
     sanitize_contact_in_json,
+    sanitize_identity_terms_in_json,
     _infer_first_name_from_source,
     _CandidateFirstNameInferenceError,
 )
@@ -254,6 +255,21 @@ class TestAssertNoContactInJson:
 
         assert_no_contact_in_json(data)
 
+    @pytest.mark.parametrize(
+        "safe_value",
+        [
+            "Développeur full stack React.NET",
+            "Développement d'applications.NET full stack",
+            "Migration d'API.NET en .NET Core",
+            "C#.NET et ASP.NET MVC",
+        ],
+    )
+    def test_dotnet_tech_tokens_are_not_treated_as_url_contacts(self, safe_value):
+        assert_no_contact_in_json(self._base_data(safe_value))
+
+    def test_real_dotnet_url_still_raises(self):
+        self._assert_contact_category("Portfolio example.net/profil", "url")
+
 
 class TestSanitizeContactInJson:
     def test_removes_candidate_contact_surfaces_but_keeps_business_text(self):
@@ -295,6 +311,38 @@ class TestSanitizeContactInJson:
 
         assert cleaned["experiences"][0]["sections"][0]["content"] == ["Th@Bot", "Contact"]
         assert_no_contact_in_json(cleaned)
+
+    def test_sanitize_contact_preserves_dotnet_tech_tokens_but_removes_real_url(self):
+        data = {"name": "JEAN", "title": "Dev React.NET", "formations": [], "skills": [], "experiences": []}
+        data["experiences"] = [
+            {
+                "date": "2024",
+                "role": "Développeur applications.NET",
+                "sections": [{"heading": "Projet", "content": ["Migration d'API.NET en .NET Core", "Portfolio example.net/profil"]}],
+            }
+        ]
+
+        cleaned = sanitize_contact_in_json(data)
+
+        assert cleaned["title"] == "Dev React.NET"
+        assert cleaned["experiences"][0]["role"] == "Développeur applications.NET"
+        assert cleaned["experiences"][0]["sections"][0]["content"] == ["Migration d'API.NET en .NET Core", "Portfolio"]
+        assert_no_contact_in_json(cleaned)
+
+    def test_sanitize_identity_terms_removes_surname_without_blocking_first_name(self):
+        data = {
+            "name": "HASSANE",
+            "title": "Développeur .NET",
+            "formations": [],
+            "skills": [{"category": "Langues", "items": ["Français", "HASSANE BARO Développeur web full stack"]}],
+            "experiences": [],
+        }
+
+        cleaned = sanitize_identity_terms_in_json(data, ["BARO"])
+
+        assert cleaned["name"] == "HASSANE"
+        assert cleaned["skills"][0]["items"] == ["Français", "HASSANE Développeur web full stack"]
+        validate_source_fidelity("HASSANE BARO\nDéveloppeur .NET\nFrançais", cleaned, forbidden_identity_terms=["BARO"])
 
 
 class TestJsonContactHardBlock:

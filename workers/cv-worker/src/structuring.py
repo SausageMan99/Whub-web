@@ -107,7 +107,7 @@ def detect_contact_in_json(data: dict) -> ContactLeakDiagnostic:
         if isinstance(node, str):
             text = node
             for category, detector in CONTACT_DETECTORS:
-                if detector.search(text):
+                if _detector_matches_contact(category, detector, text):
                     if category not in categories:
                         categories.append(category)
                     if path and path not in paths:
@@ -126,6 +126,45 @@ def detect_contact_in_json(data: dict) -> ContactLeakDiagnostic:
 
     _walk(data, "")
     return ContactLeakDiagnostic(tuple(sorted(categories)), tuple(sorted(paths)))
+
+
+def _detector_matches_contact(category: str, detector: re.Pattern[str], text: str) -> bool:
+    if category != "url":
+        return detector.search(text) is not None
+    return any(not _is_dotnet_technical_false_positive(match.group(0)) for match in detector.finditer(text))
+
+
+def _is_dotnet_technical_false_positive(value: str) -> bool:
+    """Return true for merged tech tokens such as React.NET / application.NET.
+
+    PDF cleanup/model output can remove the space before the .NET framework
+    token. Those strings look like bare .net domains to the URL regex, but they
+    are stack content, not candidate contact surfaces. Real URLs with scheme,
+    www, path, or non-.NET TLDs remain contact hits.
+    """
+    token = (value or "").strip().strip(".,;:()[]{}")
+    lowered = token.lower()
+    if not lowered.endswith(".net"):
+        return False
+    if "://" in lowered or lowered.startswith("www.") or "/" in lowered:
+        return False
+    label = token.rsplit(".", 1)[0]
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9+#-]{1,30}", label):
+        return False
+    tech_labels = {
+        "api",
+        "application",
+        "applications",
+        "asp",
+        "c#",
+        "dot",
+        "framework",
+        "mvc",
+        "react",
+        "stack",
+        "web",
+    }
+    return label.casefold() in tech_labels
 
 
 STRUCTURING_ERROR_PUBLIC_MESSAGES = {
@@ -256,6 +295,48 @@ def sanitize_contact_in_json(data: dict) -> dict:
     return cast(dict, _sanitize_contact_value(data))
 
 
+def sanitize_identity_terms_in_json(data: dict, forbidden_terms: list[str] | None) -> dict:
+    """Remove forbidden candidate identity terms from renderer JSON strings.
+
+    The portal already supplies the allowed first name. If the model copies a
+    source header such as ``HASSANE BARO`` into a skill/description field, the
+    surname should be deterministically redacted instead of killing the job.
+    """
+    terms = [term for term in (forbidden_terms or []) if str(term).strip()]
+    if not terms:
+        return data
+    return cast(dict, _sanitize_identity_value(data, terms))
+
+
+def _sanitize_identity_value(data: object, terms: list[str]) -> object:
+    if isinstance(data, dict):
+        return {key: _sanitize_identity_value(value, terms) for key, value in data.items()}
+    if isinstance(data, list):
+        cleaned_items = []
+        for item in data:
+            cleaned = _sanitize_identity_value(item, terms)
+            if not _is_empty_contact_sanitized_value(cleaned):
+                cleaned_items.append(cleaned)
+        return cleaned_items
+    if isinstance(data, str):
+        return _sanitize_identity_text(data, terms)
+    return data
+
+
+def _sanitize_identity_text(text: str, terms: list[str]) -> str:
+    cleaned = str(text)
+    for term in sorted(set(terms), key=len, reverse=True):
+        escaped = re.escape(term.strip())
+        if not escaped:
+            continue
+        cleaned = re.sub(rf"(?<![\wÀ-ÖØ-öø-ÿ]){escaped}(?![\wÀ-ÖØ-öø-ÿ])", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+([,;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s+\.(?!\s*(?:NET|Net|net)\b)", ".", cleaned)
+    cleaned = re.sub(r"(?:\s*[-–—|•]\s*){2,}", " - ", cleaned)
+    cleaned = re.sub(r"^[\s,;:|•\-–—]+|[\s,;:|•\-–—]+$", "", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def _sanitize_contact_value(data: object) -> object:
     if isinstance(data, dict):
         cleaned: dict = {}
@@ -296,17 +377,28 @@ def _sanitize_contact_text(text: str) -> str:
     cleaned = PHONE_CONTACT_RE.sub("", cleaned)
     cleaned = LINKEDIN_CONTACT_RE.sub("", cleaned)
     cleaned = GITHUB_PROFILE_CONTACT_RE.sub("", cleaned)
-    cleaned = URL_CONTACT_RE.sub("", cleaned)
+    cleaned = _strip_url_contacts_preserving_dotnet_terms(cleaned)
     label_only_after_contact_removal = re.sub(r"\s+", " ", cleaned).strip()
     if had_email_or_phone and re.fullmatch(r"contact\s*:?,?", label_only_after_contact_removal, flags=re.I):
         return "Contact"
     cleaned = CONTACT_LABEL_RE.sub("", cleaned)
     cleaned = re.sub(r"\(\s*(?:site\s+web|linkedin|contact)\s*\)", "", cleaned, flags=re.I)
     cleaned = re.sub(r"\(\s*\)", "", cleaned)
-    cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s+([,;:])", r"\1", cleaned)
+    cleaned = re.sub(r"\s+\.(?!\s*(?:NET|Net|net)\b)", ".", cleaned)
     cleaned = re.sub(r"(?:\s*[-–—|•]\s*){2,}", " - ", cleaned)
     cleaned = re.sub(r"^[\s,;:|•\-–—]+|[\s,;:|•\-–—]+$", "", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _strip_url_contacts_preserving_dotnet_terms(text: str) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        value = match.group(0)
+        if _is_dotnet_technical_false_positive(value):
+            return value
+        return ""
+
+    return URL_CONTACT_RE.sub(_replace, text)
 
 
 def _normalize_for_fidelity(text: str) -> str:
@@ -2524,10 +2616,12 @@ def build_whub_json(
     enforce_client_first_name(data, candidate_first_name)
     data = sanitize_contact_in_json(data)
     assert_no_contact_in_json(data)
+    forbidden_identity_terms = infer_forbidden_candidate_identity_terms(compacted_text, candidate_first_name)
+    data = sanitize_identity_terms_in_json(data, forbidden_identity_terms)
     validate_source_fidelity(
         compacted_text,
         data,
         allow_synthesis=resolved_synthesis_mode != "complete",
-        forbidden_identity_terms=infer_forbidden_candidate_identity_terms(compacted_text, candidate_first_name),
+        forbidden_identity_terms=forbidden_identity_terms,
     )
     return data
