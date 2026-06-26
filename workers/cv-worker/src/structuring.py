@@ -1660,7 +1660,8 @@ def split_cv_text_into_blocks(text: str, target_chars: int = LONG_CV_BLOCK_TARGE
     blocks: list[dict] = []
     for block in repair_long_cv_blocks(raw_blocks):
         blocks.extend(_split_oversized_block(block, target_chars))
-    return _coalesce_heading_only_blocks(repair_long_cv_blocks(blocks))
+    coalesced = _coalesce_heading_only_blocks(repair_long_cv_blocks(blocks))
+    return _coalesce_tiny_continuation_blocks(coalesced)
 
 
 def _is_heading_only_block(block: dict) -> bool:
@@ -1680,6 +1681,48 @@ def _is_heading_only_block(block: dict) -> bool:
         return False
     folded = "".join(c for c in unicodedata.normalize("NFD", line) if unicodedata.category(c) != "Mn")
     return folded == folded.upper() and any(c.isalpha() for c in folded)
+
+
+def _looks_like_tiny_section_continuation(block: dict, next_block: dict | None = None) -> bool:
+    """Detect tiny fragments that are really the prelude to the next section.
+
+    PDF extraction can split e.g. certifications plus the numbered skills heading
+    (`4 Compétences`, `4.1`) into a ~100-char block immediately before the real
+    skills content. That block is not heading-only, but it is too small and too
+    ambiguous to send to Hermes alone.
+    """
+    text = str(block.get("text") or "").strip()
+    if not text or len(text) > 450:
+        return False
+    if next_block is None:
+        return False
+    next_kind = str(next_block.get("kind") or "")
+    next_text = str(next_block.get("text") or "")
+    normalized = _normalize_for_fidelity(text)
+    next_normalized = _normalize_for_fidelity(next_text)
+    has_numbered_skills_bridge = bool(re.search(r"\b\d+(?:\.\d+)?\s+competences\b|\b\d+\.\d+\b", normalized))
+    next_is_skills = next_kind == "skills" or "competences techniques" in next_normalized
+    current_is_side_section = str(block.get("kind") or "") in {"education", "skills", "header"}
+    return current_is_side_section and next_is_skills and has_numbered_skills_bridge
+
+
+def _coalesce_tiny_continuation_blocks(blocks: list[dict]) -> list[dict]:
+    if not blocks:
+        return blocks
+    result: list[dict] = []
+    i = 0
+    while i < len(blocks):
+        block = blocks[i]
+        next_block = blocks[i + 1] if i + 1 < len(blocks) else None
+        if next_block is not None and _looks_like_tiny_section_continuation(block, next_block):
+            merged = dict(next_block)
+            merged["text"] = f"{str(block.get('text') or '').rstrip()}\n{str(next_block.get('text') or '').lstrip()}"
+            result.append(merged)
+            i += 2
+            continue
+        result.append(block)
+        i += 1
+    return result
 
 
 def _coalesce_heading_only_blocks(blocks: list[dict]) -> list[dict]:

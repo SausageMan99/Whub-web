@@ -142,6 +142,41 @@ class BlockCoalescingTest(unittest.TestCase):
             "no block should be heading-only in this realistic CV",
         )
 
+    def test_tiny_certification_block_with_numbered_skills_heading_merges_forward(self):
+        # Some ATS/PDF exports split a tiny certifications block just before the
+        # numbered skills section: sending that 100-char fragment alone to Hermes
+        # can produce invalid JSON. Keep the certifications, but merge them into
+        # the following skills block.
+        text = (
+            "Nassim\n"
+            "Ingénieur Logiciel Full-Stack Senior\n"
+            "\n"
+            "Formation\n"
+            "Master en Génie Logiciel et Data Science\n"
+            "Langues\n"
+            "Français: Bilingue\n"
+            "Anglais: Compétence Professionnelle Complète\n"
+            "\n"
+            "Certifications\n"
+            "Intelligence Artificielle – Hassoub Academy\n"
+            "Développeur React Complet – ZTM\n"
+            "4 Compétences\n"
+            "4.1\n"
+            "\n"
+            "Compétences Techniques\n"
+            "Écosystème Front-End: React.js, TypeScript\n"
+            "Back-End & Temps Réel: .NET, FastEndpoints\n"
+        )
+        blocks = split_cv_text_into_blocks(text)
+        flat = "\n".join(b["text"] for b in blocks)
+        self.assertIn("Intelligence Artificielle", flat)
+        self.assertIn("Compétences Techniques", flat)
+        tiny_cert_blocks = [
+            b for b in blocks
+            if "Intelligence Artificielle" in b["text"] and "Compétences Techniques" not in b["text"]
+        ]
+        self.assertEqual(tiny_cert_blocks, [])
+
 
 if __name__ == "__main__":
     unittest.main()
