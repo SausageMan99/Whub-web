@@ -90,6 +90,8 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
         return "failed", []
 
     layout_issues = [issue for issue in (report.get("layout_issues") or []) if isinstance(issue, dict)]
+    if report.get("_draft_ready_for_layout_hard_failure"):
+        return "draft", layout_issues or [{"code": "layout_quality_warning", "message": "Mise en page à relire."}]
     unknown_layout = [issue for issue in layout_issues if issue.get("code") not in SOFT_LAYOUT_CODES]
     if unknown_layout:
         return "failed", []

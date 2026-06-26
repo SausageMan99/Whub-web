@@ -110,6 +110,16 @@ def run_layout(
     selection = select_best_layout_variant(attempts)
 
     if selection.hard_failure is not None:
+        hard_report = dict(selection.hard_failure.qa_report or {})
+        if _can_return_layout_hard_failure_as_draft(hard_report):
+            hard_report["_draft_ready_for_layout_hard_failure"] = True
+            return LayoutResult(
+                pdf=selection.hard_failure.pdf,
+                qa_report=hard_report,
+                layout_options=selection.hard_failure.layout_options,
+                attempts_count=len(attempts),
+                selected_variant=selection.hard_failure.name,
+            )
         raise RuntimeError(f"Layout hard failure: {selection.hard_failure.qa_report}")
 
     if selection.selected is None:
@@ -122,3 +132,21 @@ def run_layout(
         attempts_count=len(attempts),
         selected_variant=selection.selected.name,
     )
+
+
+def _can_return_layout_hard_failure_as_draft(report: dict[str, Any]) -> bool:
+    """Allow Telegram-like draft delivery for pure layout/taste failures only."""
+    if not isinstance(report, dict):
+        return False
+    hard_safety_failed = (
+        bool(report.get("contact_hits"))
+        or bool(report.get("bad_glyphs"))
+        or bool(report.get("content_integrity_issues"))
+        or bool(report.get("text_overflow_hits"))
+        or not report.get("has_logo")
+        or not report.get("has_watermark")
+        or int(report.get("pages") or 0) <= 0
+    )
+    if hard_safety_failed:
+        return False
+    return bool(report.get("layout_issues") or report.get("human_taste"))

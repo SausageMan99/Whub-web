@@ -7,6 +7,7 @@ from src.qa import QAError
 from src import main as worker_main
 from src import storage
 from src.layout import LayoutResult
+from src.layout import run_layout
 
 
 _MINIMAL_CV_SOURCE = "\n".join(
@@ -80,6 +81,41 @@ def test_classify_qa_report_unknown_layout_code_is_failed():
 
     assert status == "failed"
     assert warnings == []
+
+
+def test_classify_qa_report_marked_layout_hard_failure_returns_draft():
+    report = _report(
+        layout_issues=[{"code": "mystery_layout_issue", "page": 1}],
+        _draft_ready_for_layout_hard_failure=True,
+    )
+
+    status, warnings = classify_qa_report(report)
+
+    assert status == "draft"
+    assert warnings == report["layout_issues"]
+
+
+def test_run_layout_returns_draft_candidate_for_pure_layout_hard_failure(tmp_path):
+    def fake_render(_structured, _workdir, layout_options=None, output_name="output.pdf"):
+        pdf = tmp_path / output_name
+        pdf.write_bytes(b"%PDF")
+        return pdf
+
+    def fake_run_qa(*_args, **_kwargs):
+        raise QAError(_report(layout_issues=[{"code": "mystery_layout_issue", "page": 1}]))
+
+    result = run_layout(
+        structured={"name": "HASSANE", "formations": [], "skills": [], "experiences": []},
+        workdir=tmp_path,
+        render_pdf=fake_render,
+        run_qa=fake_run_qa,
+        max_attempts=1,
+    )
+
+    status, warnings = classify_qa_report(result.qa_report)
+    assert status == "draft"
+    assert warnings == [{"code": "mystery_layout_issue", "page": 1}]
+    assert result.pdf.exists()
 
 
 class _FakeStorageBucket:
