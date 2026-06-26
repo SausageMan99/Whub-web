@@ -24,10 +24,13 @@ from .structuring import (
     _infer_first_name_from_source,
     _CandidateFirstNameInferenceError,
 )
+from .revisions import classify_revision_intent
 from .rendering import render_pdf
 from .qa import run_qa, classify_qa_report
 from .storage import save_version
 from .layout import build_layout_packing_options, run_layout
+from .layout.comment_hints import build_layout_revision_options, mentions_move_from_last_page
+from .layout.revision_verification import verify_layout_revision_improved
 from .preflight import run_startup_preflight
 from .source_sanitizer import sanitize_source_text, SourceSanitizationError
 from .quality_report import (
@@ -480,6 +483,70 @@ def _build_revision_history_comment(version: dict) -> dict:
     return {"body": body, "comment_type": "history"}
 
 
+def _maybe_reuse_layout_only_structured_json(
+    *,
+    client,
+    request_id: str,
+    current_version_id: str | None,
+    revision_comments: list[dict],
+    effective_first_name: str | None,
+    timings: dict,
+    structured_sink: dict,
+) -> bool:
+    """Returns True if layout_only routing was applied."""
+    if not current_version_id or not revision_comments:
+        structured_sink.setdefault("layout_only_active", False)
+        return False
+
+    from .revisions import classify_revision_intent
+    from .layout.comment_hints import build_layout_revision_options, mentions_move_from_last_page
+
+    layout_revision_candidates: list[dict] = []
+    for comment in revision_comments:
+        body = str(comment.get("body") or "")
+        intent = classify_revision_intent(body)
+        if intent.kind != "layout_only":
+            continue
+        layout_revision_candidates.append(comment)
+
+    if not layout_revision_candidates:
+        structured_sink.setdefault("layout_only_active", False)
+        return False
+
+    stage_start = perf_counter()
+    version_res = (
+        client.table("cv_versions")
+        .select("id,structured_json,qa_report,version_number,qa_status")
+        .eq("id", current_version_id)
+        .execute()
+    )
+    timings["load_layout_only_version"] = perf_counter() - stage_start
+
+    if not version_res.data:
+        structured_sink.setdefault("layout_only_active", False)
+        return False
+
+    row = version_res.data[0]
+    structured_json = row.get("structured_json")
+    if not structured_json:
+        structured_sink.setdefault("layout_only_active", False)
+        return False
+
+    structured_sink["structured"] = structured_json
+    structured_sink["layout_only_active"] = True
+    structured_sink["prev_qa"] = row.get("qa_report") or {}
+    structured_sink["revision_comments"] = revision_comments
+    emit_event(
+        request_id,
+        "layout_revision_reused_structured_json",
+        {
+            "version_id": row.get("id"),
+            "version_number": row.get("version_number"),
+        },
+    )
+    return True
+
+
 def process_job(job: dict) -> None:
     total_start = perf_counter()
     timings: dict[str, float] = {}
@@ -573,6 +640,7 @@ def process_job(job: dict) -> None:
 
         stage_start = perf_counter()
         comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
+        revision_comments = [c for c in comments_for_prompt if c.get("comment_type") == "revision"]
         effective_first_name = job.get("candidate_first_name") or None
         if not effective_first_name:
             try:
@@ -588,7 +656,28 @@ def process_job(job: dict) -> None:
                     "failed",
                 )
                 return
-        structured = build_whub_json(sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name)
+
+        layout_only: dict[str, Any] = {
+            "structured": None,
+            "layout_only_active": False,
+            "prev_qa": {},
+            "revision_comments": [],
+        }
+        reused = _maybe_reuse_layout_only_structured_json(
+            client=client,
+            request_id=request_id,
+            current_version_id=current_version_id,
+            revision_comments=revision_comments,
+            effective_first_name=effective_first_name,
+            timings=timings,
+            structured_sink=layout_only,
+        )
+        if reused:
+            structured = layout_only["structured"]
+        else:
+            structured = build_whub_json(
+                sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name
+            )
         enforce_client_first_name(structured, effective_first_name)
         # Soft fidelity warnings: extract and remove from data so they don't pollute the render
         fidelity_soft_warnings = structured.pop("_fidelity_soft_warnings", None)
@@ -629,6 +718,20 @@ def process_job(job: dict) -> None:
         if final_qa_status == "failed":
             fail_job(job, str(qa_report), "qa_failed")
             return
+        if layout_only.get("layout_only_active"):
+            try:
+                verify_ok, verify_warnings = verify_layout_revision_improved(
+                    layout_only.get("prev_qa") or {},
+                    qa_report,
+                    layout_only.get("revision_comments") or [],
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("layout_revision_verification_failed request_id=%s err=%r", request_id, exc)
+                verify_ok = False
+            if not verify_ok:
+                if final_qa_status == "ready":
+                    final_qa_status = "draft"
+                layout_warnings = [*layout_warnings, *verify_warnings]
         # If we have fidelity soft warnings, force draft_ready even if QA passed
         if fidelity_soft_warnings and final_qa_status == "passed":
             final_qa_status = "draft"
