@@ -54,6 +54,20 @@ SOFT_LAYOUT_CODES = {
     "page_underfilled_with_next_experience_fit",
 }
 
+ALLOWED_RENDERER_LABEL_FACTS = {
+    # French/English renderer-side taxonomy labels (UI chrome, not candidate facts)
+    "Bases de données", "Base de données", "Base de donnees", "Bases de donnees",
+    "Compétences techniques", "Competences techniques", "Competences Techniques",
+    "Outils & méthodes", "Outils & methodes", "Outils & Methodes",
+    "Cloud & DevOps", "Cloud et DevOps", "Cloud & Devops",
+    "Frontend", "Backend", "Fullstack", "Full Stack",
+    "Langues", "Langue",
+    "Formations", "Diplômes", "Diplomes",
+    "Certifications", "Certification",
+    "Expériences professionnelles", "Experiences professionnelles", "EXPERIENCES PROFESSIONNELLES",
+    "Environnement technique", "Stack technique",
+}
+
 HUMAN_TASTE_ISSUE_WEIGHTS = {
     "page_too_dense": 22,
     "page_dense_but_acceptable": 6,
@@ -95,6 +109,8 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
         return "failed", []
     if layout_issues:
         return "draft", layout_issues
+    if content_issues:
+        return "failed", []
     return "passed", []
 
 
@@ -567,9 +583,10 @@ def find_pdf_source_fidelity_issues(text: str, source_text: str | None = None, s
                 "section": entry["section"],
                 "fact": fact,
             })
-
         for entity in _extract_pdf_source_sensitive_entities(text):
             if _contains_fidelity_fact(source_normalized, entity):
+                continue
+            if entity in ALLOWED_RENDERER_LABEL_FACTS:
                 continue
             issues.append({
                 "code": "pdf_fact_absent_from_source",
