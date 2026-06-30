@@ -11,6 +11,8 @@ test('final front polish — exposes premium motion tokens and micro-interaction
   assert.match(css, /\.reveal-up/);
   assert.match(css, /\.premium-card/);
   assert.match(css, /\.transfer-dropzone/);
+  assert.match(css, /\.paper-texture/);
+  assert.match(css, /mix-blend-mode: multiply/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
 

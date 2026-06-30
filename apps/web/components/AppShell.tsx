@@ -14,7 +14,7 @@ export function AppShell({
   ];
 
   return (
-    <main className="min-h-screen bg-porcelain text-ink">
+    <main className="paper-texture min-h-screen bg-porcelain text-ink">
       <header className="sticky top-0 z-20 border-b border-ink/8 bg-white/82 backdrop-blur-xl supports-[backdrop-filter]:bg-white/72">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
           <WhubMark />
