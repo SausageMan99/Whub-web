@@ -259,3 +259,24 @@ def test_source_gate_structured_data_applies_skills_intelligence_to_olivier_fixt
     assert "SQL Server" in flattened
     assert "Anglais" not in flattened
     assert out["languages"] == [{"name": "Anglais", "level": "Lu, parlé, écrit"}]
+
+
+def test_source_gate_does_not_reinject_full_competences_block_when_atomic_terms_covered():
+    from src.structuring import _source_gate_structured_data
+
+    source = (FIXTURES / "olivier_hellowork_competences.txt").read_text(encoding="utf-8")
+    data = {
+        "skills": [
+            {"category": "Cloud & DevOps", "items": ["AWS", "Azure", "Docker", "Kubernetes"]},
+            {"category": "Sécurité", "items": ["JWT", "OAuth2", "LDAP", "OWASP"]},
+            {"category": "Bases de données", "items": ["MySQL", "MongoDB", "Oracle", "SQL Server", "PostgreSQL"]},
+        ],
+        "languages": [{"name": "Anglais", "level": "Lu, parlé, écrit"}],
+    }
+
+    out = _source_gate_structured_data(data, source)
+    flattened = [item for cat in out["skills"] for item in cat["items"]]
+
+    assert not any("Direction d'équipes de développement, recrutement, roadmap" in item for item in flattened)
+    assert not any("Cloud: AWS" in item for item in flattened)
+    assert not any("Data bases:" in item for item in flattened)

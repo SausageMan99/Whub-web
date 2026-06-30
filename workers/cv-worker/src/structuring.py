@@ -2638,6 +2638,8 @@ def _source_gate_skills(data: dict, source_text: str) -> dict:
         fact = entry["fact"]
         if _contains_fidelity_fact(json_normalized, fact):
             continue
+        if _is_competences_fact_covered_atomically(entry["section"], fact, source_text, gated_skills):
+            continue
         target = next((skill for skill in gated_skills if _normalize_for_fidelity(str(skill.get("category") or "")) == _normalize_for_fidelity(entry["section"])), None)
         if target is None:
             target = {"category": entry["section"], "items": []}
@@ -2648,6 +2650,44 @@ def _source_gate_skills(data: dict, source_text: str) -> dict:
         json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
     gated["skills"] = gated_skills
     return gated
+
+
+def _is_competences_fact_covered_atomically(section: str, fact: str, source_text: str, gated_skills: list[dict]) -> bool:
+    """Return True when the `Compétences` source fact is already covered item by item.
+
+    The source coverage extractor often returns the full `COMPÉTENCES` block
+    as a single fact because Hellowork bullets are on their own lines. If the
+    structured `skills` already contains the atomic technologies from the
+    block, reinjecting the whole fact only re-creates an `Autres` dump.
+    """
+    from .skills_intelligence import (
+        normalise_skill_key,
+        parse_source_skills_section,
+    )
+
+    if _normalize_for_fidelity(section) not in {"competences", "competences techniques", "competences et outils"}:
+        return False
+    parsed = parse_source_skills_section(source_text or "")
+    expected_keys = {
+        normalise_skill_key(item)
+        for items in parsed.skills_by_category.values()
+        for item in items
+        if normalise_skill_key(item)
+    }
+    if not expected_keys:
+        return False
+    actual_keys: set[str] = set()
+    for skill in gated_skills or []:
+        if not isinstance(skill, dict):
+            continue
+        for item in skill.get("items") or []:
+            key = normalise_skill_key(str(item))
+            if key:
+                actual_keys.add(key)
+    if not actual_keys:
+        return False
+    coverage = len(expected_keys & actual_keys) / max(1, len(expected_keys))
+    return coverage >= 0.70
 
 
 def _is_high_risk_generated_fact(value: str) -> bool:
