@@ -130,6 +130,30 @@ x
     assert "DDD" in parsed.skills_by_category["Méthodologies"]
 
 
+def test_parse_source_skills_extracts_spoken_language_tail():
+    from src.skills_intelligence import parse_source_skills_section
+
+    parsed = parse_source_skills_section(
+        """
+COMPÉTENCES
+Cloud: AWS, Azure
+
+Anglais
+Lu, parlé, écrit
+
+FORMATIONS
+x
+"""
+    )
+
+    assert parsed.languages == [{"name": "Anglais", "level": "Lu, parlé, écrit"}]
+    flattened = [item for items in parsed.skills_by_category.values() for item in items]
+    assert "Anglais" not in flattened
+    assert "Lu" not in flattened
+    assert "parlé" not in flattened
+    assert "écrit" not in flattened
+
+
 def test_parse_source_skills_classifies_unprefixed_methodology_line():
     from src.skills_intelligence import parse_source_skills_section
 

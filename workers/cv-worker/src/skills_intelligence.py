@@ -71,12 +71,46 @@ def _extract_skills_lines(source_text: str) -> list[str]:
 _ARROW_RE = re.compile(r"^[➢>•\-–—]+\s*(.*)$")
 
 
-def _flush_skill_item(buffer: list[str]) -> str | None:
+_SPOKEN_LANGUAGE_INLINE_RE = re.compile(
+    r"^(?P<head>.*?[\s,])(?P<name>"
+    r"fran[çc]ais|anglais|espagnol|allemand|italien|portugais|arabe|russe|chinois|japonais|"
+    r"mandarin|coreen|coréen|neerlandais|néerlandais|suedois|suédois|polonais|"
+    r"tcheque|tchèque|hongrois|roumain|bulgare|grec|turc|hindi|vietnamien|"
+    r"indonesien|indonésien|ukrainien|catalan|croate|slovaque|estonien|"
+    r"letton|lituanien|breton|occitan|corse|basque"
+    r")\s*(?P<level>(?:lu|parl[ée]|écrit|courant|bilingue|natif|native|maternel|maternelle|professionnel|technique|scolaire|notions|a1|a2|b1|b2|c1|c2)[^\n]*)$",
+    re.IGNORECASE,
+)
+
+
+def _flush_skill_item(buffer: list[str]) -> list[str]:
+    """Return one or more item strings from a buffer.
+
+    If the buffer is exactly one line that *starts with* a spoken language
+    name (e.g. "Anglais Lu, parlé, écrit"), emit it as a single item so
+    `_split_languages_from_items` can hoist it later. If the buffer is
+    multi-line and the language name is appended to a real skill (e.g.
+    "... Windows / Anglais Lu, parlé, écrit"), split the language off as
+    its own item.
+    """
     text = " ".join(part.strip() for part in buffer if part and part.strip())
     text = re.sub(r"\s+", " ", text).strip(" :;•➢-–—")
     if not text:
-        return None
-    return text
+        return []
+    match = _SPOKEN_LANGUAGE_INLINE_RE.match(text)
+    if not match:
+        return [text]
+    head = match.group("head").strip(" ,")
+    name = match.group("name").strip()
+    level = match.group("level").strip()
+    # If the buffer had only one line and the language heading is at the
+    # very start, the whole line is a language entry — leave it intact for
+    # the hoister. Splitting it here would drop the level.
+    if not head and len([part for part in buffer if part and part.strip()]) == 1:
+        return [text]
+    if not head:
+        return [f"{name} {level}".strip()]
+    return [head, f"{name} {level}".strip()]
 
 
 def _split_arrow_skill_items(lines: list[str]) -> list[str]:
@@ -91,9 +125,7 @@ def _split_arrow_skill_items(lines: list[str]) -> list[str]:
 
     def flush() -> None:
         nonlocal buffer
-        text = _flush_skill_item(buffer)
-        if text:
-            items.append(text)
+        items.extend(_flush_skill_item(buffer))
         buffer = []
 
     for raw in lines:
@@ -302,6 +334,70 @@ def _category_for_skill_value(value: str) -> str:
     return "Outils & Environnements"
 
 
+_SPOKEN_LANGUAGE_HEADING_RE = re.compile(
+    r"^\s*(?:fran[çc]ais|anglais|espagnol|allemand|italien|portugais|arabe|russe|chinois|japonais|mandarin|coreen|coréen|neerlandais|néerlandais|suedois|suédois|polonais|tcheque|tchèque|hongrois|roumain|bulgare|grec|turc|hindi|vietnamien|indonesien|indonésien|ukrainien|catalan|croate|slovaque|estonien|letton|lituanien|breton|occitan|corse|basque)\b",
+    re.IGNORECASE,
+)
+_LANGUAGE_LEVEL_KEYWORDS_RAW = (
+    "lu", "parlé", "parle", "écrit", "ecrit", "courant", "bilingue",
+    "natif", "native", "maternel", "maternelle", "professionnel",
+    "technique", "scolaire", "notions",
+)
+_LANGUAGE_LEVEL_KEYWORDS_FOLDED = {_fold_label(keyword) for keyword in _LANGUAGE_LEVEL_KEYWORDS_RAW}
+_LANGUAGE_CECRL = {"a1", "a2", "b1", "b2", "c1", "c2"}
+
+
+def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[str, str]]]:
+    """Remove spoken-language lines from a list of skill items.
+
+    A spoken-language line is one that starts with a known language name.
+    The level (`Lu, parlé, écrit`, `A2`, `courant`, ...) can be on the same
+    line, on a following line, or split across multiple following lines.
+    """
+    remaining: list[str] = []
+    languages: list[dict[str, str]] = []
+    index = 0
+    while index < len(items):
+        item = items[index].strip()
+        match = _SPOKEN_LANGUAGE_HEADING_RE.match(item)
+        if not match:
+            remaining.append(item)
+            index += 1
+            continue
+        name_match = re.search(
+            r"(?:fran[çc]ais|anglais|espagnol|allemand|italien|portugais|arabe|russe|chinois|japonais|"
+            r"mandarin|coreen|coréen|neerlandais|néerlandais|suedois|suédois|polonais|"
+            r"tcheque|tchèque|hongrois|roumain|bulgare|grec|turc|hindi|vietnamien|"
+            r"indonesien|indonésien|ukrainien|catalan|croate|slovaque|estonien|"
+            r"letton|lituanien|breton|occitan|corse|basque)",
+            item,
+            re.IGNORECASE,
+        )
+        assert name_match is not None
+        name = name_match.group(0).strip()
+        name = name[:1].upper() + name[1:].lower()
+        tail = item[name_match.end():].strip(" ,;:.-–—")
+        level_parts: list[str] = []
+        if tail and (any(kw in _fold_label(tail) for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED) or _fold_label(tail) in _LANGUAGE_CECRL or "," in tail):
+            level_parts.append(tail)
+        index += 1
+        while index < len(items):
+            nxt = items[index].strip()
+            if not nxt:
+                break
+            if _SPOKEN_LANGUAGE_HEADING_RE.match(nxt):
+                break
+            folded_nxt = _fold_label(nxt)
+            if any(kw in folded_nxt for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED) or folded_nxt in _LANGUAGE_CECRL or "," in nxt:
+                level_parts.append(nxt)
+                index += 1
+                continue
+            break
+        level = ", ".join(part for part in level_parts if part).strip()
+        languages.append({"name": name, "level": level})
+    return remaining, languages
+
+
 def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
     """Parse the `COMPÉTENCES` section of a source CV.
 
@@ -310,8 +406,8 @@ def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
     """
     lines = _extract_skills_lines(source_text)
     items = _split_arrow_skill_items(lines)
+    items, languages = _split_languages_from_items(items)
     grouped: dict[str, list[str]] = {}
-    languages: list[dict[str, str]] = []
 
     for item in items:
         category, rest = _category_from_prefixed_item(item)
