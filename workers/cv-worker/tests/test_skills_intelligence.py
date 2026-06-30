@@ -47,3 +47,16 @@ def test_parse_hellowork_arrow_skills_splits_isolated_arrow_bullets():
     assert "Lu" not in flattened
     assert "parlé" not in flattened
     assert "écrit" not in flattened
+
+
+def test_parse_source_skills_stops_at_formations_boundary():
+    from src.skills_intelligence import parse_source_skills_section
+
+    source = (FIXTURES / "olivier_hellowork_competences.txt").read_text(encoding="utf-8")
+
+    parsed = parse_source_skills_section(source)
+    flattened = [item for items in parsed.skills_by_category.values() for item in items]
+
+    assert not any("ESME" in item for item in flattened)
+    assert not any("Ingénieur en électronique" in item for item in flattened)
+    assert not any("Centres d" in item or "Sport" in item for item in flattened)

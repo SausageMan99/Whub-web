@@ -33,10 +33,46 @@ class ParsedSourceSkills:
     languages: list[dict[str, str]] = field(default_factory=list)
 
 
+_SKILLS_START_RE = re.compile(
+    r"^\s*comp[ée]tences(?:\s+techniques?)?\s*$",
+    re.IGNORECASE,
+)
+_SECTION_STOP_RE = re.compile(
+    r"^\s*(?:exp[ée]riences?|parcours|missions?|formations?|dipl[oô]mes?"
+    r"|certifications?|langues?|centres?\s+d['’]int[ée]r[êe]t|loisirs?"
+    r"|projets?|r[ée]alisations?|coordonn[ée]es?|contact)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_skills_lines(source_text: str) -> list[str]:
+    """Return the lines between the `COMPÉTENCES` heading and the next section.
+
+    Empty result if no `COMPÉTENCES` heading is found.
+    """
+    lines = [line.rstrip() for line in (source_text or "").splitlines()]
+    start_index: int | None = None
+    for index, line in enumerate(lines):
+        if _SKILLS_START_RE.match(line):
+            start_index = index + 1
+            break
+    if start_index is None:
+        return []
+
+    out: list[str] = []
+    for line in lines[start_index:]:
+        if out and _SECTION_STOP_RE.match(line.strip()):
+            break
+        if line.strip():
+            out.append(line.strip())
+    return out
+
+
 def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
     """Parse the `COMPÉTENCES` section of a source CV.
 
     Returns a deterministic, deduplicated, taxonomy-aligned view. Empty input
     or absent `COMPÉTENCES` heading yields an empty result.
     """
+    _extract_skills_lines(source_text)
     return ParsedSourceSkills()
