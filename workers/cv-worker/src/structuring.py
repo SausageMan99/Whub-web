@@ -12,6 +12,7 @@ from time import perf_counter
 from typing import Any, Callable, cast
 
 from .config import settings
+from .skills_intelligence import apply_skills_intelligence
 
 log = logging.getLogger("whub-cv-worker.structuring")
 
@@ -2704,10 +2705,16 @@ def _source_gate_structured_data(data: dict, source_text: str) -> dict:
     # turns "Arabe 5 Français 4 Anglais 4 Developpement Java8 Java17 Junit ..." into
     # `languages = [{Arabe, 5}, {Français, 4}, ...]` + skills[Langues] residual.
     rescued = _postprocess_skills_into_languages_and_certifications(data)
+    # Deterministic skills intelligence: merge with source-parsed skills,
+    # dedup globally, hoist spoken languages, apply W hub taxonomy. Runs
+    # before and after the source gate so the gate cannot reintroduce the
+    # Olivier-style `Autres — suite N` dump.
+    rescued = apply_skills_intelligence(rescued, source_text)
     # Skills may be regrouped/filtered as a compact client-facing surface, but
     # experiences must never be silently edited to pass validation. Rewritten or
     # hallucinated experience bullets are now rejected by validate_source_fidelity.
-    return _source_gate_skills(rescued, source_text)
+    gated = _source_gate_skills(rescued, source_text)
+    return apply_skills_intelligence(gated, source_text)
 
 
 def apply_client_synthesis_policy(data: dict, mode: str = "complete", *, allow_condensation: bool = False) -> dict:

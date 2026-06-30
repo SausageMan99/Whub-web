@@ -227,3 +227,35 @@ def test_apply_skills_intelligence_merges_source_and_llm_without_duplicates():
     assert "Anglais" not in flattened
     assert out["languages"] == [{"name": "Anglais", "level": "Lu, parlé, écrit"}]
     assert not any(cat["category"].startswith("Autres — suite") for cat in out["skills"])
+
+
+def test_source_gate_structured_data_applies_skills_intelligence_to_olivier_fixture():
+    from src.structuring import _source_gate_structured_data
+
+    source = (FIXTURES / "olivier_hellowork_competences.txt").read_text(encoding="utf-8")
+    data = {
+        "name": "OLIVIER",
+        "title": "Architecte solution logiciel & technique",
+        "formations": [],
+        "skills": [
+            {"category": "Autres", "items": ["AWS", "AZURE", "Docker", "SQLserver", "Anglais"]},
+            {"category": "Cloud / DevOps", "items": ["AWS", "Docker", "Kubernetes"]},
+        ],
+        "languages": [],
+        "certifications": [],
+        "experiences": [],
+    }
+
+    out = _source_gate_structured_data(data, source)
+    categories = [cat["category"] for cat in out["skills"]]
+    flattened = [item for cat in out["skills"] for item in cat["items"]]
+
+    assert "Autres — suite" not in categories
+    assert "Autres — suite 2" not in categories
+    assert "Cloud & DevOps" in categories
+    assert "Bases de données" in categories
+    assert flattened.count("AWS") == 1
+    assert flattened.count("Docker") == 1
+    assert "SQL Server" in flattened
+    assert "Anglais" not in flattened
+    assert out["languages"] == [{"name": "Anglais", "level": "Lu, parlé, écrit"}]
