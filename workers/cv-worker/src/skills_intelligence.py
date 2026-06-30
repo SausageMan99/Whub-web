@@ -68,6 +68,58 @@ def _extract_skills_lines(source_text: str) -> list[str]:
     return out
 
 
+_ARROW_RE = re.compile(r"^[➢>•\-–—]+\s*(.*)$")
+
+
+def _flush_skill_item(buffer: list[str]) -> str | None:
+    text = " ".join(part.strip() for part in buffer if part and part.strip())
+    text = re.sub(r"\s+", " ", text).strip(" :;•➢-–—")
+    if not text:
+        return None
+    return text
+
+
+def _split_arrow_skill_items(lines: list[str]) -> list[str]:
+    """Collapse Hellowork-style isolated `➢` bullets into individual items.
+
+    Lines that contain only `➢` (with or without whitespace) start a new
+    item. Content before the first `➢` is its own item (the section opener).
+    """
+    items: list[str] = []
+    buffer: list[str] = []
+    pending_arrow = False
+
+    def flush() -> None:
+        nonlocal buffer
+        text = _flush_skill_item(buffer)
+        if text:
+            items.append(text)
+        buffer = []
+
+    for raw in lines:
+        line = re.sub(r"\s+", " ", raw or "").strip()
+        if not line:
+            continue
+        match = _ARROW_RE.match(line)
+        if match:
+            flush()
+            rest = match.group(1).strip()
+            if rest:
+                buffer = [rest]
+                pending_arrow = False
+            else:
+                pending_arrow = True
+            continue
+        if pending_arrow:
+            flush()
+            buffer = [line]
+            pending_arrow = False
+            continue
+        buffer.append(line)
+    flush()
+    return items
+
+
 def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
     """Parse the `COMPÉTENCES` section of a source CV.
 

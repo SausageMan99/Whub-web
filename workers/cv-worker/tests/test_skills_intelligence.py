@@ -60,3 +60,21 @@ def test_parse_source_skills_stops_at_formations_boundary():
     assert not any("ESME" in item for item in flattened)
     assert not any("Ingénieur en électronique" in item for item in flattened)
     assert not any("Centres d" in item or "Sport" in item for item in flattened)
+
+
+def test_split_arrow_skill_items_handles_arrow_on_its_own_line():
+    from src.skills_intelligence import _split_arrow_skill_items
+
+    lines = [
+        "Architecte logiciel / Direction technique",
+        "➢",
+        "Cloud: AWS, AZURE",
+        "➢",
+        "DevOps : GitLab CICD, Jenkins, Docker",
+    ]
+
+    assert _split_arrow_skill_items(lines) == [
+        "Architecte logiciel / Direction technique",
+        "Cloud: AWS, AZURE",
+        "DevOps : GitLab CICD, Jenkins, Docker",
+    ]
