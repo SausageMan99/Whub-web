@@ -1,0 +1,33 @@
+COMPÉTENCES
+Architecte logiciel / Direction technique
+➢
+Direction d'équipes de développement, recrutement, roadmap, agilité à l’échelle SAFE.
+➢
+Audit technique transverse du BUILD au RUN.
+➢
+Architecture logicielle : Conception de solution, Urbanisation, Référentiel d’architecture,
+PaaS, IaaS, CaaS, EDA, EIP, SOA, programmation asynchrone, Stream-processing,
+mobile, temps réel, mode déconnecté.
+➢
+Observabilité APM/SLA-SLO: Dynatrace, Elasticsearch, LogStash, Kibana, Graphana,
+Beats.
+➢
+Cloud: AWS, AZURE
+➢
+Sécurité: Authentification forte, Signature de documents, Non-répudiation, JWT, OAuth2,
+Jaas, LoginModule, LDAP, X509, OpenSsl (X509, PKCS7,…), OWASP
+➢
+DevOps : GitLab CICD, Jenkins, Nexus, Git, Docker, Docker-Compose, Kubernetes.
+➢
+Data bases: MySQL, MongoDB, Hibernate, Oracle, Sybase, SQLserver, DB2,
+PostegreSQL
+➢
+Système : Linux RHEL, AIX, CENTOS, UBUNTU, Windows
+
+Anglais
+Lu, parlé, écrit
+
+FORMATIONS
+Ingénieur
+ESME SUDRIA
+Octobre 1986 à juin 1989, Ingénieur en électronique et télécommunication.
