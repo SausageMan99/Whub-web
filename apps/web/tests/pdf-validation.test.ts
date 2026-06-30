@@ -46,7 +46,7 @@ function makeAdminClient() {
   };
 }
 
-let prepareUpload: (input: { file: File; fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
+let prepareUpload: (input: { fileName: string; fileType: string; fileSize: number }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
 
 before(async (t) => {
   t.mock.module('next/navigation', {
@@ -103,18 +103,10 @@ function makeFile(bytes: Uint8Array, options: { name?: string; type?: string } =
 }
 
 async function callPrepareUpload(file: File) {
-  return prepareUpload({ file, fileName: file.name, fileType: file.type });
+  return prepareUpload({ fileName: file.name, fileType: file.type, fileSize: file.size });
 }
 
-test('prepareUpload — rejects application/pdf files without PDF magic header', async () => {
-  reset();
-  const file = makeFile(new TextEncoder().encode('not a real pdf'));
-
-  await assert.rejects(() => callPrepareUpload(file), /REDIRECT \/requests\/new\?error=pdf_required/);
-  assert.equal(recordedCalls.length, 0, 'invalid PDF must not get a signed upload URL');
-});
-
-test('prepareUpload — accepts valid PDF magic header at or below 10MB', async () => {
+test('prepareUpload — accepts PDF metadata at or below 10MB without sending the file body to the Server Action', async () => {
   reset();
   const file = makeFile(new TextEncoder().encode('%PDF-1.7\nbody'));
 

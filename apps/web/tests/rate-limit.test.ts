@@ -102,7 +102,7 @@ test('prepareUpload Server Action rate limits after 10 requests per minute per I
 
   function makePdfUploadInput() {
     const file = new File(['%PDF-1.7\nbody'], 'cv.pdf', { type: 'application/pdf' });
-    return { file, fileName: file.name, fileType: file.type };
+    return { fileName: file.name, fileType: file.type, fileSize: file.size };
   }
 
   for (let i = 0; i < 10; i += 1) {

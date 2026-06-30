@@ -7,7 +7,7 @@ import { cvJobProducer, CVJobData } from "@/lib/queue";
 
 export type CreateRequestResult =
   | { ok: true; requestId: string }
-  | { ok: false; error: "request_failed" | "candidate_first_name_required" | "queue_unavailable"; queueError?: string };
+  | { ok: false; error: "request_failed" | "candidate_first_name_required" | "pdf_required" | "file_too_large" | "queue_unavailable"; queueError?: string };
 
 function logCreateRequestFailure(stage: string, requestId: string | null, error?: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "unknown");
@@ -30,17 +30,17 @@ const PORTAL_WORKFLOW = "telegram_whub_cv_generation";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const PDF_MAGIC_HEADER = Buffer.from("%PDF-");
 
-async function hasPdfMagicHeader(file: File) {
-  const header = Buffer.from(await file.slice(0, PDF_MAGIC_HEADER.length).arrayBuffer());
+async function hasPdfMagicHeader(blob: Blob) {
+  const header = Buffer.from(await blob.slice(0, PDF_MAGIC_HEADER.length).arrayBuffer());
   return header.equals(PDF_MAGIC_HEADER);
 }
 
-export async function prepareUpload({ file, fileName, fileType }: { file: File; fileName: string; fileType: string }) {
+export async function prepareUpload({ fileName, fileType, fileSize }: { fileName: string; fileType: string; fileSize: number }) {
   const rateLimit = await checkRateLimit({ action: "upload", limit: 10, windowMs: 60_000 });
   if (!rateLimit.allowed) redirect("/requests/new?error=rate_limited");
 
-  if (file.size > MAX_UPLOAD_BYTES) redirect("/requests/new?error=file_too_large");
-  if (fileType !== "application/pdf" || file.type !== "application/pdf" || !(await hasPdfMagicHeader(file))) {
+  if (fileSize > MAX_UPLOAD_BYTES) redirect("/requests/new?error=file_too_large");
+  if (fileType !== "application/pdf") {
     redirect("/requests/new?error=pdf_required");
   }
 
@@ -60,6 +60,15 @@ export async function prepareUpload({ file, fileName, fileType }: { file: File; 
   }
 
   return { requestId, sourcePath, signedUrl: data.signedUrl };
+}
+
+async function uploadedSourceHasPdfMagicHeader(admin: ReturnType<typeof createSupabaseAdminClient>, sourcePath: string, requestId: string | null) {
+  const { data, error } = await admin.storage.from("cv-sources").download(sourcePath);
+  if (error || !data) {
+    logCreateRequestFailure("uploaded_source_download", requestId, error ?? new Error("missing uploaded source"));
+    return false;
+  }
+  return hasPdfMagicHeader(data);
 }
 
 export async function createRequest(formData: FormData): Promise<CreateRequestResult> {
@@ -86,6 +95,16 @@ export async function createRequest(formData: FormData): Promise<CreateRequestRe
     if (!candidateFirstName) {
       logCreateRequestFailure("missing_candidate_first_name", requestId || null);
       return { ok: false, error: "candidate_first_name_required" };
+    }
+
+    if (fileSize > MAX_UPLOAD_BYTES) {
+      logCreateRequestFailure("uploaded_file_too_large", requestId || null);
+      return { ok: false, error: "file_too_large" };
+    }
+
+    if (fileMime !== "application/pdf" || !(await uploadedSourceHasPdfMagicHeader(admin, sourcePath, requestId || null))) {
+      logCreateRequestFailure("uploaded_pdf_validation", requestId || null);
+      return { ok: false, error: "pdf_required" };
     }
 
     const { error } = await admin.from("cv_requests").insert({

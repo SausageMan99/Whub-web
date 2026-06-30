@@ -8,6 +8,8 @@ let state = {
   allowed: { email: 'test@whub.fr', role: 'member' } as { email: string; role: string } | null,
   whitelistError: null as Error | null,
   uploadError: null as Error | null,
+  downloadError: null as Error | null,
+  uploadedBlob: new Blob(['%PDF-1.7\nbody'], { type: 'application/pdf' }) as Blob | null,
   signedUrl: 'https://signed-upload.local' as string | null,
   profileError: null as Error | null,
   profileThrow: null as Error | null,
@@ -61,6 +63,10 @@ function makeAdminClient() {
               error: state.uploadError,
             });
           },
+          download(path: string) {
+            recordedCalls.push({ table: `storage.${bucket}`, method: 'download', payload: { path } });
+            return Promise.resolve({ data: state.uploadedBlob, error: state.downloadError });
+          },
         };
       },
     },
@@ -68,7 +74,7 @@ function makeAdminClient() {
 }
 
 let createRequest: (formData: FormData) => Promise<{ ok: boolean; requestId?: string; error?: string }>;
-let prepareUpload: (input: { file: File; fileName: string; fileType: string }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
+let prepareUpload: (input: { fileName: string; fileType: string; fileSize: number }) => Promise<{ requestId: string; sourcePath: string; signedUrl: string }>;
 
 before(async (t) => {
   t.mock.module('next/navigation', {
@@ -124,6 +130,8 @@ function reset(user = true) {
   state.allowed = { email: 'test@whub.fr', role: 'member' };
   state.whitelistError = null;
   state.uploadError = null;
+  state.downloadError = null;
+  state.uploadedBlob = new Blob(['%PDF-1.7\nbody'], { type: 'application/pdf' });
   state.signedUrl = 'https://signed-upload.local';
   state.profileError = null;
   state.profileThrow = null;
@@ -137,7 +145,7 @@ function makePdfFile(name = 'cv.pdf') {
 
 function preparePdfUpload(name = 'cv.pdf') {
   const file = makePdfFile(name);
-  return prepareUpload({ file, fileName: file.name, fileType: file.type });
+  return prepareUpload({ fileName: file.name, fileType: file.type, fileSize: file.size });
 }
 
 function makePreparedForm(extra: Record<string, string> = {}) {
@@ -277,6 +285,17 @@ test('createRequest — returns request_failed and logs cv_requests_insert on in
   const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
   assert.deepEqual(result, { ok: false, error: 'request_failed' });
   assertCreateRequestFailureLog(logs, 'cv_requests_insert', '11111111-1111-4111-8111-111111111111', 'boom');
+});
+
+test('createRequest — rejects uploaded source without PDF magic header before cv_requests insert', async () => {
+  reset();
+  state.uploadedBlob = new Blob(['not a real pdf'], { type: 'application/pdf' });
+
+  const { result, logs } = await captureConsoleError(() => createRequest(makePreparedForm()));
+
+  assert.deepEqual(result, { ok: false, error: 'pdf_required' });
+  assertCreateRequestFailureLog(logs, 'uploaded_pdf_validation', '11111111-1111-4111-8111-111111111111', 'unknown');
+  assert.equal(recordedCalls.find((c) => c.table === 'cv_requests' && c.method === 'insert'), undefined);
 });
 
 test('createRequest — trims candidate first name before insert', async () => {

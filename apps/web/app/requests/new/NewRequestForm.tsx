@@ -61,9 +61,9 @@ export default function NewRequestForm({ initialError }: { initialError?: string
       }
 
       const { requestId, sourcePath, signedUrl } = await prepareUpload({
-        file,
         fileName: file.name,
         fileType: file.type,
+        fileSize: file.size,
       });
 
       const uploadRes = await fetch(signedUrl, {
