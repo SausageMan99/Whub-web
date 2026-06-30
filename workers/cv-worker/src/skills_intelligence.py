@@ -337,14 +337,20 @@ _CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-def _category_for_skill_value(value: str) -> str:
+def _category_for_skill_value(value: str) -> str | None:
+    """Return the W hub category for a single skill value, or None.
+
+    Returns None when the value does not match any technical keyword (e.g.
+    hobbies, free text). Callers must then preserve the original category
+    instead of forcing `Outils & Environnements`.
+    """
     lower = _fold_label(value)
     for category, keywords in _CATEGORY_KEYWORDS:
         for keyword in keywords:
             folded_keyword = _fold_label(keyword)
             if folded_keyword in lower:
                 return category
-    return "Outils & Environnements"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +398,7 @@ def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[
         assert name_match is not None
         name = name_match.group(0).strip()
         name = name[:1].upper() + name[1:].lower()
-        tail = item[name_match.end():].strip(" ,;:.-–—")
+        tail = item[name_match.end():].strip(" ,;:.-–—()")
         level_parts: list[str] = []
         if tail and (
             any(kw in _fold_label(tail) for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED)
@@ -402,7 +408,7 @@ def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[
             level_parts.append(tail)
         index += 1
         while index < len(items):
-            nxt = items[index].strip()
+            nxt = items[index].strip().strip(" ,;:.-–—()")
             if not nxt:
                 break
             if _SPOKEN_LANGUAGE_HEADING_RE.match(nxt):
@@ -412,12 +418,15 @@ def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[
                 any(kw in folded_nxt for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED)
                 or folded_nxt in _LANGUAGE_CECRL
                 or "," in nxt
+                or nxt in {")", ")"}
             ):
                 level_parts.append(nxt)
                 index += 1
                 continue
             break
-        level = ", ".join(part for part in level_parts if part).strip()
+        level = " ".join(part for part in level_parts if part).strip(" ,;:.-–—()")
+        if level:
+            level = re.sub(r"\s+", " ", level)
         languages.append({"name": name, "level": level})
     return remaining, languages
 
@@ -519,12 +528,15 @@ def build_display_skills(
 ) -> list[dict]:
     """Deduplicate a skills list across categories and normalize labels.
 
-    The result preserves the W hub taxonomy. Items that land in `Autres` are
-    reclassified by `_category_for_skill_value` so that the public
-    `Autres` bucket should normally stay empty.
+    Preserves the original category order (input is iterated in order) so
+    tests and contracts on `Autres` or `Processus métiers` keep working.
+    Items in `Autres` that do not match a technical keyword are kept under
+    `Autres` (e.g. hobbies, free text) instead of being force-classified
+    into `Outils & Environnements`.
     """
     grouped: dict[str, list[str]] = {}
     seen: set[str] = set()
+    order: list[str] = []
     candidates: list[tuple[int, str, str]] = []
 
     for skill in raw_skills or []:
@@ -535,20 +547,28 @@ def build_display_skills(
             label = _normalise_skill_label(str(item))
             if not label:
                 continue
-            target = _category_for_skill_value(label) if category == "Autres" else category
+            if category == "Autres":
+                target = _category_for_skill_value(label)
+                if not target:
+                    target = "Autres"
+            else:
+                target = category
             if not target:
                 target = "Outils & Environnements"
             priority = _CATEGORY_PRIORITY.get(target, 50)
             candidates.append((priority, target, label))
 
-    for _, category, label in sorted(candidates, key=lambda row: (row[0], row[1], row[2].casefold())):
+    for priority, category, label in candidates:
         key = normalise_skill_key(label)
         if not key or key in seen:
             continue
         seen.add(key)
-        grouped.setdefault(category, []).append(label)
+        if category not in grouped:
+            grouped[category] = []
+            order.append(category)
+        grouped[category].append(label)
 
-    return [{"category": category, "items": items} for category, items in grouped.items() if items]
+    return [{"category": category, "items": grouped[category]} for category in order if grouped[category]]
 
 
 # ---------------------------------------------------------------------------

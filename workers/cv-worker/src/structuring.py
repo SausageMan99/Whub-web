@@ -2740,16 +2740,16 @@ def _source_gate_high_risk_experience_content(data: dict, source_text: str) -> d
 
 
 def _source_gate_structured_data(data: dict, source_text: str) -> dict:
+    # Deterministic skills intelligence runs first: it owns language hoisting
+    # and global dedup. If we let `_postprocess_skills_into_languages_and_...`
+    # run first, it can leave orphan level fragments (`parlé`, `écrit`) inside
+    # a residual `skills[Langues]` category that no later pass cleans.
+    rescued = apply_skills_intelligence(data, source_text)
     # Rescue top-level `languages` and `certifications` from `skills[Langues]` /
     # `skills[Certifications]` BEFORE source-gating. This is the post-process that
     # turns "Arabe 5 Français 4 Anglais 4 Developpement Java8 Java17 Junit ..." into
     # `languages = [{Arabe, 5}, {Français, 4}, ...]` + skills[Langues] residual.
-    rescued = _postprocess_skills_into_languages_and_certifications(data)
-    # Deterministic skills intelligence: merge with source-parsed skills,
-    # dedup globally, hoist spoken languages, apply W hub taxonomy. Runs
-    # before and after the source gate so the gate cannot reintroduce the
-    # Olivier-style `Autres — suite N` dump.
-    rescued = apply_skills_intelligence(rescued, source_text)
+    rescued = _postprocess_skills_into_languages_and_certifications(rescued)
     # Skills may be regrouped/filtered as a compact client-facing surface, but
     # experiences must never be silently edited to pass validation. Rewritten or
     # hallucinated experience bullets are now rejected by validate_source_fidelity.
