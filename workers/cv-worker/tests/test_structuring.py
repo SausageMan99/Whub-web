@@ -505,6 +505,7 @@ définition du besoin.
             validate_source_fidelity("CV source sans ces placeholders", data)
 
     def test_rejects_company_highlight_absent_from_source(self):
+        # 2026-06-30: company_highlight_absent_from_source moved to soft codes.
         source = "Zahia\nJuin 2023 – A ce jour\nChef de projet | GROUPE KLESIA | Protection sociale"
         data = {
             "name": "ZAHIA",
@@ -519,10 +520,13 @@ définition du besoin.
             }],
         }
 
-        with pytest.raises(StructuringError, match="source"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "company_highlight_absent_from_source" in codes
 
     def test_rejects_experience_date_absent_from_source(self):
+        # 2026-06-30: experience_date_absent_from_source moved to soft codes.
         source = "Zahia\nJuin 2023 – A ce jour\nChef de projet | GROUPE KLESIA | Protection sociale"
         data = {
             "name": "ZAHIA",
@@ -537,10 +541,13 @@ définition du besoin.
             }],
         }
 
-        with pytest.raises(StructuringError, match="date.*source|source.*date"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "experience_date_absent_from_source" in codes
 
     def test_rejects_role_fact_absent_from_source_even_without_company_highlight(self):
+        # 2026-06-30: experience_role_fact_absent_from_source moved to soft codes.
         source = "Zahia\nJuin 2023 – A ce jour\nChef de projet | GROUPE KLESIA | Protection sociale"
         data = {
             "name": "ZAHIA",
@@ -555,8 +562,10 @@ définition du besoin.
             }],
         }
 
-        with pytest.raises(StructuringError, match="source"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "experience_role_fact_absent_from_source" in codes
 
 
 class TestInferForbiddenIdentityTerms:

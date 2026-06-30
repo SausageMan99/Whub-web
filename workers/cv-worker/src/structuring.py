@@ -1274,6 +1274,15 @@ SOFT_FIDELITY_CODES = frozenset({
     "synthetic_technical_environment",
     "source_coverage_missing_experience_item",
     "headerless_experience_sections",
+    # 2026-06-30: experience-fidelity checks that were wrongly hard-failing the
+    # job. These are formatting/extraction checks, not security/identity leaks.
+    # Triggered on e740fa16 (Imed, 2026-06-30): company_highlight_absent_from_source
+    # came from the strict 3-char company substring check and the experience
+    # role/date fact check is also extraction-sensitive. Soft-fail so the
+    # operator can review the draft instead of getting a dead failed job.
+    "company_highlight_absent_from_source",
+    "experience_role_fact_absent_from_source",
+    "experience_date_absent_from_source",
 })
 
 
