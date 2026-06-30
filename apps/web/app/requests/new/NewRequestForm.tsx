@@ -7,7 +7,7 @@ import { prepareUpload, createRequest } from "./actions";
 const errorMessages: Record<string, string> = {
   candidate_first_name_required: "Ajoute le prénom du candidat avant d’envoyer le CV.",
   file_required: "Ajoute un PDF source avant de créer la demande.",
-  pdf_required: "Le fichier doit être un PDF.",
+  pdf_required: "Le fichier doit être un PDF valide.",
   file_too_large: "Le PDF doit faire 10 Mo maximum.",
   upload_failed: "Upload refusé. Réessaie ou envoie-moi le PDF.",
   profile_failed: "Création du profil interne impossible.",
@@ -110,82 +110,66 @@ export default function NewRequestForm({ initialError }: { initialError?: string
   const errorMessage = errorCode ? errorMessages[errorCode] || `Erreur : ${errorCode}` : null;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="premium-card rounded-[2rem] p-5 sm:p-7">
       {errorMessage ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-black leading-5 text-red-700">
+        <p className="mb-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold leading-5 text-red-800">
           {errorMessage}
         </p>
       ) : null}
 
-      <div className="rounded-[2rem] border border-white/80 bg-gradient-to-br from-ink to-ink/92 p-6 text-white shadow-[0_24px_80px_rgba(17,17,16,0.18)]">
-        <p className="text-xs font-black uppercase tracking-[0.34em] text-white/48">Workflow unique</p>
-        <h2 className="mt-3 text-2xl font-black tracking-[-0.04em] sm:text-3xl">CV source + message libre</h2>
-        <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-white/72">
-          Pas de formulaire candidat séparé. Tu envoies un PDF source, tu ajoutes ta consigne, puis on redirige vers le statut de génération.
-        </p>
-      </div>
-
-      <label className="block rounded-[1.75rem] border border-dashed border-whub/28 bg-whub/[0.035] p-5">
-        <span className="text-sm font-black text-ink">CV source PDF</span>
+      <label className="transfer-dropzone group block cursor-pointer rounded-[1.55rem] border border-dashed border-ink/14 bg-porcelain px-5 py-8 text-center hover:border-whub/35 hover:bg-white">
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-xl font-semibold text-whub ring-1 ring-ink/8 transition duration-200 group-hover:scale-105 group-hover:ring-whub/22">+</span>
+        <span className="mt-4 block text-lg font-semibold tracking-[-0.02em] text-ink">CV source PDF</span>
+        <span className="mt-2 block text-sm font-medium leading-6 text-ink/48">
+          {selectedFileName ? (
+            <>Fichier sélectionné : <span className="font-semibold text-ink">{selectedFileName}</span></>
+          ) : (
+            <>Dépose le PDF ici ou clique pour choisir un fichier.</>
+          )}
+        </span>
         <input
           name="file"
           type="file"
           accept="application/pdf"
           required
           onChange={handleFileChange}
-          className="mt-3 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3 text-sm font-semibold text-ink/65 file:mr-4 file:rounded-xl file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-black file:text-white"
+          className="sr-only"
         />
-        <span className="mt-3 block text-xs font-semibold text-ink/45">
-          PDF uniquement. Les coordonnées sont retirées du rendu client, le CV reste fidèle au source.
-        </span>
-        <div className="mt-4 rounded-2xl border border-white/80 bg-white px-4 py-3 text-sm font-semibold text-ink/65">
-          {selectedFileName ? (
-            <span>Fichier sélectionné : <span className="font-black text-ink">{selectedFileName}</span></span>
-          ) : (
-            <span>Dépose un PDF ou clique pour choisir ton CV source.</span>
-          )}
-        </div>
       </label>
 
-      <label className="block">
-        <span className="text-sm font-black text-ink">Prénom du candidat</span>
-        <input
-          name="candidate_first_name"
-          type="text"
-          autoComplete="off"
-          required
-          className="mt-2 w-full rounded-3xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold placeholder:text-ink/28"
-          placeholder="Ex : Jérémy"
-        />
-        <p className="mt-2 text-xs font-semibold leading-5 text-ink/45">
-          Ce prénom sert à anonymiser correctement le CV client. Le nom de famille et les coordonnées restent retirés.
-        </p>
-      </label>
+      <div className="mt-5 grid gap-4 sm:grid-cols-[0.62fr_1.38fr]">
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Prénom candidat</span>
+          <input
+            name="candidate_first_name"
+            type="text"
+            autoComplete="off"
+            required
+            className="mt-2 w-full rounded-2xl border border-ink/10 bg-white px-4 py-3.5 text-sm font-medium transition duration-200 placeholder:text-ink/28"
+            placeholder="Ex : Mohammed"
+          />
+        </label>
 
-      <label className="block">
-        <span className="text-sm font-black text-ink">Message / consigne complémentaire</span>
-        <textarea
-          name="instructions"
-          rows={7}
-          className="mt-2 w-full resize-none rounded-3xl border border-ink/10 bg-porcelain/70 px-4 py-3.5 text-sm font-semibold leading-6 placeholder:text-ink/28"
-          placeholder="Ex : garde le contenu source tel quel, retire les coordonnées, mets l’accent sur Java/AWS et redirige-moi vers une version client propre."
-        />
-        <p className="mt-2 text-xs font-semibold leading-5 text-ink/45">
-          N’écris ici que les exceptions utiles. Par défaut, le workflow reste fidèle au CV source et masque les coordonnées.
-        </p>
-      </label>
+        <label className="block">
+          <span className="text-sm font-semibold text-ink">Consigne optionnelle</span>
+          <textarea
+            name="instructions"
+            rows={4}
+            className="mt-2 w-full resize-none rounded-2xl border border-ink/10 bg-white px-4 py-3.5 text-sm font-medium leading-6 transition duration-200 placeholder:text-ink/28"
+            placeholder="Ex : mets en avant Java / API / banque, garde le contenu fidèle au CV source."
+          />
+        </label>
+      </div>
 
-      <div className="flex flex-col items-start justify-between gap-4 border-t border-ink/8 pt-6 sm:flex-row sm:items-center">
-        <p className="max-w-md text-xs font-semibold leading-5 text-ink/42">
-          {isSubmitting
-            ? "Génération en cours… Ne ferme pas la page."
-            : "Une fois envoyé, tu seras redirigé vers le statut de la demande."}
+      <div className="mt-6 flex flex-col items-start justify-between gap-4 border-t border-ink/8 pt-5 sm:flex-row sm:items-center">
+        <p className="max-w-sm text-xs font-medium leading-5 text-ink/42">
+          La demande sera ajoutée à la file de production. Le PDF final restera relançable en V2/V3.
         </p>
         <button
           disabled={isSubmitting}
-          className="w-full rounded-2xl bg-whub px-6 py-4 font-black text-white shadow-violet transition hover:-translate-y-0.5 disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto"
+          className="w-full rounded-2xl bg-whub px-6 py-4 text-sm font-black text-white shadow-violet transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_46px_rgba(112,1,245,0.28)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:w-auto"
         >
-          {isSubmitting ? "Envoi en cours…" : "Générer le CV"}
+          {isSubmitting ? "Création de la demande…" : "Générer la version client"}
         </button>
       </div>
     </form>

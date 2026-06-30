@@ -92,7 +92,7 @@ test('request detail page — renders draft_ready, completed and hard failure st
   assert.match(draftHtml, /Brouillon prêt — points qualité détectés/);
   assert.match(draftHtml, /Télécharger le brouillon/);
   assert.match(draftHtml, /Page 2 · Page trop dense — Page 2 anormalement dense/);
-  assert.match(draftHtml, /Correction post-génération/);
+  assert.match(draftHtml, /Demander une correction/);
   assert.match(draftHtml, /Créer V/);
 
   const readyHtml = await render('ready');

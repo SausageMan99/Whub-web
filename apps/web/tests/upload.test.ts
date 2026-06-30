@@ -315,14 +315,14 @@ test('new request page — exposes upload, first-name and message workflow witho
   const source = readFileSync(join(process.cwd(), 'app/requests/new/page.tsx'), 'utf8');
   const formSource = readFileSync(join(process.cwd(), 'app/requests/new/NewRequestForm.tsx'), 'utf8');
 
-  assert.match(source, /Un seul flux: CV source \+ message libre\./);
-  assert.match(source, /Même logique que Telegram Hermes/);
+  assert.match(source, /Dépose un CV/);
+  assert.match(source, /Récupère une version client/);
   assert.match(formSource, /name="file"/);
   assert.match(formSource, /name="candidate_first_name"/);
-  assert.match(formSource, /Prénom du candidat/);
+  assert.match(formSource, /Prénom candidat/);
   assert.match(formSource, /name="instructions"/);
-  assert.match(formSource, /Générer le CV/);
-  assert.match(formSource, /Message \/ consigne complémentaire/);
+  assert.match(formSource, /Générer la version client/);
+  assert.match(formSource, /Consigne optionnelle/);
   assert.doesNotMatch(formSource, /name="title"/);
   assert.doesNotMatch(formSource, /priority/);
   assert.doesNotMatch(formSource, /cv_intentions/);

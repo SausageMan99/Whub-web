@@ -3,14 +3,14 @@
 @theme {
   --font-sans: var(--font-inter), Inter, system-ui, sans-serif;
   --color-whub: #7001F5;
-  --color-ink: #241D19;
-  --color-porcelain: #F7F4F0;
+  --color-ink: #141118;
+  --color-porcelain: #FBFAFC;
   --color-chalk: #FFFFFF;
-  --color-lilac: #EEE3FF;
+  --color-lilac: #F3EAFF;
   --color-graphite: #141118;
-  --color-mist: #F1EDF7;
-  --shadow-soft: 0 24px 70px rgba(36, 29, 25, 0.10);
-  --shadow-violet: 0 18px 42px rgba(112, 1, 245, 0.28);
+  --color-mist: #F6F4F8;
+  --shadow-soft: 0 18px 50px rgba(20, 17, 24, 0.06);
+  --shadow-violet: 0 14px 34px rgba(112, 1, 245, 0.18);
 }
 
 :root {
@@ -27,15 +27,18 @@ html {
 
 body {
   margin: 0;
-  background: #f7f4f0;
-  color: #241d19;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(112, 1, 245, 0.055), transparent 26rem),
+    radial-gradient(circle at 90% 10%, rgba(112, 1, 245, 0.035), transparent 24rem),
+    #fbfafc;
+  color: #141118;
   font-family: var(--font-inter), Inter, system-ui, sans-serif;
   font-feature-settings: "ss01" on, "cv05" on;
 }
 
 ::selection {
-  background: rgba(112, 1, 245, 0.16);
-  color: #241d19;
+  background: rgba(112, 1, 245, 0.14);
+  color: #141118;
 }
 
 input,
@@ -48,5 +51,108 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: #7001f5;
-  box-shadow: 0 0 0 4px rgba(112, 1, 245, 0.1);
+  box-shadow: 0 0 0 4px rgba(112, 1, 245, 0.09);
+}
+
+@keyframes whub-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes whub-soft-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(112, 1, 245, 0.20);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(112, 1, 245, 0);
+  }
+}
+
+@keyframes whub-sheen {
+  from {
+    transform: translateX(-120%) skewX(-12deg);
+  }
+  to {
+    transform: translateX(240%) skewX(-12deg);
+  }
+}
+
+.reveal-up {
+  animation: whub-fade-up 520ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.reveal-delay-1 { animation-delay: 80ms; }
+.reveal-delay-2 { animation-delay: 150ms; }
+.reveal-delay-3 { animation-delay: 220ms; }
+
+.premium-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(20, 17, 24, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 24px 70px rgba(20, 17, 24, 0.07);
+  backdrop-filter: blur(18px);
+}
+
+.premium-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(112, 1, 245, 0.28), transparent);
+  pointer-events: none;
+}
+
+.transfer-dropzone {
+  position: relative;
+  overflow: hidden;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.transfer-dropzone::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 38%;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  pointer-events: none;
+}
+
+.transfer-dropzone:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 54px rgba(112, 1, 245, 0.08);
+}
+
+.transfer-dropzone:hover::after {
+  opacity: 1;
+  animation: whub-sheen 900ms ease;
+}
+
+.status-dot {
+  position: relative;
+  display: inline-flex;
+  height: 0.45rem;
+  width: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+  animation: whub-soft-pulse 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
