@@ -204,3 +204,26 @@ def test_build_display_skills_reclassifies_autres_and_keeps_ratio_low():
     assert "Observabilité" in categories
     assert "Systèmes & Environnements" in categories
     assert "Autres" not in categories
+
+
+def test_apply_skills_intelligence_merges_source_and_llm_without_duplicates():
+    from src.skills_intelligence import apply_skills_intelligence
+
+    source = (FIXTURES / "olivier_hellowork_competences.txt").read_text(encoding="utf-8")
+    data = {
+        "skills": [
+            {"category": "Autres", "items": ["AWS", "Docker", "SQLserver", "Anglais"]},
+            {"category": "Cloud / DevOps", "items": ["AWS", "Kubernetes"]},
+        ],
+        "languages": [],
+        "certifications": [],
+    }
+
+    out = apply_skills_intelligence(data, source)
+    flattened = [item for cat in out["skills"] for item in cat["items"]]
+
+    assert flattened.count("AWS") == 1
+    assert "SQL Server" in flattened
+    assert "Anglais" not in flattened
+    assert out["languages"] == [{"name": "Anglais", "level": "Lu, parlé, écrit"}]
+    assert not any(cat["category"].startswith("Autres — suite") for cat in out["skills"])

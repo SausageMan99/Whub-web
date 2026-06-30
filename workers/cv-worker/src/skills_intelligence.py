@@ -549,3 +549,78 @@ def build_display_skills(
         grouped.setdefault(category, []).append(label)
 
     return [{"category": category, "items": items} for category, items in grouped.items() if items]
+
+
+# ---------------------------------------------------------------------------
+# Public entry: apply to LLM output
+# ---------------------------------------------------------------------------
+
+
+def _merge_languages(existing: list, discovered: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Merge language lists, preferring the entry with the most information.
+
+    Two entries with the same casefolded `name` collapse: the one with a
+    non-empty `level` wins. The lookup is keyed on the name only so that a
+    level-less LLM guess is upgraded by a source-detected level.
+    """
+    merged: list[dict[str, str]] = []
+    by_name: dict[str, int] = {}
+    for raw in list(existing or []) + list(discovered or []):
+        if isinstance(raw, dict):
+            name = str(raw.get("name") or "").strip()
+            level = str(raw.get("level") or "").strip()
+        else:
+            name = str(raw or "").strip()
+            level = ""
+        if not name:
+            continue
+        key = name.casefold()
+        existing_index = by_name.get(key)
+        if existing_index is None:
+            merged.append({"name": name, "level": level})
+            by_name[key] = len(merged) - 1
+            continue
+        if level and not merged[existing_index]["level"]:
+            merged[existing_index] = {"name": merged[existing_index]["name"], "level": level}
+    return merged
+
+
+def apply_skills_intelligence(data: dict, source_text: str) -> dict:
+    """Merge LLM `skills` with the deterministic source parser, then dedup.
+
+    - Source-parsed skills fill gaps the LLM may have missed (atomic coverage).
+    - LLM-provided `languages` are merged with the source-detected ones.
+    - Spoken-language items in `skills` are removed (they live in `languages`).
+    - The result preserves the W hub taxonomy and dedups globally.
+    """
+    if not isinstance(data, dict):
+        return data
+    out = deepcopy(data)
+    source_parsed = parse_source_skills_section(source_text or "")
+
+    merged_raw: list[dict] = []
+    if isinstance(out.get("skills"), list):
+        for skill in out["skills"]:
+            if not isinstance(skill, dict):
+                continue
+            category = str(skill.get("category") or "").strip()
+            items = [str(item) for item in (skill.get("items") or [])]
+            if not items:
+                continue
+            remaining, langs = _split_languages_from_items(items)
+            if langs:
+                out.setdefault("languages", [])
+                if not isinstance(out["languages"], list):
+                    out["languages"] = []
+                existing = list(out["languages"])
+                out["languages"] = _merge_languages(existing, langs)
+            if remaining:
+                merged_raw.append({"category": category, "items": remaining})
+    for category, items in source_parsed.skills_by_category.items():
+        merged_raw.append({"category": category, "items": list(items)})
+
+    out["skills"] = build_display_skills(merged_raw, source_text=source_text)
+
+    existing_languages = out.get("languages") if isinstance(out.get("languages"), list) else []
+    out["languages"] = _merge_languages(existing_languages, source_parsed.languages)
+    return out
