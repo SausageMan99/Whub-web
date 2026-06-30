@@ -753,6 +753,9 @@ Gestion de bases de données SQL Server.
         assert resolve_synthesis_mode("complete", short_client, []) == "standard"
 
     def test_rejects_missing_source_experience_bullet_even_without_hallucination(self):
+        # 2026-06-30: source_coverage_missing_experience_item moved to
+        # SOFT_FIDELITY_CODES. The job now delivers a draft with a soft warning
+        # so the operator can review/correct instead of getting a dead failed job.
         source = """
 Jean MARTIN
 Développeur Java
@@ -776,8 +779,10 @@ Missions :
             }],
         }
 
-        with pytest.raises(StructuringError, match="source_coverage_missing_experience_item|Élément d'expérience source absent"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "source_coverage_missing_experience_item" in codes
 
     def test_explicit_short_version_allows_omission_but_not_hallucination(self):
         source = """
@@ -806,8 +811,11 @@ Missions :
 
         hallucinated = deepcopy(shortened)
         hallucinated["experiences"][0]["sections"][0]["content"] = ["Piloter la migration Kubernetes du portail de souscription."]
-        with pytest.raises(StructuringError, match="reformulation|copier-coller|source"):
-            validate_source_fidelity(source, hallucinated, allow_synthesis=True, forbidden_identity_terms=[])
+        # 2026-06-30: rewritten content is now a soft warning, not a hard fail.
+        validate_source_fidelity(source, hallucinated, allow_synthesis=True, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in hallucinated
+        codes = [w["code"] for w in hallucinated["_fidelity_soft_warnings"]]
+        assert "experience_content_rewritten_or_absent_from_source" in codes
 
     def test_apply_client_synthesis_policy_does_not_condense_standard_without_explicit_flag(self):
         data = {
@@ -831,6 +839,9 @@ Missions :
         assert result["experiences"][4]["sections"][0]["content"] == ["E1", "E2", "E3"]
 
     def test_rejects_synthetic_technical_environment_when_heading_absent_from_source(self):
+        # 2026-06-30: synthetic_technical_environment moved to SOFT_FIDELITY_CODES.
+        # The job must now deliver a draft_ready PDF with a soft warning, not a
+        # hard StructuringError. See test_fidelity_soft_codes.py for the policy.
         source = """
 Responsable du Domaine Applicatif SI Groupe
 Novembre 2024 - Aujourd'hui - TEXDECOR GROUP
@@ -849,8 +860,10 @@ Gestion de l'ERP D365 Microsoft, WMS Sage, TMS, interapplicatif, data et aliment
             }],
         }
 
-        with pytest.raises(StructuringError, match="Environnement technique|synthetic_technical_environment|copier-coller|reformulation"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "synthetic_technical_environment" in codes
 
     def test_accepts_thorez_source_paragraph_without_synthetic_environment(self):
         source = """
@@ -980,6 +993,7 @@ Loisirs :
         assert "Moto" not in rendered
 
     def test_rejects_missing_source_business_sections_beyond_realisations(self):
+        # 2026-06-30: source_coverage_missing_section is a soft warning now.
         source = """
 Nicolas THOREZ
 Responsable applicatif
@@ -1002,11 +1016,10 @@ Autres : Animation d'ateliers agiles avec les métiers
             "experiences": [],
         }
 
-        with pytest.raises(StructuringError, match="fidelity_issues") as exc_info:
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
-
-        message = str(exc_info.value)
-        assert "source_coverage_missing_section" in message
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "source_coverage_missing_section" in codes
 
     def test_source_coverage_allows_contact_only_omissions(self):
         source = """
@@ -1087,8 +1100,11 @@ Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
             }],
         }
 
-        with pytest.raises(StructuringError, match="source_coverage_missing_experience_item|Automatiser"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        # 2026-06-30: missing non-bulleted source mission is a soft warning now.
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "source_coverage_missing_experience_item" in codes
 
 
     def test_hermes_prompt_forbids_synthetic_technical_environment_and_typo_fixes(self):
@@ -1140,8 +1156,11 @@ Participer activement aux réunions avec les parties prenantes, fournissant des 
             }],
         }
 
-        with pytest.raises(StructuringError, match="fidelity_issues"):
-            validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        # 2026-06-30: rewritten experience bullets produce a soft warning now.
+        validate_source_fidelity(source, data, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in data
+        codes = [w["code"] for w in data["_fidelity_soft_warnings"]]
+        assert "experience_content_rewritten_or_absent_from_source" in codes
 
     def test_rejects_synthesis_whub_without_explicit_short_instruction(self):
         source = "Jean\nDéveloppeur\n2024 Mission\nConstruire les robots logiciels."
@@ -1189,13 +1208,18 @@ Participer activement aux réunions avec les parties prenantes, fournissant des 
 
     @pytest.mark.parametrize("case", _load_fidelity_regression_cases(), ids=lambda case: case["id"])
     def test_real_anonymized_regression_fixtures_fail_when_business_fact_is_omitted(self, case):
+        # 2026-06-30: missing business facts are now soft-fail. The job must
+        # still surface a soft warning (not just a quiet pass) so the operator
+        # can review and correct the draft.
         mandatory_fact = case.get("must_fail_if_removed", case["must_keep"][0])
         mutated, removed = _remove_first_matching_string(deepcopy(case["structured"]), mandatory_fact)
         assert removed, f"fixture invariant is not represented in structured JSON: {case['id']}"
         assert isinstance(mutated, dict)
 
-        with pytest.raises(StructuringError, match="source_coverage_missing|missing|absent|fidelit|fidélit|source"):
-            validate_source_fidelity(case["source"], mutated, forbidden_identity_terms=[])
+        validate_source_fidelity(case["source"], mutated, forbidden_identity_terms=[])
+        assert "_fidelity_soft_warnings" in mutated, (
+            f"expected soft fidelity warnings for fixture {case['id']}, got none"
+        )
 
     def test_build_whub_json_default_does_not_condense_or_rewrite_source_content(self):
         source = """

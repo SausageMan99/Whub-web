@@ -120,6 +120,9 @@ Environnement technique: Java, Kubernetes
             self.assertIn(expected, flat_items)
 
     def test_build_whub_json_source_gates_invented_skill_expansions(self):
+        # 2026-06-30: invented skill expansion is now a soft warning, the job
+        # delivers a draft with a fidelity warning so the operator can correct
+        # the skills before client delivery.
         data = {
             "name": "Zahia",
             "title": "Chef de projet",
@@ -138,8 +141,9 @@ Environnement technique: Java, Kubernetes
         }
         source_text = "Zahia\nChef de projet KLESIA\nCompétences\nPower BI\nSQL\n"
 
-        with self.assertRaises(StructuringError):
-            build_whub_json(source_text, "", [], "Zahia", hermes_runner=lambda prompt, timeout: (0, json.dumps(data, ensure_ascii=False), ""))
+        result = build_whub_json(source_text, "", [], "Zahia", hermes_runner=lambda prompt, timeout: (0, json.dumps(data, ensure_ascii=False), ""))
+        assert "_fidelity_soft_warnings" in result
+        assert len(result["_fidelity_soft_warnings"]) > 0
 
     def test_long_certifications_and_skills_are_grouped_without_dropping_items(self):
         certs = [f"Certification AWS niveau {i}" for i in range(1, 8)]
@@ -230,7 +234,7 @@ Environnement technique: Java, Kubernetes
 
         long_text = "PROFIL\nJean architecte\n\nEXPÉRIENCES\n2022 ACME\n" + ("ligne acme\n" * 30) + "\n2021 BETA\n" + ("ligne beta\n" * 30)
 
-        with self.assertRaisesRegex(StructuringError, "bloc .*BETA|long CV"):
+        with self.assertRaisesRegex(StructuringError, r"échec structuration bloc.*BETA|CV long"):
             build_whub_json(long_text, "", [], "Jean", long_cv_threshold=80, hermes_runner=fake_runner)
 
         self.assertGreaterEqual(len(calls), 2)

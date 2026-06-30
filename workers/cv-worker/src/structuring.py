@@ -1248,16 +1248,32 @@ def _add_structural_integrity_issues(data: dict, issues: list[dict]) -> None:
             })
 
 
-# Soft fidelity codes: formatting/coverage issues that produce a draft rather than a hard block.
+# Hard fidelity codes: real identity/security leaks that must hard-fail the job.
+# These are kept as hard blocks because the produced CV would expose candidate
+# data or break trust, even in a draft.
+HARD_FIDELITY_CODES = frozenset({
+    "candidate_identity_term_exposed",
+    "contact_leak_in_structured_data",
+    "full_name_display",
+})
+
+# Soft fidelity codes: formatting/coverage/model-copy issues that produce a draft
+# rather than a hard block. Telegram-like UX: the user should not be left with a
+# dead failed job when a safe PDF can be produced and reviewed.
+# 2026-06-30: added synthetic_technical_environment, source_coverage_missing_experience_item,
+# headerless_experience_sections after observing non-deterministic QA scoring
+# (same source profile scoring fidelity=0 on one run, draft_ready on the next)
+# produce false-positive hard fails. The draft surfaces the warnings so the
+# operator can review/correct instead of being blocked before PDF generation.
 SOFT_FIDELITY_CODES = frozenset({
     "title_absent_from_source",
     "experience_location_missing_from_json",
     "experience_misclassified_as_formation",
-    # Telegram-like UX: source coverage/model-copy issues should not leave the
-    # user with a dead failed job. Render a draft and surface the warning so the
-    # operator can review/correct, instead of blocking before PDF generation.
     "experience_content_rewritten_or_absent_from_source",
     "source_coverage_missing_section",
+    "synthetic_technical_environment",
+    "source_coverage_missing_experience_item",
+    "headerless_experience_sections",
 })
 
 
@@ -1422,11 +1438,17 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
                 })
 
     if issues:
-        hard_issues = [i for i in issues if i.get("code") not in SOFT_FIDELITY_CODES]
-        soft_issues = [i for i in issues if i.get("code") in SOFT_FIDELITY_CODES]
+        hard_issues = [i for i in issues if i.get("code") in HARD_FIDELITY_CODES or i.get("code") not in SOFT_FIDELITY_CODES]
+        soft_issues = [i for i in issues if i.get("code") in SOFT_FIDELITY_CODES and i.get("code") not in HARD_FIDELITY_CODES]
         if hard_issues:
             codes = sorted(set(i["code"] for i in issues))
-            raise StructuringError(f"Fidélité source insuffisante: fidelity_issues=[{','.join(codes)}]")
+            # 2026-06-30: attach a redacted diff summary so operators can tell
+            # hard-fail fidelity from a soft-fail draft. The full diff lives in
+            # cv_events via _fidelity_soft_warnings; here we only carry counts.
+            raise StructuringError(
+                f"Fidélité source insuffisante: fidelity_issues=[{','.join(codes)}] "
+                f"hard_count={len(hard_issues)} soft_count={len(soft_issues)}"
+            )
         # Soft issues only : on continue, le PDF part en draft avec les warnings
         data["_fidelity_soft_warnings"] = [
             {"code": i["code"], "message": i["message"]} for i in soft_issues

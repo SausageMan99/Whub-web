@@ -336,6 +336,11 @@ def fail_job(job: dict, error: str | Exception, status: str = "failed") -> None:
     if fidelity_match:
         codes = [c.strip() for c in fidelity_match.group(1).split(",") if c.strip()]
         event_payload["fidelity_issues"] = codes
+    hard_match = re.search(r"hard_count=(\d+)", error_str)
+    soft_match = re.search(r"soft_count=(\d+)", error_str)
+    if hard_match and soft_match:
+        event_payload["fidelity_hard_count"] = int(hard_match.group(1))
+        event_payload["fidelity_soft_count"] = int(soft_match.group(1))
     emit_event(job["id"], status, event_payload)
 
 
