@@ -600,17 +600,57 @@ class Renderer:
         sep = 414
         self.line(sep, 140, sep, 807, BLACK, .65)
 
-        # Right column: formations only. Never candidate contact.
+        # Right column: "Formation & Diplômes" sidebar.
+        # Regroups Formations (academic diplomas), Certifications and Spoken Languages
+        # into a single client-facing column on the right of the first page.
         rx, rw, y = 431.6, 138, 211.4
-        self.text(spaced('Formations'), 436.7, y, 'Poppins-SemiBold', 15, TITLE)
+        # The two-line header uses a slightly smaller size than the original 15pt to keep
+        # the spaced "FORMATION &" label within the readable column width (right=571.28).
+        self.text(spaced('Formation &'), 436.7, y, 'Poppins-SemiBold', 13, TITLE)
         self.text(spaced('Diplômes'), 452.3, y + 20.2, 'Poppins-SemiBold', 15, TITLE)
         self.line(436.7, y + 45, 562, y + 45, TITLE, .55)
         y = 270
-        for f in data.get('formations', []):
+        formations = data.get('formations') or []
+        for f in formations:
             y = self.para_at(f.get('date', ''), rx, y, rw, ParagraphStyle('rdate', parent=self.side_b, textColor=PURPLE))
             y = self.para_at(f.get('degree', ''), rx, y, rw, self.side_b)
             y = self.para_at(f.get('school', ''), rx, y, rw, self.side)
             y += 12
+
+        # Certifications sub-section: only when the LLM/source actually surfaced some.
+        certifications = data.get('certifications') or []
+        if certifications:
+            y += 6
+            y = self.para_at('Certifications', rx, y, rw, ParagraphStyle('rsub', parent=self.side_b, textColor=PURPLE))
+            for cert in certifications:
+                cert_text = str(cert).strip() if not isinstance(cert, dict) else str(cert.get('name') or '').strip()
+                if not cert_text:
+                    continue
+                # Each certification = one short bullet in the sidebar.
+                y = self.para_at('• ' + cert_text, rx, y, rw, self.side) + 1
+            y += 8
+
+        # Spoken languages sub-section: only the languages the candidate speaks/writes.
+        # `languages` is a list of {name, level} dicts; legacy support: list of strings.
+        languages = data.get('languages') or []
+        if languages:
+            y += 6
+            y = self.para_at('Langues', rx, y, rw, ParagraphStyle('rsub', parent=self.side_b, textColor=PURPLE))
+            for lang in languages:
+                if isinstance(lang, dict):
+                    name = str(lang.get('name') or '').strip()
+                    level = str(lang.get('level') or '').strip()
+                else:
+                    name = str(lang).strip()
+                    level = ''
+                if not name:
+                    continue
+                if level:
+                    line = f"• {name} — {level}"
+                else:
+                    line = f"• {name}"
+                y = self.para_at(line, rx, y, rw, self.side) + 1
+            y += 4
 
         # Optional profile/description block between the headline title and skills.
         lx, lw = 59.5, 328

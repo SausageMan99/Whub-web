@@ -1134,12 +1134,21 @@ Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
         assert "SECTION COMPÉTENCES — INTELLIGENCE W HUB" in prompt
         assert "la section `skills` n'est pas un inventaire brut" in prompt
         assert "`EXPÉRIENCES`, `EXPERIENCES`, `FORMATIONS`, `LANGUES`" in prompt
-        assert "Une phrase longue avec verbe d'action, date, client, société ou mission" in prompt
+        # `skills[].items[]` must be a short label (technology, framework, tool, method, db, cloud, devops,
+        # IDE or technical environment). Phrase-long bullets with action verbs are NOT skills.
+        assert "label court" in prompt
+        assert "technologie" in prompt and "framework" in prompt
         assert "Taxonomie fermée pour `skills[].category`" in prompt
         assert "`Stack principale`, `Langages`, `Frontend`, `Backend`" in prompt
         assert "N'utilise jamais `Autres` comme catégorie normale" in prompt
         assert "Préserve `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server`" in prompt
-        assert "langues/certifications séparées" in prompt
+        # The new contract: spoken languages and certifications must NEVER appear in `skills`.
+        assert "Ne mets JAMAIS de langues parlées" in prompt
+        assert "champ top-level `languages`" in prompt
+        assert "champ top-level `certifications`" in prompt
+        # Top-level schema fields.
+        assert '"languages"' in prompt
+        assert '"certifications"' in prompt
 
     def test_rejects_rewritten_experience_bullets_even_when_topic_matches_source(self):
         source = """

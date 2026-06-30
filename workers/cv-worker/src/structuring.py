@@ -2307,6 +2307,282 @@ def _group_long_certifications(formations: list[dict], max_items: int = 6) -> li
     return others + [{"date": "Certifications", "degree": grouped_degree, "school": ", ".join(schools)}]
 
 
+# Liste fermée des langues parlées que la sidebar droite "Formation & Diplômes" doit afficher.
+# Tout autre mot qui apparaît dans une catégorie "Langues/Languages" de `skills` est considéré comme
+# une compétence technique mal classée et est extrait ailleurs (voir _postprocess_skills_into_languages).
+_SPOKEN_LANGUAGE_NAMES = (
+    "arabe", "francais", "français", "anglais", "espagnol", "allemand", "italien",
+    "portugais", "chinois", "mandarin", "cantonais", "japonais", "coreen", "coréen",
+    "russe", "neerlandais", "néerlandais", "suedois", "suédois", "norvegien", "norvégien",
+    "danois", "finnois", "polonais", "tcheque", "tchèque", "hongrois", "roumain",
+    "bulgare", "grec", "turc", "hindi", "bengali", "arabe", "hebreu", "thaï", "thai",
+    "vietnamien", "indonesien", "indonésien", "malais", "tagalog", "ukrainien",
+    "catalan", "galicien", "serbe", "croate", "slovaque", "slovene", "slovène",
+    "estonien", "letton", "lituanien", "breton", "occitan", "corse", "basque",
+)
+
+# Mots-clés qui signalent qu'un item de skills est en fait une certification et pas une compétence.
+_CERTIFICATION_HINT_WORDS = (
+    "certified", "certified associate", "certified professional", "certified expert",
+    "certification", "certifié", "certifiee", "certifiée",
+    "ocp", "oca", "ocm",
+    "aws certified", "aws solutions architect", "aws developer", "aws sysops",
+    "azure administrator", "azure developer", "azure architect", "az-900", "az-104", "az-204", "az-303", "az-304",
+    "gcp professional", "gcp associate", "professional cloud architect",
+    "cka", "ckad", "cks",
+    "rhcsa", "rhce",
+    "itil foundation", "itil managing", "prince2", "prince 2",
+    "pmp", "pmi", "capm", "pmi-acp", "safe agilist", "scaled agile",
+    "scrum master", "professional scrum master", "psm i", "psm ii", "pspo",
+    "togaf", "itil",
+    "mcts", "mcsa", "mcse", "mcsa :", "mcse :",
+    "oracle certified", "java se 8", "java se 11", "java se 17",
+)
+
+# Patterns regex pour séparer une langue parlée d'un score ou d'un niveau dans un item skills.
+_LANGUAGE_LEVEL_RE = re.compile(
+    r"\b(?:natif|native|maternel|maternelle|bilingue|courant|fluent|fluide|avance|avancé|"
+    r"intermediaire|intermédiaire|c1|c2|b1|b2|a1|a2|technique|professionnel|notions|scolaire|"
+    r"lu|parlé|ecrit|écrit|read|spoken|written)\b",
+    re.IGNORECASE,
+)
+# Split un item skills type "Arabe 5 Français 4 Anglais 4 Developpement Java8 Java17 Junit"
+# en tokens individuels sans dépendre d'un séparateur fixe.
+_SKILL_ITEM_TOKEN_RE = re.compile(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9+#./]*[A-Za-zÀ-ÿ0-9+#.]?|[0-9]+")
+
+
+def _looks_like_spoken_language_token(token: str) -> bool:
+    """Return True when a token from a skills item is a spoken language name."""
+    if not token:
+        return False
+    cleaned = token.strip(" \t\n.,;:()[]{}•·").lower()
+    if not cleaned:
+        return False
+    # Strip trailing version digits/symbols and re-check (e.g. "Java17" -> "java" is NOT a spoken language).
+    base = re.sub(r"\d+[#+.]*$", "", cleaned)
+    base = base.strip(" \t\n.,;:()[]{}•·")
+    if not base or len(base) < 3:
+        return False
+    if base in _SPOKEN_LANGUAGE_NAMES:
+        return True
+    return False
+
+
+def _extract_languages_from_skill_item(item_text: str) -> tuple[list[dict], str]:
+    """Parse a skills item blob and return (spoken_languages, residual_text).
+
+    Example input: "Arabe 5 Français 4 Anglais 4 Developpement Java8 Java17 Junit UML Spring"
+    Returns: ([{"name": "Arabe", "level": "5"}, {"name": "Français", "level": "4"}, ...], "Developpement Java8 Java17 Junit UML Spring")
+    """
+    if not item_text:
+        return [], ""
+    tokens = _SKILL_ITEM_TOKEN_RE.findall(item_text)
+    if not tokens:
+        return [], item_text
+    languages: list[dict] = []
+    consumed_indexes: set[int] = set()
+    for idx, token in enumerate(tokens):
+        if idx in consumed_indexes:
+            continue
+        if not _looks_like_spoken_language_token(token):
+            continue
+        name = token.strip(" \t\n.,;:()[]{}•·")
+        # Optional level: next token if it's a number, a level keyword, or a short word.
+        level = ""
+        if idx + 1 < len(tokens):
+            next_token = tokens[idx + 1]
+            if next_token.isdigit() and 1 <= int(next_token) <= 5:
+                level = next_token
+                consumed_indexes.add(idx + 1)
+            elif _LANGUAGE_LEVEL_RE.match(next_token) or next_token.lower() in {"a1", "a2", "b1", "b2", "c1", "c2"}:
+                level = next_token
+                consumed_indexes.add(idx + 1)
+        languages.append({"name": name, "level": level})
+        consumed_indexes.add(idx)
+    if not languages:
+        return [], item_text
+    # Rebuild the residual text from the tokens that were not consumed.
+    residual_tokens = [tok for i, tok in enumerate(tokens) if i not in consumed_indexes]
+    residual = " ".join(residual_tokens).strip()
+    if not residual:
+        # All tokens were consumed by language extraction; return a sentinel so the
+        # caller can drop the entire skill category instead of leaving an empty block.
+        return languages, ""
+    return languages, residual
+
+
+def _is_certification_like_text(item_text: str) -> bool:
+    """Return True when a skills item looks like a certification."""
+    if not item_text:
+        return False
+    cleaned = item_text.strip().lower()
+    if not cleaned:
+        return False
+    # Avoid catching language lines that mention "bilingue" etc.
+    if _looks_like_spoken_language_token(cleaned.split()[0] if cleaned.split() else ""):
+        return False
+    return any(hint in cleaned for hint in _CERTIFICATION_HINT_WORDS)
+
+
+def _postprocess_skills_into_languages_and_certifications(data: dict) -> dict:
+    """Move spoken languages out of `skills[Langues]` and certifications out of `skills[Certifications]`.
+
+    This is a non-destructive post-process that runs after the LLM structuring. If the LLM correctly
+    filled the top-level `languages` and `certifications` fields, this is a no-op. Otherwise it rescues
+    the data so the sidebar "Formation & Diplômes" has something meaningful to render.
+
+    Behaviour when a `skills[Langues]` category has spoken languages mixed with programming
+    languages:
+    1. Spoken languages (Arabe, Français, Anglais, etc.) are extracted to top-level `languages`.
+    2. The remaining residual (programming languages / tools) is NOT kept under a "Langues"
+       category. It is either merged into an existing technical category ("Stack principale",
+       "Outils & Environnements", "Backend", ...) or dropped when those skills already exist
+       elsewhere — to avoid the user seeing a "Langues" category full of Java/Spring items.
+    3. If the category becomes empty after extraction, it is dropped entirely.
+
+    Returns a new dict; the input is not mutated.
+    """
+    if not isinstance(data, dict):
+        return data
+    out = deepcopy(data)
+    skills = out.get("skills")
+    if not isinstance(skills, list):
+        return out
+
+    new_languages: list[dict] = list(out.get("languages") or [])
+    seen_language_keys: set[tuple[str, str]] = {
+        (str(lang.get("name") or "").strip().lower(), str(lang.get("level") or "").strip().lower())
+        for lang in new_languages
+        if isinstance(lang, dict)
+    }
+    new_certifications: list[str] = list(out.get("certifications") or [])
+    seen_cert_keys: set[str] = {c.strip().lower() for c in new_certifications if str(c).strip()}
+
+    def _cert_normalised_key(value: str) -> str:
+        # OCR/Unicode normalisation: "ﬁ" (U+FB01) and "ﬂ" (U+FB02) are ligatures that the
+        # source PDF often injects instead of "fi"/"fl". Collapse them so "Oracle Certiﬁed"
+        # dedupes against "Oracle Certified".
+        cleaned = value.replace("ﬁ", "fi").replace("ﬂ", "fl").replace("ﬀ", "ff").replace("ﬃ", "ffi").replace("ﬄ", "ffl")
+        cleaned = unicodedata.normalize("NFKC", cleaned)
+        return re.sub(r"\s+", " ", cleaned).strip().lower()
+
+    def _dedup_cert(cert: str) -> bool:
+        key = _cert_normalised_key(cert)
+        if not key:
+            return False
+        if key in seen_cert_keys:
+            return False
+        seen_cert_keys.add(key)
+        return True
+
+    language_categories = {"langues", "languages", "language", "langue"}
+    certification_categories = {"certifications", "certification", "certifs", "certificat"}
+    # Technical categories the LLM typically produces; we use one of these to relocate the residual
+    # from `skills[Langues]` so the user never sees a "Langues" skill block full of Java/Spring items.
+    technical_relocation_categories = (
+        "Stack principale",
+        "Outils & Environnements",
+        "Backend",
+        "Langages",
+        "Frontend",
+        "Outils & méthodes",
+        "Méthodologies",
+    )
+
+    cleaned_skills: list[dict] = []
+    for skill in skills:
+        if not isinstance(skill, dict):
+            cleaned_skills.append(skill)
+            continue
+        category = str(skill.get("category") or "").strip()
+        category_norm = _normalize_for_fidelity(category)
+        items = list(skill.get("items") or [])
+        if category_norm in language_categories:
+            new_items: list[str] = []
+            for item in items:
+                if not isinstance(item, str):
+                    if isinstance(item, dict) and item.get("name"):
+                        candidate = {"name": str(item.get("name") or "").strip(), "level": str(item.get("level") or "").strip()}
+                        key = (candidate["name"].lower(), candidate["level"].lower())
+                        if candidate["name"] and key not in seen_language_keys:
+                            new_languages.append(candidate)
+                            seen_language_keys.add(key)
+                        continue
+                    new_items.append(str(item))
+                    continue
+                languages, residual = _extract_languages_from_skill_item(item)
+                if languages:
+                    for lang in languages:
+                        key = (lang["name"].lower(), lang["level"].lower())
+                        if lang["name"] and key not in seen_language_keys:
+                            new_languages.append(lang)
+                            seen_language_keys.add(key)
+                if residual:
+                    new_items.append(residual)
+            if new_items:
+                # Relocate the residual to a technical category so it does not appear under "Langues".
+                target_category = category
+                existing_categories = {str(s.get("category") or "") for s in cleaned_skills if isinstance(s, dict)}
+                # If a relocation category is already present, append the residual items to it.
+                relocated = False
+                for cand in technical_relocation_categories:
+                    if cand in existing_categories:
+                        for s in cleaned_skills:
+                            if isinstance(s, dict) and str(s.get("category") or "") == cand:
+                                for residual_item in new_items:
+                                    if residual_item not in s.setdefault("items", []):
+                                        s["items"].append(residual_item)
+                                relocated = True
+                                break
+                        if relocated:
+                            break
+                if not relocated:
+                    # No existing technical category to merge into. Rename "Langues" -> the first
+                    # technical category so the residual is visible without leaking the misleading label.
+                    target_category = technical_relocation_categories[0]
+                    cleaned_skills.append({"category": target_category, "items": new_items})
+            # Either way, the "Langues" category is consumed — never add it to cleaned_skills as-is.
+            continue
+        elif category_norm in certification_categories:
+            for item in items:
+                if not isinstance(item, str):
+                    item = str(item)
+                cleaned_item = item.strip()
+                if not cleaned_item:
+                    continue
+                if _is_certification_like_text(cleaned_item) and _dedup_cert(cleaned_item):
+                    new_certifications.append(cleaned_item)
+                elif _dedup_cert(cleaned_item) and len(cleaned_item) <= 140:
+                    # Conservative: only add short items that look like cert names; otherwise let
+                    # the QA pipeline flag it.
+                    if any(kw in cleaned_item.lower() for kw in ("cert", "aws", "azure", "gcp", "oracle", "scrum", "pmp", "itil", "togaf", "java se", "rhcsa", "rhce", "cka", "ckad", "cks", "mcts", "mcsa", "mcse")):
+                        new_certifications.append(cleaned_item)
+            # Drop the entire certifications category from skills; top-level owns this data now.
+            continue
+        else:
+            cleaned_skills.append(skill)
+    out["skills"] = cleaned_skills
+    # Dedupe the top-level `certifications` list with the same normalised key the skills loop
+    # uses. This handles the case where the LLM produced the same cert in top-level
+    # `certifications` AND in `skills[Certifications]`, or where OCR introduced ligature
+    # variants like "Oracle Certiﬁed" alongside "Oracle Certified".
+    if new_certifications:
+        deduped_certs: list[str] = []
+        seen_norm_keys: set[str] = set()
+        for cert in new_certifications:
+            cleaned = str(cert).strip()
+            if not cleaned:
+                continue
+            key = _cert_normalised_key(cleaned)
+            if key and key not in seen_norm_keys:
+                seen_norm_keys.add(key)
+                deduped_certs.append(cleaned)
+        out["certifications"] = deduped_certs
+    if new_languages:
+        out["languages"] = new_languages
+    return out
+
+
 def _source_gate_skills(data: dict, source_text: str) -> dict:
     """Remove skill items that are not supported by the actual uploaded CV text.
 
@@ -2423,10 +2699,15 @@ def _source_gate_high_risk_experience_content(data: dict, source_text: str) -> d
 
 
 def _source_gate_structured_data(data: dict, source_text: str) -> dict:
+    # Rescue top-level `languages` and `certifications` from `skills[Langues]` /
+    # `skills[Certifications]` BEFORE source-gating. This is the post-process that
+    # turns "Arabe 5 Français 4 Anglais 4 Developpement Java8 Java17 Junit ..." into
+    # `languages = [{Arabe, 5}, {Français, 4}, ...]` + skills[Langues] residual.
+    rescued = _postprocess_skills_into_languages_and_certifications(data)
     # Skills may be regrouped/filtered as a compact client-facing surface, but
     # experiences must never be silently edited to pass validation. Rewritten or
     # hallucinated experience bullets are now rejected by validate_source_fidelity.
-    return _source_gate_skills(data, source_text)
+    return _source_gate_skills(rescued, source_text)
 
 
 def apply_client_synthesis_policy(data: dict, mode: str = "complete", *, allow_condensation: bool = False) -> dict:
@@ -2518,7 +2799,8 @@ Règles non négociables:
 - Structure les compétences en catégories lisibles, hiérarchisées et client-facing quand elles proviennent d'une section compétences source; ne transforme pas des outils cités dans une expérience en compétences globales inventées.
 - SECTION COMPÉTENCES — INTELLIGENCE W HUB: la section `skills` n'est pas un inventaire brut. Elle doit permettre à un client ESN de comprendre la stack principale du consultant en moins de 10 secondes.
 - Frontières fortes: `COMPÉTENCES`, `COMPETENCES`, `EXPÉRIENCES`, `EXPERIENCES`, `FORMATIONS`, `LANGUES`, `CERTIFICATIONS`, `PROJETS`, `RÉALISATIONS`. Ne mélange jamais du texte d'expérience, formation, identité, projet long ou langue dans `skills`.
-- Un item `skills[].items[]` doit être un label court: technologie, langage, framework, outil, méthode, base de données, cloud, DevOps, langue ou certification. Une phrase longue avec verbe d'action, date, client, société ou mission n'est pas une compétence globale.
+- Un item `skills[].items[]` doit être un label court: technologie, framework, outil, méthode, base de données, cloud, DevOps, IDE ou environnement technique. **Ne mets JAMAIS de langues parlées (Arabe, Français, Anglais, Espagnol, Allemand, Italien, Portugais, Chinois, Japonais, Russe, etc.) ni de certifications dans `skills`.** Les langues parlées vont dans le champ top-level `languages`; les certifications vont dans le champ top-level `certifications`.
+- Distinction critique: `skills[].items[]` ne contient **PAS** les langages de programmation (Java, Python, JavaScript, C++, C#, PHP, Ruby, Go, Rust, TypeScript, SQL, etc. — ce sont des compétences techniques qui restent dans `skills`). Le champ `languages` est **uniquement** pour les langues parlées/écrites par le candidat avec niveau (ex: "Français — courant", "Anglais — technique", "Arabe — natif").
 - Nettoie les artefacts visuels de compétences: étoiles, jauges, icônes, niveaux graphiques et répétitions. Garde seulement le libellé utile; ne transforme pas des jauges en niveaux expert/intermédiaire sauf niveau textuel explicite.
 - Déduplique et normalise sans changer le sens: `JS`/`Javascript` => `JavaScript`, `Jquery` => `jQuery`, `Bootsrap` => `Bootstrap`, `Mac OS`/`MacOS` => `macOS`. Préserve `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server` comme technologies distinctes si elles sont présentes.
 - Taxonomie fermée pour `skills[].category`: `Stack principale`, `Langages`, `Frontend`, `Backend`, `Frameworks & Librairies`, `Bases de données`, `Cloud & DevOps`, `Data & BI`, `Architecture & Conception`, `Tests & Qualité`, `Outils & Environnements`, `Méthodologies`, `Langues`, `Certifications`.
@@ -2545,6 +2827,8 @@ Schéma attendu:
   "title": "Titre métier court",
   "description": "Profil court si le CV source en contient un, sinon omettre cette clé",
   "formations": [{{"date": "...", "degree": "...", "school": "..."}}],
+  "certifications": ["Nom certification (organisme, année si présente)"],
+  "languages": [{{"name": "Français", "level": "courant"}}, {{"name": "Anglais", "level": "technique"}}],
   "skills": [{{"category": "...", "items": ["..."]}}],
   "experiences": [
     {{
@@ -2558,6 +2842,10 @@ Schéma attendu:
     }}
   ]
 }}
+
+Règles top-level:
+- `certifications`: liste de strings courtes, une certification par item. Si aucune certification détectée, liste vide `[]`. Ne jamais mettre de certifications dans `skills[]`.
+- `languages`: liste d'objets `{{"name": "...", "level": "..."}}`. Le `name` est la langue parlée/écrite (Français, Anglais, Arabe, Espagnol, Allemand, Italien, Portugais, Chinois, Japonais, Russe, etc.). Le `level` est optionnel (courant, professionnel, technique, natif, bilingue, scolaire, A1-C2, score CECRL, ou omis). Si le CV source ne contient pas de section langues, liste vide `[]`. Ne jamais mettre de langues parlées dans `skills[]`. Distinction stricte: les langages de programmation (Java, Python, JavaScript, C++, C#, PHP, Ruby, Go, Rust, TypeScript, SQL, etc.) restent dans `skills[]` et ne doivent PAS apparaître dans `languages`.
 
 Consignes utilisateur:
 {instructions or "Aucune consigne."}
