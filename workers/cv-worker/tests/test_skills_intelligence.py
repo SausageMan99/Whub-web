@@ -310,3 +310,22 @@ def test_evaluate_skills_display_quality_flags_too_many_total_items():
     codes = {issue["code"] for issue in issues}
 
     assert "too_many_skill_items" in codes
+
+
+def test_source_gate_attaches_skill_quality_warnings_for_bad_display():
+    from src.structuring import _source_gate_structured_data
+
+    source = "COMPÉTENCES\nAutre chose non classable " + ", ".join(f"item{i}" for i in range(70))
+    data = {
+        "skills": [{"category": "Autres — suite 5", "items": [f"item{i}" for i in range(70)]}],
+        "languages": [],
+        "certifications": [],
+    }
+
+    out = _source_gate_structured_data(data, source)
+    warnings = out.get("_skill_quality_warnings") or []
+    assert warnings
+    assert any(
+        w["code"] in {"too_many_skill_items", "too_many_autres_items", "continued_autres_category"}
+        for w in warnings
+    )

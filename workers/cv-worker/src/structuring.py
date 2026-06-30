@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any, Callable, cast
 
 from .config import settings
-from .skills_intelligence import apply_skills_intelligence
+from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
 
 log = logging.getLogger("whub-cv-worker.structuring")
 
@@ -2754,7 +2754,11 @@ def _source_gate_structured_data(data: dict, source_text: str) -> dict:
     # experiences must never be silently edited to pass validation. Rewritten or
     # hallucinated experience bullets are now rejected by validate_source_fidelity.
     gated = _source_gate_skills(rescued, source_text)
-    return apply_skills_intelligence(gated, source_text)
+    gated = apply_skills_intelligence(gated, source_text)
+    skill_warnings = evaluate_skills_display_quality(gated.get("skills") or [])
+    if skill_warnings:
+        gated["_skill_quality_warnings"] = skill_warnings
+    return gated
 
 
 def apply_client_synthesis_policy(data: dict, mode: str = "complete", *, allow_condensation: bool = False) -> dict:
