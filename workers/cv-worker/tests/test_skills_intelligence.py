@@ -78,3 +78,30 @@ def test_split_arrow_skill_items_handles_arrow_on_its_own_line():
         "Cloud: AWS, AZURE",
         "DevOps : GitLab CICD, Jenkins, Docker",
     ]
+
+
+def test_parse_source_skills_maps_source_prefixes_to_whub_taxonomy():
+    from src.skills_intelligence import parse_source_skills_section
+
+    parsed = parse_source_skills_section(
+        """
+COMPÉTENCES
+➢
+Cloud: AWS, AZURE
+➢
+Sécurité: JWT, OAuth2, LDAP, OWASP
+➢
+Data bases: MySQL, SQLserver, PostegreSQL
+➢
+Système : Linux RHEL, UBUNTU, Windows
+FORMATIONS
+x
+"""
+    )
+
+    assert parsed.skills_by_category == {
+        "Cloud & DevOps": ["AWS", "Azure"],
+        "Sécurité": ["JWT", "OAuth2", "LDAP", "OWASP"],
+        "Bases de données": ["MySQL", "SQL Server", "PostgreSQL"],
+        "Systèmes & Environnements": ["Linux RHEL", "Ubuntu", "Windows"],
+    }
