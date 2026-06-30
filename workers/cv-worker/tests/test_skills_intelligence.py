@@ -280,3 +280,33 @@ def test_source_gate_does_not_reinject_full_competences_block_when_atomic_terms_
     assert not any("Direction d'équipes de développement, recrutement, roadmap" in item for item in flattened)
     assert not any("Cloud: AWS" in item for item in flattened)
     assert not any("Data bases:" in item for item in flattened)
+
+
+def test_evaluate_skills_display_quality_flags_olivier_style_dump():
+    from src.skills_intelligence import evaluate_skills_display_quality
+
+    skills = [
+        {"category": "Autres", "items": [f"item-{i}" for i in range(20)] + ["Docker"]},
+        {"category": "Autres — suite 5", "items": ["AWS", "Docker"]},
+        {"category": "Cloud & DevOps", "items": ["AWS", "Docker"]},
+    ]
+
+    issues = evaluate_skills_display_quality(skills)
+    codes = {issue["code"] for issue in issues}
+
+    assert "too_many_autres_items" in codes
+    assert "continued_autres_category" in codes
+    assert "duplicate_skill_items" in codes
+
+
+def test_evaluate_skills_display_quality_flags_too_many_total_items():
+    from src.skills_intelligence import evaluate_skills_display_quality
+
+    skills = [
+        {"category": "Outils & Environnements", "items": [f"item-{i}" for i in range(70)]},
+    ]
+
+    issues = evaluate_skills_display_quality(skills)
+    codes = {issue["code"] for issue in issues}
+
+    assert "too_many_skill_items" in codes

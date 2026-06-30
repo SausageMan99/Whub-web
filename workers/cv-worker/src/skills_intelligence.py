@@ -624,3 +624,57 @@ def apply_skills_intelligence(data: dict, source_text: str) -> dict:
     existing_languages = out.get("languages") if isinstance(out.get("languages"), list) else []
     out["languages"] = _merge_languages(existing_languages, source_parsed.languages)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Display quality heuristics
+# ---------------------------------------------------------------------------
+
+_TOO_MANY_SKILL_ITEMS_THRESHOLD = 60
+_TOO_MANY_AUTRES_ITEMS_THRESHOLD = 8
+_AUTRES_RATIO_THRESHOLD = 0.20
+
+
+def evaluate_skills_display_quality(skills: list[dict]) -> list[dict[str, object]]:
+    """Return red-flag issues about a structured `skills` payload.
+
+    Codes:
+    - `too_many_skill_items`: more than 60 items total (Olivier produced 127).
+    - `too_many_autres_items`: more than 8 items in `Autres`/`Autres — suite*`,
+      or more than 20% of total items in those buckets.
+    - `continued_autres_category`: any `Autres — suite` category survived.
+    - `duplicate_skill_items`: same canonical key appears more than once.
+    """
+    issues: list[dict[str, object]] = []
+    total_items = 0
+    autres_items = 0
+    seen: set[str] = set()
+    duplicate_count = 0
+
+    for skill in skills or []:
+        if not isinstance(skill, dict):
+            continue
+        category = str(skill.get("category") or "").strip()
+        items = [str(item).strip() for item in skill.get("items") or [] if str(item).strip()]
+        total_items += len(items)
+        if category.lower().startswith("autres"):
+            autres_items += len(items)
+            if "suite" in category.lower():
+                issues.append({"code": "continued_autres_category", "category": category})
+        for item in items:
+            key = normalise_skill_key(item)
+            if key in seen:
+                duplicate_count += 1
+            else:
+                seen.add(key)
+
+    if total_items > _TOO_MANY_SKILL_ITEMS_THRESHOLD:
+        issues.append({"code": "too_many_skill_items", "count": total_items})
+    if (
+        autres_items > _TOO_MANY_AUTRES_ITEMS_THRESHOLD
+        or (total_items and autres_items / total_items > _AUTRES_RATIO_THRESHOLD)
+    ):
+        issues.append({"code": "too_many_autres_items", "count": autres_items, "total": total_items})
+    if duplicate_count:
+        issues.append({"code": "duplicate_skill_items", "count": duplicate_count})
+    return issues
