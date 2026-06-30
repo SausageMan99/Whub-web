@@ -1,0 +1,277 @@
+{
+  "name": "OLIVIER",
+  "title": "Architecte solution logiciel & technique",
+  "description": "Architecte avec 23 ans d’expérience, j’interviens sur des environnements complexes et critiques, notamment dans les domaines de la banque l’assurance et le transport. J’ai piloté plusieurs programmes de transformation de SI en m’appuyant sur le cadre d’architecture TOGAF, en accompagnant de bout en bout les équipes métier, conception Dev et Ops jusqu’à la mise en production et son observation. Habitué à travailler sur des projets structurants mobilisant jusqu’à 25 ingénieurs j’applique une approche Domain-Driven-Design afin de garantir la cohérence entre enjeux métier, architecture et mise en œuvre opérationnelle des services. Lors de ma dernière mission chez AXA, j’ai automatisé le traitement des factures de sinistres grâce à l’IA intégrant la lecture de documents et la détection de fraude.",
+  "formations": [
+    {
+      "date": "Octobre 1986 à juin 1989",
+      "degree": "Ingénieur en électronique et télécommunication.",
+      "school": "ESME SUDRIA"
+    }
+  ],
+  "certifications": [],
+  "languages": [
+    {
+      "name": "Anglais",
+      "level": "Lu, parlé, écrit"
+    }
+  ],
+  "skills": [
+    {
+      "category": "Outils & Environnements",
+      "items": [
+        "Architecte logiciel",
+        "Direction technique",
+        "recrutement"
+      ]
+    },
+    {
+      "category": "Méthodologies",
+      "items": [
+        "Direction d'équipes de développement",
+        "roadmap",
+        "agilité à l’échelle SAFE",
+        "Audit technique transverse du BUILD au RUN"
+      ]
+    },
+    {
+      "category": "Architecture & Conception",
+      "items": [
+        "Conception de solution",
+        "Urbanisation",
+        "Référentiel d’architecture",
+        "PaaS",
+        "IaaS",
+        "CaaS",
+        "EDA",
+        "EIP",
+        "SOA",
+        "programmation asynchrone",
+        "Stream-processing",
+        "mobile",
+        "temps réel",
+        "mode déconnecté"
+      ]
+    },
+    {
+      "category": "Observabilité",
+      "items": [
+        "Dynatrace",
+        "Elasticsearch",
+        "LogStash",
+        "Kibana",
+        "Beats",
+        "Grafana"
+      ]
+    },
+    {
+      "category": "Cloud & DevOps",
+      "items": [
+        "AWS",
+        "Azure",
+        "GitLab CI/CD",
+        "Jenkins",
+        "Nexus",
+        "Git",
+        "Docker",
+        "Docker Compose",
+        "Kubernetes"
+      ]
+    },
+    {
+      "category": "Sécurité",
+      "items": [
+        "Authentification forte",
+        "Signature de documents",
+        "Non-répudiation",
+        "JWT",
+        "OAuth2",
+        "Jaas",
+        "LoginModule",
+        "LDAP",
+        "X509",
+        "OpenSsl (X509",
+        "PKCS7",
+        "…",
+        "OWASP"
+      ]
+    },
+    {
+      "category": "Bases de données",
+      "items": [
+        "MySQL",
+        "MongoDB",
+        "Hibernate",
+        "Oracle",
+        "Sybase",
+        "SQL Server",
+        "DB2",
+        "PostgreSQL"
+      ]
+    },
+    {
+      "category": "Systèmes & Environnements",
+      "items": [
+        "Linux RHEL",
+        "AIX",
+        "CentOS",
+        "Ubuntu",
+        "Windows"
+      ]
+    }
+  ],
+  "experiences": [
+    {
+      "date": "Depuis janvier 2024",
+      "role": "Architecte solution",
+      "company_highlight": "AXA",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "DSI de 35 Architectes solution et 10 architectes d’entreprise.",
+            "Mission d’architecture solution du SI « Incendie, Accident et Risques Divers » et « DATA client » (850 systèmes d’applications).",
+            "Instruction de Dossiers de Design Solution, de l’expression des besoins au passage en comité d’architecture, Revue de design, Revue de DAT, Référentiel d’architecture."
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "TOGAF, Mega Hopex, C4, JIRA, DDD, OpenAPI/Swagger, WebMethods, EDA/Kafka, Azure DevOps, JAVA Spring, Kubernetes, ELK, Dynatrace, OpenShift.",
+            "Migration de solution de souscription: mainframe vers une solution CaaS JAVA Honey",
+            "Détection de fraude sur les déclarations de sinistre (Shift technologie, IA Luminess).",
+            "Automatisation des traitements des factures de Dommages Aux Biens (AZURE, Microsoft Document Intelligence, IA agentique AXA Secure GPT).",
+            "Système de souscription des véhicules très haut de gamme et non catalogués (LCB-FT)",
+            "Propagation des données client sur les contrats (KYC 1 & 2, MDM Informatica)."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "Depuis juillet 2020",
+      "role": "Architecte solution logiciel & technique",
+      "company_highlight": "Oséline",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "L'entité spécifique de la mission n'est pas détaillée, l'expérience est continue depuis 2020."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "Octobre 2022 Mission de 9 Mois",
+      "role": "Architecte Technique Branche Service Courrier Colis",
+      "company_highlight": "La Poste",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Equipe de 25 à 30 ingénieurs Internes/externe (Paris, Mumbai, Casablanca)",
+            "Mission d’architecture SI et support aux équipes de développement sur le SI Transport (TMS YMS, tri, référentiel) de la Branche Service Courrier Colis BSCC (600 applications, 5 millions de requêtes/jour)"
+          ]
+        },
+        {
+          "heading": "Environnement technique",
+          "content": [
+            "TOGAF, Archimate, WSO2, Kafka, ELK, PHP, JAVA MARIADB OpenAPI/Swagger, OpenShift, Kubernetes, Dynatrace, SAFE, MicoService.",
+            "Optimisation du plan de transport multimodal (PTV, Kafka, Kubernetes).",
+            "Refonte de la gestion et régulation du plan de transport: PHP 7.4 => Java Spring Boot 3.0",
+            "Amélioration des performances détection des fausses (Machine Learning, Dynatrace)",
+            "Implémentation du mode déconnecté sur une application mobile de flashage des contenants (Couch Réplication Protocol: CoucheDB cluster, Kafka, Kolín)."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "Novembre 2020 à mai 2022",
+      "role": "Architecte Technique",
+      "company_highlight": "CIM",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Editeur de logiciel secteur Mutuelle d’assurance > 100 personnes.",
+            "Audit transversal du Build au Run pour analyser les risques et freins technologiques et proposition de point d’Améliorations, a conduit à plusieurs études d’architecture, réalisations et Proof Of Concept, certaines ont fait l’objet financement crédit d’impôt recherche."
+          ]
+        },
+        {
+          "heading": "Réalisations",
+          "content": [
+            "Refonte de la stratégie de test de la validation des appels à cotisation sur une approche déclarative du model de données, et des diagnostics: amélioration des performances de 40H à 10 Minutes, (Stream porcessing, asynchronisme, TypeScript, Node.js).",
+            "Réalisation d’un Proof Of Concept migration de DB2 vers PostgreSQL. (Kafka connecter).",
+            "Etude du passage sur AWS des Webservices de prise en charge hospitalière, audio dentaire et optique (EKS, VPN, Fargeate).",
+            "Amélioration des performances et observabilité des Webservices de prise en charge hospitalière, audio, dentaire et optique. (ELK, C#, Dotnet Core, SOAPUI, DB2)"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "Aout à octobre 2020 et juillet 2023",
+      "role": "Architecte Technique",
+      "company_highlight": "Ginkoia",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Editeur de logiciel ERP magasin de sport (vente et location).",
+            "Proposition de points d’améliorations qui ont conduit à plusieurs missions."
+          ]
+        },
+        {
+          "heading": "Réalisations",
+          "content": [
+            "Mise en place d’un banc de test de nom régression et performance sur le logiciel de caisse (NGINX, ElasticSearch, LogStash, Kibana, PostMan)",
+            "Amélioration des performances d’un revers proxy de log (ELK, Java Sprint, Azure)."
+          ]
+        }
+      ]
+    },
+    {
+      "date": "Avril 2016 à décembre 2020",
+      "role": "Directeur technique et cofondateur",
+      "company_highlight": "Laburocloud - Paris",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Création de services cloud et mobiles natifs qui explorent les nouveaux modes de travail collaboratif en donnant accès au coworking à l’heure par une approche temps-réel et centrée sur l'humain. (AWS, IOS, ANDROID, EC2, Node.js, MongoDB, FireBase, API)"
+          ]
+        }
+      ]
+    },
+    {
+      "date": "janvier 2002 à mai 2015",
+      "role": "Responsable de l'architecture du produit back-office de la suite front to back \"Kondor+\"",
+      "company_highlight": "Reuters Financial Software et Misys France SAS",
+      "sections": [
+        {
+          "heading": "Missions clés",
+          "content": [
+            "Solution actuellement déployée dans plus de 400 des plus grandes banques internationales.",
+            "Encadré des équipes de 25 ingénieurs organisées en 5 équipes agiles à l’échelle (SAFE)."
+          ]
+        },
+        {
+          "heading": "Réalisations",
+          "content": [
+            "Mise en place du DevOps pour assurer l'amélioration continue du produite.",
+            "Conduite de la fusion et refonte des interfaces graphiques des logiciels de back-office de Misys, vers une nouvelle expérience utilisateur temps réel.",
+            "Réalisation d'un processeur de cube de données OLAP pour l'exploration des données métier.",
+            "Réalisation d’un moteur permettant l’application des règles métier sur les formulaires de saisie web.",
+            "Missions support dernier niveau chez IGN India à Mumbai, UCPB à Manille et Denel à Johannesburg.",
+            "Mise à jour en temps réel de l’interface graphique (Angularjs, HTML5, websocket, push).",
+            "Conception et réalisation d'un EIP, permettant la connexion du back-office à plusieurs front-offices. (JAVA, C++, JNI, JDBC, groovy)."
+          ]
+        }
+      ]
+    }
+  ],
+  "_skill_quality_warnings": [
+    {
+      "code": "too_many_skill_items",
+      "count": 62
+    }
+  ]
+}
