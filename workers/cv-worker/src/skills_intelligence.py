@@ -24,7 +24,6 @@ import re
 import unicodedata
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -32,6 +31,10 @@ class ParsedSourceSkills:
     skills_by_category: dict[str, list[str]] = field(default_factory=dict)
     languages: list[dict[str, str]] = field(default_factory=list)
 
+
+# ---------------------------------------------------------------------------
+# Section isolation
+# ---------------------------------------------------------------------------
 
 _SKILLS_START_RE = re.compile(
     r"^\s*comp[ée]tences(?:\s+techniques?)?\s*$",
@@ -68,6 +71,10 @@ def _extract_skills_lines(source_text: str) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Hellowork `➢` bullet split
+# ---------------------------------------------------------------------------
+
 _ARROW_RE = re.compile(r"^[➢>•\-–—]+\s*(.*)$")
 
 
@@ -86,12 +93,11 @@ _SPOKEN_LANGUAGE_INLINE_RE = re.compile(
 def _flush_skill_item(buffer: list[str]) -> list[str]:
     """Return one or more item strings from a buffer.
 
-    If the buffer is exactly one line that *starts with* a spoken language
-    name (e.g. "Anglais Lu, parlé, écrit"), emit it as a single item so
-    `_split_languages_from_items` can hoist it later. If the buffer is
-    multi-line and the language name is appended to a real skill (e.g.
-    "... Windows / Anglais Lu, parlé, écrit"), split the language off as
-    its own item.
+    If the buffer is multi-line and a spoken language suffix is appended
+    to a real skill (e.g. "... Windows / Anglais Lu, parlé, écrit"), split
+    the language off as its own item so `_split_languages_from_items` can
+    hoist it. A single-line buffer that *starts with* a language name is
+    returned intact so the level is preserved.
     """
     text = " ".join(part.strip() for part in buffer if part and part.strip())
     text = re.sub(r"\s+", " ", text).strip(" :;•➢-–—")
@@ -103,9 +109,6 @@ def _flush_skill_item(buffer: list[str]) -> list[str]:
     head = match.group("head").strip(" ,")
     name = match.group("name").strip()
     level = match.group("level").strip()
-    # If the buffer had only one line and the language heading is at the
-    # very start, the whole line is a language entry — leave it intact for
-    # the hoister. Splitting it here would drop the level.
     if not head and len([part for part in buffer if part and part.strip()]) == 1:
         return [text]
     if not head:
@@ -152,15 +155,9 @@ def _split_arrow_skill_items(lines: list[str]) -> list[str]:
     return items
 
 
-_PREFIX_CATEGORY_MAP: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"^(?:cloud|devops)\b", re.IGNORECASE), "Cloud & DevOps"),
-    (re.compile(r"^s[ée]curit[ée]\b", re.IGNORECASE), "Sécurité"),
-    (re.compile(r"^(?:data\s*bases?|bases?\s+de\s+donn[ée]es?)\b", re.IGNORECASE), "Bases de données"),
-    (re.compile(r"^syst[èe]mes?\b", re.IGNORECASE), "Systèmes & Environnements"),
-    (re.compile(r"^observabilit[ée]\b|^apm\b", re.IGNORECASE), "Observabilité"),
-    (re.compile(r"^architecture\s+logicielle\b|^architecture\b", re.IGNORECASE), "Architecture & Conception"),
-)
-
+# ---------------------------------------------------------------------------
+# Label normalisation
+# ---------------------------------------------------------------------------
 
 _NORMALIZED_SKILL_LABELS: dict[str, str] = {
     "azure": "Azure",
@@ -171,12 +168,10 @@ _NORMALIZED_SKILL_LABELS: dict[str, str] = {
     "gitlab ci cd": "GitLab CI/CD",
     "docker-compose": "Docker Compose",
     "docker compose": "Docker Compose",
-    "dockercompos e": "Docker Compose",
     "sqlserver": "SQL Server",
     "sql server": "SQL Server",
     "postegresql": "PostgreSQL",
     "postgresql": "PostgreSQL",
-    "postegresq l": "PostgreSQL",
     "graphana": "Grafana",
     "grafana": "Grafana",
     "elasticsearch": "Elasticsearch",
@@ -250,6 +245,20 @@ def _split_skill_values(value: str) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Source prefix → category mapping
+# ---------------------------------------------------------------------------
+
+_PREFIX_CATEGORY_MAP: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^(?:cloud|devops)\b", re.IGNORECASE), "Cloud & DevOps"),
+    (re.compile(r"^s[ée]curit[ée]\b", re.IGNORECASE), "Sécurité"),
+    (re.compile(r"^(?:data\s*bases?|bases?\s+de\s+donn[ée]es?)\b", re.IGNORECASE), "Bases de données"),
+    (re.compile(r"^syst[èe]mes?\b", re.IGNORECASE), "Systèmes & Environnements"),
+    (re.compile(r"^observabilit[ée]\b|^apm\b", re.IGNORECASE), "Observabilité"),
+    (re.compile(r"^architecture\s+logicielle\b|^architecture\b", re.IGNORECASE), "Architecture & Conception"),
+)
+
+
 def _category_from_prefixed_item(item: str) -> tuple[str | None, str]:
     match = re.match(r"^([^:：]{3,80})\s*[:：]\s*(.+)$", item)
     if not match:
@@ -261,6 +270,10 @@ def _category_from_prefixed_item(item: str) -> tuple[str | None, str]:
             return category, rest
     return None, item
 
+
+# ---------------------------------------------------------------------------
+# Fallback keyword classification
+# ---------------------------------------------------------------------------
 
 _CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
@@ -334,6 +347,10 @@ def _category_for_skill_value(value: str) -> str:
     return "Outils & Environnements"
 
 
+# ---------------------------------------------------------------------------
+# Spoken language hoisting
+# ---------------------------------------------------------------------------
+
 _SPOKEN_LANGUAGE_HEADING_RE = re.compile(
     r"^\s*(?:fran[çc]ais|anglais|espagnol|allemand|italien|portugais|arabe|russe|chinois|japonais|mandarin|coreen|coréen|neerlandais|néerlandais|suedois|suédois|polonais|tcheque|tchèque|hongrois|roumain|bulgare|grec|turc|hindi|vietnamien|indonesien|indonésien|ukrainien|catalan|croate|slovaque|estonien|letton|lituanien|breton|occitan|corse|basque)\b",
     re.IGNORECASE,
@@ -345,6 +362,14 @@ _LANGUAGE_LEVEL_KEYWORDS_RAW = (
 )
 _LANGUAGE_LEVEL_KEYWORDS_FOLDED = {_fold_label(keyword) for keyword in _LANGUAGE_LEVEL_KEYWORDS_RAW}
 _LANGUAGE_CECRL = {"a1", "a2", "b1", "b2", "c1", "c2"}
+_LANGUAGE_INLINE_NAME_RE = re.compile(
+    r"(?:fran[çc]ais|anglais|espagnol|allemand|italien|portugais|arabe|russe|chinois|japonais|"
+    r"mandarin|coreen|coréen|neerlandais|néerlandais|suedois|suédois|polonais|"
+    r"tcheque|tchèque|hongrois|roumain|bulgare|grec|turc|hindi|vietnamien|"
+    r"indonesien|indonésien|ukrainien|catalan|croate|slovaque|estonien|"
+    r"letton|lituanien|breton|occitan|corse|basque)",
+    re.IGNORECASE,
+)
 
 
 def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[str, str]]]:
@@ -359,26 +384,21 @@ def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[
     index = 0
     while index < len(items):
         item = items[index].strip()
-        match = _SPOKEN_LANGUAGE_HEADING_RE.match(item)
-        if not match:
+        if not _SPOKEN_LANGUAGE_HEADING_RE.match(item):
             remaining.append(item)
             index += 1
             continue
-        name_match = re.search(
-            r"(?:fran[çc]ais|anglais|espagnol|allemand|italien|portugais|arabe|russe|chinois|japonais|"
-            r"mandarin|coreen|coréen|neerlandais|néerlandais|suedois|suédois|polonais|"
-            r"tcheque|tchèque|hongrois|roumain|bulgare|grec|turc|hindi|vietnamien|"
-            r"indonesien|indonésien|ukrainien|catalan|croate|slovaque|estonien|"
-            r"letton|lituanien|breton|occitan|corse|basque)",
-            item,
-            re.IGNORECASE,
-        )
+        name_match = _LANGUAGE_INLINE_NAME_RE.search(item)
         assert name_match is not None
         name = name_match.group(0).strip()
         name = name[:1].upper() + name[1:].lower()
         tail = item[name_match.end():].strip(" ,;:.-–—")
         level_parts: list[str] = []
-        if tail and (any(kw in _fold_label(tail) for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED) or _fold_label(tail) in _LANGUAGE_CECRL or "," in tail):
+        if tail and (
+            any(kw in _fold_label(tail) for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED)
+            or _fold_label(tail) in _LANGUAGE_CECRL
+            or "," in tail
+        ):
             level_parts.append(tail)
         index += 1
         while index < len(items):
@@ -388,7 +408,11 @@ def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[
             if _SPOKEN_LANGUAGE_HEADING_RE.match(nxt):
                 break
             folded_nxt = _fold_label(nxt)
-            if any(kw in folded_nxt for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED) or folded_nxt in _LANGUAGE_CECRL or "," in nxt:
+            if (
+                any(kw in folded_nxt for kw in _LANGUAGE_LEVEL_KEYWORDS_FOLDED)
+                or folded_nxt in _LANGUAGE_CECRL
+                or "," in nxt
+            ):
                 level_parts.append(nxt)
                 index += 1
                 continue
@@ -396,6 +420,11 @@ def _split_languages_from_items(items: list[str]) -> tuple[list[str], list[dict[
         level = ", ".join(part for part in level_parts if part).strip()
         languages.append({"name": name, "level": level})
     return remaining, languages
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
 
 
 def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
@@ -424,3 +453,99 @@ def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
                 grouped[target].append(value)
 
     return ParsedSourceSkills(skills_by_category=grouped, languages=languages)
+
+
+# ---------------------------------------------------------------------------
+# Display-layer dedup / normalisation
+# ---------------------------------------------------------------------------
+
+_CATEGORY_PRIORITY: dict[str, int] = {
+    "Architecture & Conception": 1,
+    "Cloud & DevOps": 2,
+    "Sécurité": 3,
+    "Observabilité": 4,
+    "Langages & Frameworks": 5,
+    "Backend": 5,
+    "Frontend": 6,
+    "Bases de données": 7,
+    "Data & BI": 7,
+    "Méthodologies": 8,
+    "Systèmes & Environnements": 9,
+    "Outils & Environnements": 10,
+    "Autres": 99,
+}
+
+
+_CATEGORY_ALIASES: dict[str, str] = {
+    "Cloud / DevOps": "Cloud & DevOps",
+    "Data": "Bases de données",
+    "Outils & méthodes": "Méthodologies",
+    "Frameworks & Librairies": "Langages & Frameworks",
+    "Outils & méthodes ": "Méthodologies",
+}
+
+
+def _normalise_category(category: str) -> str:
+    normalized = re.sub(r"\s+", " ", category or "").strip()
+    normalized = re.sub(r"\s*[—-]\s*suite(?:\s+\d+)?$", "", normalized, flags=re.IGNORECASE).strip()
+    if normalized in _CATEGORY_ALIASES:
+        return _CATEGORY_ALIASES[normalized]
+    return normalized or "Outils & Environnements"
+
+
+def normalise_skill_key(value: str) -> str:
+    """Canonical key used for global deduplication."""
+    cleaned = unicodedata.normalize("NFKD", value or "")
+    cleaned = "".join(ch for ch in cleaned if not unicodedata.combining(ch))
+    folded = cleaned.casefold()
+    folded = re.sub(r"\s+", "", folded)
+    folded = folded.replace("cicd", "cicd")
+    aliases = {
+        "sqlserver": "sqlserver",
+        "postgresql": "postgresql",
+        "postegresql": "postgresql",
+        "dockercompose": "dockercompose",
+        "dockercompose": "dockercompose",
+        "gitlabcicd": "gitlabcicd",
+        "graphana": "grafana",
+    }
+    cleaned_folded = re.sub(r"[^a-z0-9+#.]+", "", folded)
+    return aliases.get(cleaned_folded, cleaned_folded)
+
+
+def build_display_skills(
+    raw_skills: list[dict],
+    source_text: str = "",
+) -> list[dict]:
+    """Deduplicate a skills list across categories and normalize labels.
+
+    The result preserves the W hub taxonomy. Items that land in `Autres` are
+    reclassified by `_category_for_skill_value` so that the public
+    `Autres` bucket should normally stay empty.
+    """
+    grouped: dict[str, list[str]] = {}
+    seen: set[str] = set()
+    candidates: list[tuple[int, str, str]] = []
+
+    for skill in raw_skills or []:
+        if not isinstance(skill, dict):
+            continue
+        category = _normalise_category(str(skill.get("category") or ""))
+        for item in skill.get("items") or []:
+            label = _normalise_skill_label(str(item))
+            if not label:
+                continue
+            target = _category_for_skill_value(label) if category == "Autres" else category
+            if not target:
+                target = "Outils & Environnements"
+            priority = _CATEGORY_PRIORITY.get(target, 50)
+            candidates.append((priority, target, label))
+
+    for _, category, label in sorted(candidates, key=lambda row: (row[0], row[1], row[2].casefold())):
+        key = normalise_skill_key(label)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        grouped.setdefault(category, []).append(label)
+
+    return [{"category": category, "items": items} for category, items in grouped.items() if items]

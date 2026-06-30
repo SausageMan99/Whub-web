@@ -168,3 +168,20 @@ x
 
     assert "Méthodologies" in parsed.skills_by_category
     assert parsed.skills_by_category["Méthodologies"] == ["TOGAF", "C4", "DDD", "SAFE"]
+
+
+def test_build_display_skills_removes_global_duplicates_across_categories():
+    from src.skills_intelligence import build_display_skills
+
+    raw = [
+        {"category": "Cloud / DevOps", "items": ["AWS", "Docker", "Kubernetes"]},
+        {"category": "Autres", "items": ["Docker", "docker-compose", "SQLserver"]},
+        {"category": "Bases de données", "items": ["SQL Server"]},
+    ]
+
+    display = build_display_skills(raw, source_text="")
+    flattened = [(cat["category"], item) for cat in display for item in cat["items"]]
+
+    assert sum(1 for _, item in flattened if item == "Docker") == 1
+    assert sum(1 for _, item in flattened if item == "SQL Server") == 1
+    assert any(cat == "Cloud & DevOps" and item == "Docker Compose" for cat, item in flattened)
