@@ -105,3 +105,42 @@ x
         "Bases de données": ["MySQL", "SQL Server", "PostgreSQL"],
         "Systèmes & Environnements": ["Linux RHEL", "Ubuntu", "Windows"],
     }
+
+
+def test_parse_source_skills_classifies_architecture_and_methods_without_autres_dump():
+    from src.skills_intelligence import parse_source_skills_section
+
+    parsed = parse_source_skills_section(
+        """
+COMPÉTENCES
+Architecte logiciel / Direction technique
+➢
+Architecture logicielle : Conception de solution, Urbanisation, Référentiel d’architecture, PaaS, IaaS, CaaS, EDA, EIP, SOA, programmation asynchrone
+➢
+TOGAF, C4, DDD, SAFE
+FORMATIONS
+x
+"""
+    )
+
+    assert "Architecture & Conception" in parsed.skills_by_category
+    assert "Méthodologies" in parsed.skills_by_category
+    assert "SOA" in parsed.skills_by_category["Architecture & Conception"]
+    assert "TOGAF" in parsed.skills_by_category["Méthodologies"]
+    assert "DDD" in parsed.skills_by_category["Méthodologies"]
+
+
+def test_parse_source_skills_classifies_unprefixed_methodology_line():
+    from src.skills_intelligence import parse_source_skills_section
+
+    parsed = parse_source_skills_section(
+        """
+COMPÉTENCES
+TOGAF, C4, DDD, SAFE
+FORMATIONS
+x
+"""
+    )
+
+    assert "Méthodologies" in parsed.skills_by_category
+    assert parsed.skills_by_category["Méthodologies"] == ["TOGAF", "C4", "DDD", "SAFE"]

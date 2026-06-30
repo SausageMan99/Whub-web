@@ -230,6 +230,78 @@ def _category_from_prefixed_item(item: str) -> tuple[str | None, str]:
     return None, item
 
 
+_CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Architecture & Conception",
+        (
+            "architecture", "urbanisation", "référentiel", "referentiel",
+            "soa", "eda", "eip", "paas", "iaas", "caas",
+            "stream-processing", "asynchrone", "conception",
+        ),
+    ),
+    (
+        "Cloud & DevOps",
+        (
+            "aws", "azure", "gcp", "docker", "kubernetes", "openshift",
+            "jenkins", "gitlab", "nexus", "devops", "ci/cd", "cicd",
+        ),
+    ),
+    (
+        "Observabilité",
+        (
+            "dynatrace", "elastic", "logstash", "kibana", "grafana", "graphana",
+            "beats", "apm", "sla", "slo",
+        ),
+    ),
+    (
+        "Sécurité",
+        (
+            "jwt", "oauth", "jaas", "loginmodule", "ldap", "x509", "openssl",
+            "pkcs", "owasp", "authentification", "signature", "non-répudiation",
+            "non repudiation",
+        ),
+    ),
+    (
+        "Bases de données",
+        (
+            "sql", "mysql", "postgres", "oracle", "mongodb", "sybase",
+            "db2", "mariadb", "hibernate",
+        ),
+    ),
+    (
+        "Langages & Frameworks",
+        (
+            "java", "spring", "php", "c#", "node", "typescript",
+            "jni", "jdbc", "groovy", "angular", "html5", "websocket",
+            "react", "vue", "next",
+        ),
+    ),
+    (
+        "Méthodologies",
+        (
+            "togaf", "c4", "ddd", "safe", "scrum", "agile", "roadmap",
+            "audit", "directeur", "direction d'équipe",
+        ),
+    ),
+    (
+        "Systèmes & Environnements",
+        (
+            "linux", "rhel", "aix", "centos", "ubuntu", "windows",
+        ),
+    ),
+)
+
+
+def _category_for_skill_value(value: str) -> str:
+    lower = _fold_label(value)
+    for category, keywords in _CATEGORY_KEYWORDS:
+        for keyword in keywords:
+            folded_keyword = _fold_label(keyword)
+            if folded_keyword in lower:
+                return category
+    return "Outils & Environnements"
+
+
 def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
     """Parse the `COMPÉTENCES` section of a source CV.
 
@@ -243,11 +315,16 @@ def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
 
     for item in items:
         category, rest = _category_from_prefixed_item(item)
-        if not category:
+        if category:
+            for value in _split_skill_values(rest):
+                grouped.setdefault(category, [])
+                if value not in grouped[category]:
+                    grouped[category].append(value)
             continue
-        for value in _split_skill_values(rest):
-            grouped.setdefault(category, [])
-            if value not in grouped[category]:
-                grouped[category].append(value)
+        for value in _split_skill_values(item):
+            target = _category_for_skill_value(value)
+            grouped.setdefault(target, [])
+            if value not in grouped[target]:
+                grouped[target].append(value)
 
     return ParsedSourceSkills(skills_by_category=grouped, languages=languages)
