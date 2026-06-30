@@ -185,3 +185,22 @@ def test_build_display_skills_removes_global_duplicates_across_categories():
     assert sum(1 for _, item in flattened if item == "Docker") == 1
     assert sum(1 for _, item in flattened if item == "SQL Server") == 1
     assert any(cat == "Cloud & DevOps" and item == "Docker Compose" for cat, item in flattened)
+
+
+def test_build_display_skills_reclassifies_autres_and_keeps_ratio_low():
+    from src.skills_intelligence import build_display_skills
+
+    raw = [
+        {
+            "category": "Autres",
+            "items": ["JWT", "OAuth2", "LDAP", "X509", "OWASP", "Dynatrace", "Kibana", "Ubuntu"],
+        }
+    ]
+
+    display = build_display_skills(raw, source_text="")
+    categories = {cat["category"] for cat in display}
+
+    assert "Sécurité" in categories
+    assert "Observabilité" in categories
+    assert "Systèmes & Environnements" in categories
+    assert "Autres" not in categories
