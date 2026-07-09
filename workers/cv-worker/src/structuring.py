@@ -1947,6 +1947,14 @@ _SOURCE_FAITHFUL_SKILL_CATEGORIES = {
     "projets",
     "projets significatifs",
     "certifications",
+    "competences fonctionnelles",
+    "methodologie de travail",
+    "mainframe",
+    "web .net",
+    "testeur fonctionnel",
+    "base de donnees",
+    "competences organisationnelles",
+    "java",
 }
 
 _BUSINESS_COVERAGE_HEADINGS = {

@@ -1,5 +1,6 @@
 from pathlib import Path
 from dataclasses import dataclass
+import re
 import fitz
 from .config import settings
 from .supabase_client import client
@@ -74,9 +75,26 @@ def _normalize_pdf_text_chars(text: str) -> str:
     }))
 
 
+_FOOTER_LINE_RE = re.compile(
+    r"^(?:cv\s+cr[ée]é\s+sur|\d+\s*/\s*\d+|\d+\s*/\s*\d+\s+cv\s+cr[ée]é\s+sur)$",
+    re.IGNORECASE,
+)
+
+
+def _strip_pdf_footer_lines(text: str) -> str:
+    kept: list[str] = []
+    for raw in str(text or "").splitlines():
+        line = " ".join(raw.split())
+        if line and _FOOTER_LINE_RE.match(line):
+            continue
+        kept.append(raw)
+    return "\n".join(kept).strip()
+
+
 def extract_pdf_text(path: Path) -> str:
     doc = fitz.open(str(path))
     text = _normalize_pdf_text_chars("\n".join(_page_text_visual_order(page) for page in doc))
+    text = _strip_pdf_footer_lines(text)
     if len(text.strip()) < 400:
         raise ExtractionError("Texte source trop court: PDF probablement scanné ou illisible")
     return text

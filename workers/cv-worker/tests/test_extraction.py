@@ -6,7 +6,14 @@ from unittest.mock import MagicMock, patch
 import fitz
 import pytest
 
-from src.extraction import download_source, extract_pdf_text, ExtractionError, _page_text_visual_order, _normalize_pdf_text_chars
+from src.extraction import (
+    download_source,
+    extract_pdf_text,
+    ExtractionError,
+    _page_text_visual_order,
+    _normalize_pdf_text_chars,
+    _strip_pdf_footer_lines,
+)
 
 
 class TestDownloadSource:
@@ -78,6 +85,13 @@ class TestExtractPdfText:
 
     def test_normalize_pdf_text_chars_replaces_superscripts(self):
         assert _normalize_pdf_text_chars("1ʳᵉ & 2ᵉ année") == "1re & 2e année"
+
+    def test_strip_pdf_footer_lines_removes_hellowork_footer_lines(self):
+        text = "COBOL\n3 / 6\nCV créé sur\n4 / 6 CV créé sur\nJava"
+
+        result = _strip_pdf_footer_lines(text)
+
+        assert result == "COBOL\nJava"
 
     def test_extract_pdf_text_returns_text(self, tmp_path: Path):
         pdf_path = tmp_path / "test.pdf"

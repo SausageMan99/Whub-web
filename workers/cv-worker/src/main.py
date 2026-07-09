@@ -43,9 +43,21 @@ from .content_preserving_pipeline import render_best_content_preserving_variant
 from .section_classifier import classify_sections
 from .source_coverage import compare_required_block_coverage
 from .block_sanitizer import sanitize_document
+from .visual_skills_extraction import apply_visual_skills_override, extract_visual_skills
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
+
+VISUAL_SKILLS_MIN_CONFIDENCE = 0.75
+
+
+def _apply_source_wins_post_structuring(structured: dict[str, Any], source: Path) -> dict[str, Any]:
+    visual_skills = extract_visual_skills(source)
+    return apply_visual_skills_override(
+        structured,
+        visual_skills,
+        min_confidence=VISUAL_SKILLS_MIN_CONFIDENCE,
+    )
 
 
 def _text_blocks_to_source_document(text: str, *, default_type: BlockType = "other") -> SourceDocument:
@@ -683,6 +695,7 @@ def process_job(job: dict) -> None:
             structured = build_whub_json(
                 sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name
             )
+            structured = _apply_source_wins_post_structuring(structured, source)
         enforce_client_first_name(structured, effective_first_name)
         # Soft fidelity warnings: extract and remove from data so they don't pollute the render
         fidelity_soft_warnings = structured.pop("_fidelity_soft_warnings", None)
