@@ -272,31 +272,34 @@ def prepare_readable_skill_categories(
             prepared.append({'category': category, 'items': []})
             continue
 
-        chunks: list[list[str]] = []
-        current: list[str] = []
-        current_chars = 0
-        for item in expanded_items:
-            item_chars = len(item)
-            would_exceed_items = len(current) >= max_items_per_block
-            would_exceed_chars = bool(current) and current_chars + item_chars > max_block_chars
-            if would_exceed_items or would_exceed_chars:
-                chunks.append(current)
-                current = []
-                current_chars = 0
-            current.append(item)
-            current_chars += item_chars
-        if current:
-            chunks.append(current)
-
-        for idx, chunk in enumerate(chunks):
-            label = category if idx == 0 else f"{category} (suite)"
-            prepared.append({'category': label, 'items': chunk})
+        chunk: list[str] = []
+        chunk_chars = 0
+        chunk_index = 0
+        for index, item in enumerate(expanded_items):
+            projected_chars = chunk_chars + len(item) + (2 if chunk else 0)
+            remaining_after_current = len(expanded_items) - index - 1
+            should_split_for_count = len(chunk) >= max_items_per_block and remaining_after_current > 0
+            if chunk and (should_split_for_count or projected_chars > max_block_chars):
+                prepared.append({
+                    'category': category if chunk_index == 0 else f'{category} (suite)',
+                    'items': chunk,
+                })
+                chunk_index += 1
+                chunk = []
+                chunk_chars = 0
+            chunk.append(item)
+            chunk_chars += len(item) + (2 if len(chunk) > 1 else 0)
+        if chunk:
+            prepared.append({
+                'category': category if chunk_index == 0 else f'{category} (suite)',
+                'items': chunk,
+            })
     return prepared
 
 
 class Renderer:
     def __init__(self, out: str, layout_options: dict | None = None):
-        self.c = canvas.Canvas(out, pagesize=A4)
+        self.c = canvas.Canvas(out, pagesize=A4, initialFontName='Poppins', initialFontSize=8)
         self.page = 0
         self.layout_options = layout_options or {}
         self.anti_crowding = bool(self.layout_options.get('anti_crowding'))
@@ -331,6 +334,10 @@ class Renderer:
         self.side_b = ParagraphStyle('side_b', parent=self.side, fontName='Poppins-Bold')
         self.skill = ParagraphStyle('skill', parent=self.body, fontName='Poppins-Light', fontSize=8.0, leading=9.55, spaceAfter=0.1)
         self.skill_head = ParagraphStyle('skill_head', parent=self.body, fontName='Poppins-Bold', fontSize=8.35, leading=10.0, spaceBefore=1.2, spaceAfter=0.2)
+        # Client-facing skills are a scan map, not an ATS bullet inventory.
+        # Render one compact line per category to avoid multi-page skills dumps
+        # while preserving every item in the structured JSON.
+        self.skill_inline = ParagraphStyle('skill_inline', parent=self.body, fontName='Poppins-Light', fontSize=7.85, leading=9.15, spaceAfter=1.5)
         self.desc = ParagraphStyle('desc', parent=self.body, fontName='Poppins-Light', fontSize=7.85, leading=9.55, spaceAfter=1.0)
 
     def image_top(self, path: Path, x: float, y: float, w: float, h: float) -> None:
@@ -371,6 +378,12 @@ class Renderer:
 
     def para_at(self, s, x, y, w, style):
         p = Paragraph(html(s), style)
+        _, h = p.wrap(w, 10000)
+        p.drawOn(self.c, x, H - y - h)
+        return y + h + style.spaceAfter
+
+    def para_html_at(self, html_text, x, y, w, style):
+        p = Paragraph(html_text, style)
         _, h = p.wrap(w, 10000)
         p.drawOn(self.c, x, H - y - h)
         return y + h + style.spaceAfter
@@ -499,10 +512,16 @@ class Renderer:
             self.p(content)
 
     def skill_block_height(self, cat, width):
-        height = self.measure_text(cat.get('category', ''), self.skill_head, width)
-        for item in cat.get('items', []):
-            height += self.measure_text('• ' + str(item), self.skill, width)
-        return height + 8
+        return self.measurep(self.skill_line_html(cat), self.skill_inline, width) + 4
+
+    def skill_line_html(self, cat):
+        category = str(cat.get('category', '') or '').strip()
+        items = [str(item).strip() for item in cat.get('items', []) if str(item).strip()]
+        if category and items:
+            return f"<font name=\"Poppins-Bold\">{html(category)}</font><br/>{html(' · '.join(items))}"
+        if category:
+            return f"<font name=\"Poppins-Bold\">{html(category)}</font>"
+        return html(' · '.join(items))
 
     def split_skill_columns_for_page(self, skills, start_y, bottom_y):
         widths = [156, 152]
@@ -518,20 +537,19 @@ class Renderer:
         measured = []
         for index, cat in enumerate(skills):
             measured.append((max(self.skill_block_height(cat, width) for width in widths), index, cat))
-        ordered_skills = [cat for _, _, cat in sorted(measured, key=lambda item: (-item[0], item[1]))]
+        total_measured_height = sum(height for height, _, _ in measured)
+        target_first_column_height = min(capacity, total_measured_height / 2.0)
 
-        for raw_cat in ordered_skills:
+        for _, _, raw_cat in measured:
             cat = dict(raw_cat)
             full_heights = [self.skill_block_height(cat, width) for width in widths]
+            preferred = 0 if not fitting[0] or used_heights[0] + min(full_heights) <= target_first_column_height else 1
             fit_candidates = [
-                idx for idx, full_h in enumerate(full_heights)
-                if used_heights[idx] + full_h <= capacity
+                idx for idx in [preferred, 1 - preferred]
+                if used_heights[idx] + full_heights[idx] <= capacity
             ]
             if fit_candidates:
-                col_idx = min(
-                    fit_candidates,
-                    key=lambda idx: (max(used_heights[idx] + full_heights[idx], used_heights[1 - idx]), used_heights[idx]),
-                )
+                col_idx = fit_candidates[0]
                 fitting[col_idx].append(cat)
                 used_heights[col_idx] += full_heights[col_idx]
                 continue
@@ -571,10 +589,8 @@ class Renderer:
 
     def draw_skill_column(self, cats, x, y, w):
         for cat in cats:
-            y = self.para_at(cat.get('category', ''), x, y, w, self.skill_head)
-            for item in cat.get('items', []):
-                y = self.para_at('• ' + str(item), x, y, w, self.skill)
-            y += 8
+            y = self.para_html_at(self.skill_line_html(cat), x, y, w, self.skill_inline)
+            y += 3
         return y
 
     def render_skill_overflow(self, overflow):
@@ -584,11 +600,8 @@ class Renderer:
         y = self.section_at('Compétences techniques (suite)', self.left, self.y, self.fw, 13.2)
         self.flow(self.left, y + 2, self.fw)
         for cat in overflow:
-            items = cat.get('items', [])
-            if items:
-                self.render_bullet_list(cat.get('category', ''), items)
-            else:
-                self.subhead(cat.get('category', ''))
+            self.drawp(self.skill_line_html(cat), self.skill_inline)
+            self.y += 3
 
     def render(self, data):
         self.current_name = data['name']
@@ -686,6 +699,12 @@ class Renderer:
         overflow_page_lacks_experience_room = bool(skill_overflow) and exp_y > float(
             self.layout_options.get('max_skill_overflow_experience_start_y', 450)
         )
+        exps = data.get('experiences', [])
+        first_experience_opener_height = self.estimate_experience_opener_height(exps[0]) if exps else 0
+        experience_heading_height = self.measure_text('Expériences professionnelles', self.sub) + 31
+        first_experience_would_orphan = bool(exps) and (
+            exp_y + experience_heading_height + first_experience_opener_height > self.content_bottom
+        )
         if self.force_experiences_new_page and self.page == 1:
             self.new_page(False, self.current_name)
             exp_x, exp_w, exp_y = self.left, self.right - self.left, self.y
@@ -696,13 +715,12 @@ class Renderer:
             # less sparse than a false half-page split.
             self.new_page(False, self.current_name)
             exp_x, exp_w, exp_y = self.left, self.right - self.left, self.y
-        elif exp_y + 45 > self.content_bottom:
+        elif exp_y + 45 > self.content_bottom or first_experience_would_orphan:
             self.new_page(False, self.current_name)
             exp_x, exp_w, exp_y = self.left, self.right - self.left, self.y
         self.section_at('Expériences professionnelles', exp_x, exp_y, exp_w, 13.6)
         self.flow(exp_x, exp_y + 31, exp_w)
 
-        exps = data.get('experiences', [])
         if exps:
             for idx, exp in enumerate(exps):
                 if idx == 1 and self.page == 1 and not self._current_page_is_sparse():

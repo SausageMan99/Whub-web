@@ -250,9 +250,16 @@ def _split_skill_values(value: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 _PREFIX_CATEGORY_MAP: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^web\b|^front(?:end)?\b", re.IGNORECASE), "Frontend"),
+    (re.compile(r"^javascript\b", re.IGNORECASE), "Frontend"),
+    (re.compile(r"^php\b|^back(?:end)?\b", re.IGNORECASE), "Backend"),
+    (re.compile(r"^interop[ée]rabilit[ée]\b", re.IGNORECASE), "Architecture & Conception"),
+    (re.compile(r"^industrialisation\b|^versioning\b", re.IGNORECASE), "Cloud & DevOps"),
+    (re.compile(r"^serveurs?\s+web\b", re.IGNORECASE), "Outils & Environnements"),
+    (re.compile(r"^outils?\b", re.IGNORECASE), "Outils & Environnements"),
     (re.compile(r"^(?:cloud|devops)\b", re.IGNORECASE), "Cloud & DevOps"),
     (re.compile(r"^s[ée]curit[ée]\b", re.IGNORECASE), "Sécurité"),
-    (re.compile(r"^(?:data\s*bases?|bases?\s+de\s+donn[ée]es?)\b", re.IGNORECASE), "Bases de données"),
+    (re.compile(r"^(?:data\s*stores?|data\s*bases?|bases?\s+de\s+donn[ée]es?)\b", re.IGNORECASE), "Bases de données"),
     (re.compile(r"^syst[èe]mes?\b", re.IGNORECASE), "Systèmes & Environnements"),
     (re.compile(r"^observabilit[ée]\b|^apm\b", re.IGNORECASE), "Observabilité"),
     (re.compile(r"^architecture\s+logicielle\b|^architecture\b", re.IGNORECASE), "Architecture & Conception"),
@@ -269,6 +276,21 @@ def _category_from_prefixed_item(item: str) -> tuple[str | None, str]:
         if pattern.search(prefix):
             return category, rest
     return None, item
+
+
+_KNOWN_INLINE_PREFIX_RE = re.compile(
+    r"(?=\b(?:web|front(?:end)?|javascript|php|back(?:end)?|interop[ée]rabilit[ée]|industrialisation|versioning|serveurs?\s+web|outils?|data\s*stores?|data\s*bases?|bases?\s+de\s+donn[ée]es?|syst[èe]mes?)\s*[:：])",
+    re.IGNORECASE,
+)
+
+
+def _split_embedded_prefixed_items(item: str) -> list[str]:
+    """Split leaked labels such as ``Bootstrap JavaScript: Node.js``."""
+    text = re.sub(r"\s+", " ", item or "").strip()
+    if not text:
+        return []
+    pieces = [piece.strip(" ,;") for piece in _KNOWN_INLINE_PREFIX_RE.split(text) if piece.strip(" ,;")]
+    return pieces or [text]
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +311,8 @@ _CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "aws", "azure", "gcp", "docker", "kubernetes", "openshift",
             "jenkins", "gitlab", "nexus", "devops", "ci/cd", "cicd",
+            "terraform", "svn", "github", "bitbucket", "webpack", "gulp",
+            "bower", "lambda", "apigateway", "api gateway", "cloudfront",
         ),
     ),
     (
@@ -310,7 +334,7 @@ _CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         "Bases de données",
         (
             "sql", "mysql", "postgres", "oracle", "mongodb", "sybase",
-            "db2", "mariadb", "hibernate",
+            "db2", "mariadb", "hibernate", "dynamodb", "redis",
         ),
     ),
     (
@@ -318,20 +342,25 @@ _CATEGORY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
         (
             "java", "spring", "php", "c#", "node", "typescript",
             "jni", "jdbc", "groovy", "angular", "html5", "websocket",
-            "react", "vue", "next",
+            "react", "vue", "next", "symfony", "drupal", "ezpublish",
+            "zend", "doctrine", "sass", "less", "bootstrap", "jquery",
+            "redux", "requirejs", "javascript", "es6", "css3",
         ),
     ),
     (
         "Méthodologies",
         (
             "togaf", "c4", "ddd", "safe", "scrum", "agile", "roadmap",
-            "audit", "directeur", "direction d'équipe",
+            "audit", "directeur", "direction d'équipe", "jira", "confluence",
+            "redmine", "mantis", "code review",
         ),
     ),
     (
         "Systèmes & Environnements",
         (
             "linux", "rhel", "aix", "centos", "ubuntu", "windows",
+            "apache", "nginx", "phpstorm", "sublime", "postman",
+            "assembla", "akamai", "algolia", "auth0", "cognito",
         ),
     ),
 )
@@ -448,18 +477,19 @@ def parse_source_skills_section(source_text: str) -> ParsedSourceSkills:
     grouped: dict[str, list[str]] = {}
 
     for item in items:
-        category, rest = _category_from_prefixed_item(item)
-        if category:
-            for value in _split_skill_values(rest):
-                grouped.setdefault(category, [])
-                if value not in grouped[category]:
-                    grouped[category].append(value)
-            continue
-        for value in _split_skill_values(item):
-            target = _category_for_skill_value(value)
-            grouped.setdefault(target, [])
-            if value not in grouped[target]:
-                grouped[target].append(value)
+        for piece in _split_embedded_prefixed_items(item):
+            category, rest = _category_from_prefixed_item(piece)
+            if category:
+                for value in _split_skill_values(rest):
+                    grouped.setdefault(category, [])
+                    if value not in grouped[category]:
+                        grouped[category].append(value)
+                continue
+            for value in _split_skill_values(piece):
+                target = _category_for_skill_value(value) or "Outils & Environnements"
+                grouped.setdefault(target, [])
+                if value not in grouped[target]:
+                    grouped[target].append(value)
 
     return ParsedSourceSkills(skills_by_category=grouped, languages=languages)
 
@@ -544,19 +574,27 @@ def build_display_skills(
             continue
         category = _normalise_category(str(skill.get("category") or ""))
         for item in skill.get("items") or []:
-            label = _normalise_skill_label(str(item))
-            if not label:
-                continue
-            if category == "Autres":
-                target = _category_for_skill_value(label)
+            for piece in _split_embedded_prefixed_items(str(item)):
+                label = _normalise_skill_label(piece)
+                if not label:
+                    continue
+                prefixed_category, rest = _category_from_prefixed_item(label)
+                if prefixed_category:
+                    labels = _split_skill_values(rest)
+                    target = prefixed_category
+                else:
+                    labels = [label]
+                    if category == "Autres":
+                        target = _category_for_skill_value(label)
+                        if not target:
+                            target = "Autres"
+                    else:
+                        target = category
                 if not target:
-                    target = "Autres"
-            else:
-                target = category
-            if not target:
-                target = "Outils & Environnements"
-            priority = _CATEGORY_PRIORITY.get(target, 50)
-            candidates.append((priority, target, label))
+                    target = "Outils & Environnements"
+                priority = _CATEGORY_PRIORITY.get(target, 50)
+                for expanded_label in labels:
+                    candidates.append((priority, target, expanded_label))
 
     for priority, category, label in candidates:
         key = normalise_skill_key(label)
@@ -695,6 +733,8 @@ def evaluate_skills_display_quality(skills: list[dict]) -> list[dict[str, object
         or (total_items and autres_items / total_items > _AUTRES_RATIO_THRESHOLD)
     ):
         issues.append({"code": "too_many_autres_items", "count": autres_items, "total": total_items})
+    if total_items and autres_items / total_items > 0.25:
+        issues.append({"code": "autres_dominates_skills", "count": autres_items, "total": total_items})
     if duplicate_count:
         issues.append({"code": "duplicate_skill_items", "count": duplicate_count})
     return issues

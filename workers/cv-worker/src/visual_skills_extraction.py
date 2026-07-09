@@ -41,6 +41,25 @@ _KNOWN_SKILL_HEADINGS = {
     "base de donnees": "Base De Données",
     "competences organisationnelles": "Compétences Organisationnelles",
     "java": "Java",
+    # Omar-style clean source category labels.
+    "plateformes": "Technologies Plateformes",
+    "technologies plateformes": "Technologies Plateformes",
+    "front-end": "Front-end",
+    "frontend": "Front-end",
+    "data": "Data",
+    "ops": "Ops",
+    "methodologies": "Méthodologies",
+    "reseau & securite": "Réseau & Sécurité",
+    "qualite & analyse": "Qualité & Analyse",
+    "messaging": "Messaging",
+    "divers": "Divers",
+}
+
+_SKILL_SECTION_ANCHORS = {
+    "competences",
+    "domaines de competences",
+    "synthese des competences",
+    "technologies",
 }
 
 _STOP_HEADINGS = {
@@ -50,6 +69,7 @@ _STOP_HEADINGS = {
     "diplomes et formations",
     "langues",
     "certifications",
+    "titres / certifications",
     "experiences professionnelles",
     "experience professionnelle",
 }
@@ -125,13 +145,52 @@ def _split_block_lines(text: str) -> list[str]:
     return lines
 
 
-def _append_item(grouped: dict[str, list[str]], category: str, item: str) -> None:
+def _append_atomic_item(grouped: dict[str, list[str]], category: str, item: str) -> None:
     cleaned = _normalize_ws(item).strip(" ,;:•")
     if not cleaned or _is_footer_text(cleaned) or _looks_like_experience_sentence(cleaned):
         return
     grouped.setdefault(category, [])
     if cleaned not in grouped[category]:
         grouped[category].append(cleaned)
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in str(text or ""):
+        if ch == "(":
+            depth += 1
+        elif ch == ")" and depth:
+            depth -= 1
+        if ch == "," and depth == 0:
+            part = _normalize_ws("".join(buf)).strip(" ,;:•")
+            if part:
+                parts.append(part)
+            buf = []
+            continue
+        buf.append(ch)
+    tail = _normalize_ws("".join(buf)).strip(" ,;:•")
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _split_skill_items(line: str) -> list[str]:
+    cleaned = _normalize_ws(line).strip(" ,;:•")
+    if not cleaned:
+        return []
+    if "," not in cleaned:
+        return [cleaned]
+    parts = _split_top_level_commas(cleaned)
+    if len(parts) <= 1:
+        return [cleaned]
+    return parts
+
+
+def _append_item(grouped: dict[str, list[str]], category: str, item: str) -> None:
+    for part in _split_skill_items(item):
+        _append_atomic_item(grouped, category, part)
 
 
 def _score_confidence(skills: list[dict], start_seen: bool, warnings: list[str]) -> float:
@@ -180,7 +239,7 @@ def extract_visual_skills(pdf_path: Path) -> VisualSkillsResult:
         for line in _split_block_lines(block.text):
             folded = _fold(line)
             if not start_seen:
-                if folded == "competences" or folded.startswith("competences "):
+                if folded in _SKILL_SECTION_ANCHORS or folded.startswith("competences "):
                     start_seen = True
                     inline_heading = _handle_competences_line(line)
                     if inline_heading:

@@ -312,6 +312,20 @@ def test_evaluate_skills_display_quality_flags_too_many_total_items():
     assert "too_many_skill_items" in codes
 
 
+def test_evaluate_skills_display_quality_flags_autres_dominance_ratio():
+    from src.skills_intelligence import evaluate_skills_display_quality
+
+    skills = [
+        {"category": "Backend", "items": ["C#", "ASP.NET"]},
+        {"category": "Autres", "items": [f"item-{i}" for i in range(10)]},
+    ]
+
+    issues = evaluate_skills_display_quality(skills)
+    codes = {issue["code"] for issue in issues}
+
+    assert "autres_dominates_skills" in codes
+
+
 def test_source_gate_attaches_skill_quality_warnings_for_bad_display():
     from src.structuring import _source_gate_structured_data
 
