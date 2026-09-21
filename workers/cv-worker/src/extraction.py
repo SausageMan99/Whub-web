@@ -91,9 +91,26 @@ def _strip_pdf_footer_lines(text: str) -> str:
     return "\n".join(kept).strip()
 
 
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _strip_control_chars(text: str) -> str:
+    """Replace NUL/C0/DEL control characters with spaces.
+
+    Some source PDFs (broken ToUnicode maps) extract with NUL bytes mixed
+    into the text (incident "Benjamin", 2026-09-08: 638 NUL bytes). Those
+    bytes later crash ``subprocess`` when the LLM prompt is passed through
+    argv (``ValueError: embedded null byte``), before any model call happens.
+    ``\\n`` and ``\\t`` are preserved; other control characters become spaces
+    so neighbouring words are not glued together.
+    """
+    return _CONTROL_CHAR_RE.sub(" ", text or "")
+
+
 def extract_pdf_text(path: Path) -> str:
     doc = fitz.open(str(path))
     text = _normalize_pdf_text_chars("\n".join(_page_text_visual_order(page) for page in doc))
+    text = _strip_control_chars(text)
     text = _strip_pdf_footer_lines(text)
     if len(text.strip()) < 400:
         raise ExtractionError("Texte source trop court: PDF probablement scanné ou illisible")

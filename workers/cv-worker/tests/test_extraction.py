@@ -1,4 +1,5 @@
 import json
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -12,6 +13,7 @@ from src.extraction import (
     ExtractionError,
     _page_text_visual_order,
     _normalize_pdf_text_chars,
+    _strip_control_chars,
     _strip_pdf_footer_lines,
 )
 
@@ -126,3 +128,43 @@ class TestExtractPdfText:
 
         with pytest.raises(ExtractionError, match="trop court"):
             extract_pdf_text(pdf_path)
+
+
+class TestControlCharSanitization:
+    def test_strip_control_chars_replaces_nul_with_space(self):
+        assert _strip_control_chars("a\x00b") == "a b"
+
+    def test_strip_control_chars_keeps_newlines_and_tabs(self):
+        assert _strip_control_chars("a\tb\nc") == "a\tb\nc"
+
+    def test_extract_pdf_text_strips_control_chars_from_pages(self, tmp_path: Path, monkeypatch):
+        pdf_path = tmp_path / "ctrl.pdf"
+        doc = fitz.open()
+        page = doc.new_page(width=595, height=842)
+        page.insert_text((72, 72), "Texte de secours.", fontsize=12)
+        doc.save(pdf_path)
+        doc.close()
+
+        noisy = ("Ligne du CV avec des données\x00 et \x0ccontrôles " * 30).strip()
+        monkeypatch.setattr("src.extraction._page_text_visual_order", lambda page: noisy)
+
+        result = extract_pdf_text(pdf_path)
+
+        assert "\x00" not in result
+        assert "\x0c" not in result
+        assert "données" in result
+
+    def test_benjamin_fixture_extraction_contains_no_control_chars(self):
+        fixture = (
+            Path(__file__).resolve().parents[3]
+            / "cv_test_bank"
+            / "Benjamin_control_chars"
+            / "input.pdf"
+        )
+        if not fixture.exists():
+            pytest.skip("Benjamin fixture PDF not available")
+
+        text = extract_pdf_text(fixture)
+
+        assert len(text.strip()) >= 400
+        assert not re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", text)

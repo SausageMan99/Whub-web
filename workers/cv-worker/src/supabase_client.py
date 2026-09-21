@@ -198,12 +198,28 @@ class _QueryBuilder:
         sql, params = self._compile_and_params()
         conn = self._conn_provider()
         log.debug("SQL: %s  params=%s", sql[:200], params)
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, params)
-            conn.commit()
-            rows = cur.fetchall()
-            data = [dict(r) for r in rows] if rows else []
-            return SimpleNamespace(data=data)
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                conn.commit()
+                rows = cur.fetchall()
+        except Exception:
+            # A failed statement aborts the connection's transaction: without
+            # a rollback every later query raises InFailedSqlTransaction
+            # (incident 2026-09-21 18:12 UTC — a NUL byte in the draft JSON
+            # made the failure-handling writes themselves crash and the
+            # worker process died). Roll back so the connection stays usable;
+            # drop it if even that fails (the conn property reconnects lazily).
+            try:
+                conn.rollback()
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            raise
+        data = [dict(r) for r in rows] if rows else []
+        return SimpleNamespace(data=data)
 
 
 class _RpcCall:
@@ -231,12 +247,24 @@ class _RpcCall:
         log.debug("RPC: %s  params=%s", sql[:200], params)
 
         conn = self._conn_provider()
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, values)
-            conn.commit()
-            rows = cur.fetchall()
-            data = [dict(r) for r in rows] if rows else []
-            return SimpleNamespace(data=data)
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, values)
+                conn.commit()
+                rows = cur.fetchall()
+        except Exception:
+            # Same recovery contract as _QueryBuilder.execute: never leave
+            # the shared connection inside an aborted transaction.
+            try:
+                conn.rollback()
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            raise
+        data = [dict(r) for r in rows] if rows else []
+        return SimpleNamespace(data=data)
 
 
 # ─────────────────────────────────────────────────────────────────────

@@ -19,6 +19,7 @@ from .structuring import (
     normalize_candidate_first_name,
     infer_forbidden_candidate_identity_terms,
     classify_structuring_error,
+    RETRYABLE_STRUCTURING_CATEGORIES,
     StructuringError,
     ContactLeakDiagnostic,
     _infer_first_name_from_source,
@@ -277,21 +278,34 @@ def poll_with_backoff(
     base_delay: float | None = None,
     breaker: CircuitBreaker | None = None,
     max_delay: float = 300,
+    reap_func: Callable[[], int] | None = None,
+    reap_interval_seconds: float | None = None,
 ) -> None:
     """Poll for CV jobs with exponential backoff and circuit-breaker protection.
 
     Consecutive errors while claiming work are backed off exponentially from
     ``base_delay`` and capped at ``max_delay``. After 10 consecutive claim
     failures by default, the circuit opens and skips claim attempts until the
-    recovery timeout elapses.
+    recovery timeout elapses. When ``reap_func`` is provided, it is invoked
+    every ``reap_interval_seconds`` to recover stale ``processing`` rows.
     """
     claim = claim_next_job if claim_func is None else claim_func
     process = process_job if process_func is None else process_func
     poll_delay = settings.poll_interval_seconds if base_delay is None else base_delay
     circuit_breaker = breaker or CircuitBreaker(recovery_timeout=max_delay)
+    reap_interval = (
+        settings.reap_interval_seconds if reap_interval_seconds is None else reap_interval_seconds
+    )
+    last_reap = time.monotonic()
     error_attempt = 0
 
     while True:
+        if reap_func is not None and (time.monotonic() - last_reap) >= reap_interval:
+            try:
+                reap_func()
+            except Exception:
+                log.exception("stale reaper run failed")
+            last_reap = time.monotonic()
         if not circuit_breaker.allow_request():
             log.warning("poll circuit breaker open; sleeping %.0fs", circuit_breaker.recovery_timeout)
             sleep_func(circuit_breaker.recovery_timeout)
@@ -322,20 +336,129 @@ def poll_with_backoff(
         except Exception as exc:
             classified = classify_structuring_error(exc)
             log.error("job failed request_id=%s category=%s", job.get("id"), classified["category"])
-            fail_job(job, exc, "failed")
+            try:
+                handle_job_failure(job, exc)
+            except Exception:
+                log.exception("job failure handling crashed request_id=%s", job.get("id"))
 
 def claim_next_job() -> dict | None:
     res = client.rpc("claim_next_cv_request", {"worker_name": settings.worker_name}).execute()
     return res.data[0] if res.data else None
 
+
+def _coerce_utc(value: Any) -> datetime | None:
+    """Return an aware UTC datetime for psycopg2 / REST timestamp values."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return None
+
+
+def reap_stale_processing_jobs(
+    stale_minutes: int | None = None,
+    now: datetime | None = None,
+) -> int:
+    """Recover jobs stuck in ``processing`` after a crash or a lost worker.
+
+    The claim RPC only picks up ``submitted``/``revision_requested`` rows, so
+    a worker that dies mid-job — or a request deleted while in flight — leaves
+    its row in ``processing`` forever: invisible to the queue and blocking the
+    portal (incident "Quincy", stuck since 2026-07-23). Rows whose lock is
+    older than ``stale_lock_minutes`` are requeued while retry budget remains,
+    and failed honestly once exhausted. Runs on startup and periodically.
+    """
+    stale_after = settings.stale_lock_minutes if stale_minutes is None else stale_minutes
+    current = now or datetime.now(timezone.utc)
+    try:
+        res = (
+            client.table("cv_requests")
+            .select("id,worker_attempts,worker_locked_at,updated_at,started_at")
+            .eq("status", "processing")
+            .execute()
+        )
+    except Exception:
+        log.exception("stale reaper: processing scan failed")
+        return 0
+    reaped = 0
+    for row in res.data or []:
+        locked = (
+            _coerce_utc(row.get("worker_locked_at"))
+            or _coerce_utc(row.get("updated_at"))
+            or _coerce_utc(row.get("started_at"))
+        )
+        if locked is None:
+            continue
+        age_minutes = (current - locked).total_seconds() / 60.0
+        if age_minutes < stale_after:
+            continue
+        request_id = str(row.get("id") or "")
+        attempts = int(row.get("worker_attempts") or 0)
+        requeue = attempts < settings.max_attempts
+        try:
+            client.table("cv_requests").update({
+                "status": "submitted" if requeue else "failed",
+                "worker_locked_at": None,
+                "worker_locked_by": None,
+                "last_error": (
+                    f"Reprise automatique: verrou de traitement expiré (>{stale_after:g} min). "
+                    + ("Nouvelle tentative planifiée." if requeue else "Tentatives épuisées.")
+                ),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", request_id).execute()
+        except Exception:
+            log.exception("stale reaper: repair failed request_id=%s", request_id)
+            continue
+        try:
+            emit_event(
+                request_id,
+                "job_requeued_after_stale_lock" if requeue else "job_failed_after_stale_lock",
+                {"attempts": attempts, "age_minutes": round(age_minutes, 1)},
+            )
+        except Exception:
+            log.exception("stale reaper: event failed request_id=%s", request_id)
+        reaped += 1
+        log.warning(
+            "stale reaper: request_id=%s attempts=%s age=%.0fmin -> %s",
+            request_id,
+            attempts,
+            age_minutes,
+            "submitted" if requeue else "failed",
+        )
+    return reaped
+
+
 def fail_job(job: dict, error: str | Exception, status: str = "failed") -> None:
-    classified = classify_structuring_error(error)
+    """Persist a terminal failure state for ``job``.
+
+    Must never raise: this is the last stop of the failure path. A raising
+    finalization (e.g. FK violation when the request row was deleted while the
+    job was in flight) kills the whole worker process — systemd then restarts
+    it mid-queue and in-flight state is lost (incident 2026-09-21 14:42 UTC).
+    """
+    request_id = str(job.get("id") or "")
+    try:
+        classified = classify_structuring_error(error)
+    except Exception:  # pragma: no cover - defensive fallback
+        log.exception("fail_job: classification failed request_id=%s", request_id)
+        classified = {
+            "category": "transient_model_failure",
+            "message": "Échec du traitement de la demande.",
+        }
     safe_error = classified["message"][:500]
-    client.table("cv_requests").update({
-        "status": status,
-        "last_error": safe_error,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", job["id"]).execute()
+    try:
+        client.table("cv_requests").update({
+            "status": status,
+            "last_error": safe_error,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", request_id).execute()
+    except Exception:
+        log.exception("fail_job: state update failed request_id=%s", request_id)
+
     event_payload: dict[str, Any] = {"error": safe_error, "error_category": classified["category"]}
     if classified["category"] == "contact_leak":
         diagnostic = getattr(error, "contact_diagnostic", None)
@@ -353,7 +476,62 @@ def fail_job(job: dict, error: str | Exception, status: str = "failed") -> None:
     if hard_match and soft_match:
         event_payload["fidelity_hard_count"] = int(hard_match.group(1))
         event_payload["fidelity_soft_count"] = int(soft_match.group(1))
-    emit_event(job["id"], status, event_payload)
+    try:
+        emit_event(request_id, status, event_payload)
+    except Exception:
+        log.exception("fail_job: event emit failed request_id=%s", request_id)
+
+
+def handle_job_failure(job: dict, exc: Exception | str) -> None:
+    """Retry transient model failures a bounded number of times, then fail.
+
+    The claim RPC only picks up ``submitted``/``revision_requested`` rows and
+    stops claiming once ``worker_attempts >= settings.max_attempts``; moving a
+    failed-once job back to ``submitted`` below is what schedules its retry.
+    Deterministic failures (fidelity, contact, sanitization) go straight to
+    ``fail_job``.
+    """
+    request_id = str(job.get("id") or "")
+    classified = classify_structuring_error(exc)
+    category = classified["category"]
+    attempts = int(job.get("worker_attempts") or 0)
+    if category in RETRYABLE_STRUCTURING_CATEGORIES and attempts < settings.max_attempts:
+        try:
+            client.table("cv_requests").update({
+                "status": "submitted",
+                "worker_locked_at": None,
+                "worker_locked_by": None,
+                "last_error": (
+                    f"{classified['message']} — tentative {attempts}/{settings.max_attempts}"
+                    " échouée, nouvelle tentative planifiée."
+                ),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", request_id).execute()
+        except Exception:
+            log.exception("retry scheduling failed request_id=%s; failing instead", request_id)
+            fail_job(job, exc, "failed")
+            return
+        try:
+            emit_event(
+                request_id,
+                "job_retry_scheduled",
+                {
+                    "category": category,
+                    "attempt": attempts,
+                    "max_attempts": settings.max_attempts,
+                },
+            )
+        except Exception:
+            log.exception("retry event failed request_id=%s", request_id)
+        log.warning(
+            "job retry scheduled request_id=%s category=%s attempt=%s/%s",
+            request_id,
+            category,
+            attempts,
+            settings.max_attempts,
+        )
+        return
+    fail_job(job, exc, "failed")
 
 
 def forbidden_candidate_name_parts(candidate_first_name: str | None, source_text: str | None = None) -> list[str]:
@@ -807,7 +985,10 @@ def main() -> None:
         preflight_report["fonts_source"],
         preflight_report["supabase"],
     )
-    poll_with_backoff()
+    recovered = reap_stale_processing_jobs()
+    if recovered:
+        log.warning("startup stale reaper: %s job(s) recovered", recovered)
+    poll_with_backoff(reap_func=reap_stale_processing_jobs)
 
 if __name__ == "__main__":
     main()

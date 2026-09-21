@@ -301,3 +301,50 @@ class TestContactLeakEventPayload:
         }
         assert "jean.dupont@example.com" not in event_payload.get("contact_categories", "")
         assert "06" not in event_payload.get("contact_paths", "")
+
+
+class TestFailJobResilience:
+    """fail_job must never raise: a raising finalization kills the worker."""
+
+    def test_fail_job_survives_update_failure_and_still_emits_event(self, monkeypatch):
+        class _BoomQuery:
+            def update(self, payload):
+                return self
+
+            def eq(self, column, value):
+                return self
+
+            def execute(self):
+                raise RuntimeError("FK violation: request deleted while in flight")
+
+        class _BoomClient:
+            def table(self, name):
+                return _BoomQuery()
+
+        events = []
+        monkeypatch.setattr(worker_main, "client", _BoomClient())
+        monkeypatch.setattr(
+            worker_main,
+            "emit_event",
+            lambda request_id, status, payload=None: events.append((request_id, status, payload)),
+        )
+
+        worker_main.fail_job({"id": "req-x"}, "Structuration échouée: timeout")
+
+        assert events
+        assert events[0][0] == "req-x"
+        assert events[0][1] == "failed"
+
+    def test_fail_job_survives_event_insert_failure(self, monkeypatch):
+        fake_client = _FakeClient()
+
+        def _boom_event(request_id, status, payload=None):
+            raise RuntimeError("FK violation on cv_request_events insert")
+
+        monkeypatch.setattr(worker_main, "client", fake_client)
+        monkeypatch.setattr(worker_main, "emit_event", _boom_event)
+
+        worker_main.fail_job({"id": "req-y"}, "Structuration échouée")
+
+        assert fake_client.query.payload is not None
+        assert fake_client.query.payload["status"] == "failed"

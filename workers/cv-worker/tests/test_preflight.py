@@ -258,6 +258,12 @@ def test_main_runs_preflight_before_polling(monkeypatch):
         },
     )
 
+    monkeypatch.setattr(
+        worker_main,
+        "reap_stale_processing_jobs",
+        lambda: calls.append("reap") or 0,
+    )
+
     def stop_after_first_poll():
         calls.append("claim")
         raise KeyboardInterrupt
@@ -267,4 +273,4 @@ def test_main_runs_preflight_before_polling(monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         worker_main.main()
 
-    assert calls == ["preflight", "claim"]
+    assert calls == ["preflight", "reap", "claim"]

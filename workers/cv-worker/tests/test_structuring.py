@@ -1,6 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, Mock
 
 import pytest
@@ -90,13 +91,55 @@ class TestStructuringErrorClassification:
         assert result["message"] == "Réponse de structuration JSON invalide ou incomplète."
         assert "jean@example.com" not in result["message"]
 
-    def test_classifies_fallback_or_model_failure(self):
+    def test_classifies_timeout_as_model_timeout(self):
         result = classify_structuring_error("Structuration échouée: erreur primaire: Hermes crashed; erreur fallback: timeout")
+
+        assert result == {
+            "category": "model_timeout",
+            "message": "Délai dépassé lors de l'appel au modèle de structuration.",
+        }
+
+    def test_classifies_block_timeout_message(self):
+        result = classify_structuring_error(
+            StructuringError("CV long: timeout structuration bloc 3/9 experience après 600.12s")
+        )
+
+        assert result["category"] == "model_timeout"
+        assert result["message"] == "Délai dépassé lors de l'appel au modèle de structuration."
+
+    def test_classifies_nonzero_exit_message(self):
+        result = classify_structuring_error(
+            StructuringError("CV long: échec structuration bloc 1/9 experience: model unavailable")
+        )
+
+        assert result["category"] == "model_nonzero_exit"
+        assert result["message"] == "Le modèle de structuration a échoué (sortie en erreur)."
+
+    def test_classifies_pre_model_subprocess_error_from_null_bytes(self):
+        result = classify_structuring_error(ValueError("embedded null byte"))
+
+        assert result["category"] == "pre_model_subprocess_error"
+        assert result["message"] == "Échec technique avant l'appel au modèle de structuration (entrée invalide)."
+
+    def test_keeps_residual_model_failures_in_transient_bucket(self):
+        result = classify_structuring_error("OpenRouter upstream failure: fallback exhausted")
 
         assert result == {
             "category": "transient_model_failure",
             "message": "Échec temporaire du modèle de structuration.",
         }
+
+    def test_retryable_categories_exclude_deterministic_failures(self):
+        from src.structuring import RETRYABLE_STRUCTURING_CATEGORIES
+
+        assert "model_timeout" in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "model_nonzero_exit" in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "structuring_invalid_json" in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "transient_model_failure" in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "source_fidelity" not in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "contact_leak" not in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "source_sanitization" not in RETRYABLE_STRUCTURING_CATEGORIES
+        assert "pre_model_subprocess_error" not in RETRYABLE_STRUCTURING_CATEGORIES
 
     def test_classifies_source_fidelity_generic(self):
         result = classify_structuring_error("Fidélité source insuffisante: source_coverage_missing_experience_item")
@@ -115,6 +158,33 @@ class TestStructuringErrorClassification:
             "category": "source_fidelity",
             "message": "Fidélité au CV source insuffisante.",
         }
+
+
+class TestHermesRunnerSubprocessGuards:
+    def test_runner_replaces_control_chars_before_argv(self, monkeypatch):
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+        monkeypatch.setattr("src.structuring.subprocess.run", fake_run)
+
+        result = _default_hermes_runner("prompt avec \x00 nul et \x0c contrôles", 42)
+
+        assert result == (0, "{}", "")
+        joined = " ".join(str(part) for part in captured["cmd"])
+        assert "\x00" not in joined
+        assert "\x0c" not in joined
+
+    def test_runner_maps_argv_failures_to_pre_model_error(self, monkeypatch):
+        def fake_run(cmd, **kwargs):
+            raise ValueError("embedded null byte")
+
+        monkeypatch.setattr("src.structuring.subprocess.run", fake_run)
+
+        with pytest.raises(StructuringError, match="pre_model_subprocess_error"):
+            _default_hermes_runner("prompt propre", 42)
 
 
 class TestCompactExtractedText:

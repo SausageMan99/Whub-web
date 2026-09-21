@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     poll_interval_seconds: int = 10
     max_attempts: int = 3
 
+    # ── Recovery loops ─────────────────────────────────────────────────
+    # ``processing`` rows whose lock is older than this are reaped (requeued
+    # while retry budget remains, failed once exhausted) on startup and
+    # periodically from the poll loop.
+    stale_lock_minutes: int = 120
+    reap_interval_seconds: int = 300
+
     # ── Storage buckets ────────────────────────────────────────────────
     cv_sources_bucket: str = "cv-sources"
     cv_renderer_inputs_bucket: str = "cv-renderer-inputs"

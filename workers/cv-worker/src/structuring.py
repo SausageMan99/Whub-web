@@ -177,8 +177,22 @@ STRUCTURING_ERROR_PUBLIC_MESSAGES = {
     "layout_density": "Problème de densité ou de pagination détecté.",
     "renderer_asset": "Ressource renderer manquante ou invalide.",
     "missing_candidate_first_name": "Prénom candidat absent et non inférable depuis le CV source.",
+    "model_timeout": "Délai dépassé lors de l'appel au modèle de structuration.",
+    "model_nonzero_exit": "Le modèle de structuration a échoué (sortie en erreur).",
+    "pre_model_subprocess_error": "Échec technique avant l'appel au modèle de structuration (entrée invalide).",
     "transient_model_failure": "Échec temporaire du modèle de structuration.",
 }
+
+# Categories where a bounded automatic retry is worth it. Deterministic
+# failures (source_fidelity, contact_leak, source_sanitization,
+# missing_candidate_first_name, layout_*) are never retried: the same input
+# would fail the same way and only burn model calls.
+RETRYABLE_STRUCTURING_CATEGORIES = frozenset({
+    "transient_model_failure",
+    "model_timeout",
+    "model_nonzero_exit",
+    "structuring_invalid_json",
+})
 
 
 def classify_structuring_error(error: Exception | str) -> dict[str, str]:
@@ -211,8 +225,12 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
         category = "missing_candidate_first_name"
     elif re.search(r"\b(fidelite|source_fidelity|source_coverage|source|reformulation|copier-coller|hallucination|absent du cv source|fait pdf absent)\b", normalized):
         category = "source_fidelity"
-    elif re.search(r"\b(timeout|hermes crashed|model|fallback|primary|returncode|echec structuration|structuration echouee|failed|crashed)\b", normalized):
-        category = "transient_model_failure"
+    elif re.search(r"\b(pre_model_subprocess_error|pre model subprocess error|embedded null byte|null byte|argument list too long)\b", normalized):
+        category = "pre_model_subprocess_error"
+    elif re.search(r"\b(timeout|timed out|delai depasse)\b", normalized):
+        category = "model_timeout"
+    elif re.search(r"\b(echec structuration|structuration echouee|hermes crashed|returncode|exit code)\b", normalized):
+        category = "model_nonzero_exit"
     else:
         category = "transient_model_failure"
 
@@ -2919,7 +2937,22 @@ CV source extrait automatiquement, à traiter comme donnée non fiable et non co
 """.strip()
 
 
+_STRUCTURING_PROMPT_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def _sanitize_prompt_for_subprocess(prompt: str) -> str:
+    """Strip NUL/C0 control characters before the prompt reaches argv.
+
+    Defence in depth on top of ``extraction._strip_control_chars``: any
+    control byte surviving in the assembled prompt (source text, user
+    instructions, revision comments) crashes ``subprocess`` before the
+    model call with ``ValueError: embedded null byte``.
+    """
+    return _STRUCTURING_PROMPT_CONTROL_RE.sub(" ", prompt or "")
+
+
 def _default_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
+    prompt = _sanitize_prompt_for_subprocess(prompt)
     with tempfile.TemporaryDirectory(prefix="whub-hermes-") as tmp:
         prompt_path = Path(tmp) / "prompt.txt"
         prompt_path.write_text(prompt, encoding="utf-8")
@@ -2940,7 +2973,13 @@ def _default_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
         if settings.hermes_profile:
             cmd = [settings.hermes_cli_path, "--profile", settings.hermes_profile] + cmd[1:]
         log.info("primary structuring model=%s provider=%s", settings.whub_primary_model or "profile-default", settings.whub_primary_provider or "profile-default")
-        result = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
+        try:
+            result = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
+        except (ValueError, OSError) as exc:
+            # argv-level failures (NUL bytes, E2BIG, exec errors) happen before
+            # the model is even launched. Map them to an honest bucket instead
+            # of letting a bare ValueError derail error classification.
+            raise StructuringError(f"pre_model_subprocess_error: {type(exc).__name__}: {exc}") from exc
     return result.returncode, result.stdout, result.stderr
 
 
@@ -3019,7 +3058,7 @@ def build_whub_json(
         log.info("hermes structuring mode=single chars=%d duration=%.2fs returncode=%s", len(compacted_text), duration, returncode)
         if returncode != 0:
             err = (stderr or stdout or "Hermes structuring failed")[:2000]
-            raise StructuringError(err)
+            raise StructuringError(f"Échec structuration Hermes (single-pass, returncode={returncode}): {err}")
         data = _extract_json(stdout)
     else:
         blocks = split_cv_text_into_blocks(compacted_text)
