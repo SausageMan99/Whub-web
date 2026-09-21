@@ -1,0 +1,50 @@
+{
+  "date": "2026-09-21",
+  "type": "baseline",
+  "description": "Étape 0 — baseline du banc CV avant tout correctif. Capturé sur la prod actuelle (worker actif depuis 2026-09-12, code = working tree).",
+  "battery": "scripts/cv_smoke_battery.py",
+  "results_file": "scripts/cv_smoke_results.jsonl",
+  "cases": ["oussama", "zahia", "thorez", "dense", "sanitize", "hodard", "rayan", "amina", "benjamin", "noel", "yannick"],
+  "new_fixtures": {
+    "benjamin": "Benjamin_control_chars — NUL/C0 bytes in extracted text crash the argv subprocess (ValueError: embedded null byte), mislabeled transient_model_failure. Prod repro kept: request 40b50223-f064-47f5-9306-9de46cd6d5a5 (failed in 1s).",
+    "noel": "Noel_json_invalid — long CV (25,388 chars), structuring_invalid_json after ~2m40s (historic request 5c44e3d8).",
+    "yannick": "Yannick_long_cv_json — long CV (21,643 chars), structuring_invalid_json twice (~11m28s + ~2m20s, historic request d2652dea)."
+  },
+  "git": {
+    "commit": "38eb78628973a08beaebef0b17eccd9b55877bf7",
+    "branch": "main",
+    "commit_date": "2026-07-09",
+    "dirty_tracked_files": [
+      "apps/web/app/globals.css",
+      "apps/web/app/layout.tsx",
+      "apps/web/tailwind.config.ts",
+      "workers/cv-worker/src/revisions.py",
+      "workers/cv-worker/tests/test_rendering.py",
+      "workers/cv-worker/tests/test_revisions.py"
+    ]
+  },
+  "worker": {
+    "service": "whub-cv-worker.service",
+    "started": "2026-09-12 06:36:50 UTC",
+    "worker_name": "whub-cv-worker-01"
+  },
+  "model": {
+    "WHUB_PRIMARY_MODEL": "google/gemini-2.5-flash",
+    "WHUB_PRIMARY_PROVIDER": "openrouter",
+    "HERMES_PROFILE": "default"
+  },
+  "tooling_changes_for_this_run": [
+    "e2e_smoke.py: added --max-wait + 3 new cases (benjamin, noel, yannick)",
+    "cv_smoke_battery.py: added the 3 new cases + per-case wait overrides",
+    "methodology: max-wait default 900s (noel 1500s, yannick 1800s) so slow-but-successful cases are recorded with their true terminal status; a timeout at the cap is recorded as status 'processing' = counted as failure"
+  ],
+  "battery_outcome": {
+    "passed": 6,
+    "failed": 5,
+    "standard_cases": "6/8 pass — échecs: oussama (intermittent, sortie modèle inexploitable) et amina (gate source_fidelity après structuration complète)",
+    "expected_failures_confirmed": "benjamin (octets NUL, 6 s), noel (structuring_invalid_json, ~27 min — banc plafonné à 1500s, outcome réel constaté à 15:26:36 après reprise worker), yannick (structuring_invalid_json, 294 s)",
+    "worker_restart_incident": "1 — crash 14:42:21 (suppression en vol d'une demande du run 1 + fail_job non protégé), restart systemd 14:42:32, aucun crash ensuite",
+    "leftover_evidence_rows": ["8ac53695 noel failed (conservé)", "40b50223 benjamin repro failed (conservé)", "877371a2 rayan smoke draft_ready (conservé)", "993e4848 thorez run-1 ready (conservé)"]
+  },
+  "artifacts": ["ops/cv-smoke-baseline-2026-09-21.jsonl", "ops/cv-smoke-baseline-2026-09-21.md", "scripts/cv_smoke_report.py (générateur de rapport, réutilisable pour les comparaisons post-fix)"]
+}

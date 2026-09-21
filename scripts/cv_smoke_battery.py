@@ -27,7 +27,19 @@ CASES = [
     "hodard",
     "rayan",
     "amina",
+    "benjamin",
+    "noel",
+    "yannick",
 ]
+
+# Per-case wait override (seconds). Default 900s so slow-but-successful cases
+# are recorded with their true terminal status instead of "processing".
+# 2026-09-21: noel took ~27 min in practice (29 blocks) — raised so future
+# runs capture the true outcome (the baseline run itself used 1500s).
+CASE_MAX_WAIT = {
+    "noel": 2400,
+    "yannick": 1800,
+}
 SMOKE = Path(__file__).with_name("e2e_smoke.py")
 RESULTS = Path(__file__).with_name("cv_smoke_results.jsonl")
 LOG = Path("/tmp/cv_smoke_battery.log")
@@ -49,7 +61,7 @@ def run_case(case: str) -> dict:
     log(f"\n=== {case} ===")
     t0 = time.time()
     res = subprocess.run(
-        [sys.executable, str(SMOKE), "--case", case],
+        [sys.executable, str(SMOKE), "--case", case, "--max-wait", str(CASE_MAX_WAIT.get(case, 900))],
         capture_output=True,
         text=True,
     )

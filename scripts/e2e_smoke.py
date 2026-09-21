@@ -29,6 +29,9 @@ CASE_DIRS: dict[str, str] = {
     "hodard": "Hodard_continuity",
     "rayan": "Rayan_prod_e2e",
     "amina": "AMINA_QA_Salesforce",
+    "benjamin": "Benjamin_control_chars",
+    "noel": "Noel_json_invalid",
+    "yannick": "Yannick_long_cv_json",
 }
 
 CASE_FIRST_NAMES: dict[str, str] = {
@@ -40,6 +43,9 @@ CASE_FIRST_NAMES: dict[str, str] = {
     "hodard": "Florian",
     "rayan": "Rayan",
     "amina": "Amina",
+    "benjamin": "Benjamin",
+    "noel": "François-Pierre",
+    "yannick": "Yannick",
 }
 
 
@@ -80,6 +86,7 @@ def main() -> int:
     parser.add_argument("--case", default=None, help="Test-bank case key (e.g. oussama)")
     parser.add_argument("--label", default=None, help="Optional human label for the JSON payload")
     parser.add_argument("--no-cleanup", action="store_true", help="Keep request and uploaded source for debugging")
+    parser.add_argument("--max-wait", type=int, default=300, help="Max seconds to wait for a terminal status (default 300)")
     args = parser.parse_args()
 
     here = Path(__file__).resolve().parents[1]
@@ -139,7 +146,7 @@ def main() -> int:
     request_url = f"{url}/rest/v1/cv_requests?id=eq.{request_id}&select=id,status,last_error"
     versions_url = f"{url}/rest/v1/cv_versions?request_id=eq.{request_id}&select=id,version_number,qa_status,qa_report&order=version_number.desc&limit=1"
 
-    deadline = time.time() + 300  # 5 min cap
+    deadline = time.time() + args.max_wait
     final_status = None
     quality_event_seen = False
     while time.time() < deadline:
@@ -182,9 +189,13 @@ def main() -> int:
 
     print(f"[JSON] {json.dumps(payload, ensure_ascii=False)}")
 
-    # Cleanup
-    if args.no_cleanup:
-        print(f"[cleanup] SKIPPED request_id={request_id} object_path={object_path}")
+    # Cleanup: only delete when the worker is really done with this request.
+    # Deleting a row while the worker is still processing it makes its final
+    # save hit an FK violation, and the error path itself then kills the
+    # worker process (seen 2026-09-21). On timeout, keep the row as evidence.
+    terminal_statuses = {"ready", "draft_ready", "qa_failed", "failed", "needs_human_review", "dead_letter"}
+    if args.no_cleanup or final_status not in terminal_statuses:
+        print(f"[cleanup] SKIPPED request_id={request_id} object_path={object_path} final_status={final_status}")
     else:
         sb_request("DELETE", f"{url}/rest/v1/cv_requests?id=eq.{request_id}", key, prefer="return=representation")
         sb_request(
