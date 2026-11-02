@@ -115,3 +115,30 @@ def test_draft_ready_with_passed_false_passes_guard(monkeypatch, tmp_path):
     )
 
     assert version == {"id": "version-1", "version_number": 3}
+
+
+def test_draft_override_of_passing_report_is_accepted_by_save_version(monkeypatch, tmp_path):
+    # Regression (Heidi, 2026-11-02): QA passed but fidelity soft warnings forced
+    # draft_ready, and save_version rejected the still-passing report.
+    from src.main import _mark_qa_report_draft_override
+
+    fake_client = _FakeClient()
+    monkeypatch.setattr(storage, "client", fake_client)
+    pdf = _write_draft_pdf(tmp_path)
+    original = _report(passed=True)
+
+    overridden = _mark_qa_report_draft_override(original, "fidelity_soft_warnings")
+
+    assert original["passed"] is True
+    assert overridden["passed"] is False
+    assert overridden["draft_override_reason"] == "fidelity_soft_warnings"
+    version = storage.save_version(
+        "request-1",
+        {"name": "ZAHIA", "experiences": []},
+        pdf,
+        overridden,
+        request_status="draft_ready",
+        qa_status="draft",
+        owner="test-owner",
+    )
+    assert version == {"id": "version-1", "version_number": 3}

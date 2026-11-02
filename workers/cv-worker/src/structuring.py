@@ -180,6 +180,7 @@ STRUCTURING_ERROR_PUBLIC_MESSAGES = {
     "model_timeout": "Délai dépassé lors de l'appel au modèle de structuration.",
     "model_nonzero_exit": "Le modèle de structuration a échoué (sortie en erreur).",
     "pre_model_subprocess_error": "Échec technique avant l'appel au modèle de structuration (entrée invalide).",
+    "worker_internal_error": "Erreur interne du worker à l'enregistrement de la version (incohérence de statut).",
     "model_config_error": "Appel au modèle refusé par Hermes (paramètres invalides) : configuration du worker à corriger.",
     "transient_model_failure": "Échec temporaire du modèle de structuration.",
 }
@@ -208,7 +209,9 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
     category_matches = re.findall(r"(?:primary|fallback)_category_?([a-z_]+)|(?:primary|fallback)_category\s*([a-z_]+)", normalized)
     flattened_categories = [a or b for a, b in category_matches]
 
-    if flattened_categories and all(category == "source_fidelity" for category in flattened_categories):
+    if re.search(r"\b(unsupported version (request_status|qa_status)|(ready|draft_ready) requests (must|require))\b", normalized):
+        category = "worker_internal_error"
+    elif flattened_categories and all(category == "source_fidelity" for category in flattened_categories):
         category = "source_fidelity"
     elif re.search(r"\b(source sanitization error|sourcesanitizationerror|sanitization|sanitisation|sanitized text shrunk unusually|texte source trop court)\b", normalized):
         category = "source_sanitization"

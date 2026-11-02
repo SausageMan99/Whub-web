@@ -733,6 +733,16 @@ def _maybe_reuse_layout_only_structured_json(
     structured_sink["revision_comments"] = revision_comments
     emit_event(
         request_id,
+        "layout_revision_detected",
+        {
+            "comments_count": len(layout_revision_candidates),
+            "from_version_id": current_version_id,
+            "intent": "layout_only",
+            "routing": "renderer_only",
+        },
+    )
+    emit_event(
+        request_id,
         "layout_revision_reused_structured_json",
         {
             "version_id": row.get("id"),
@@ -740,6 +750,15 @@ def _maybe_reuse_layout_only_structured_json(
         },
     )
     return True
+
+
+def _mark_qa_report_draft_override(qa_report: dict, reason: str) -> dict:
+    """Record that a passing QA report was downgraded to draft by the worker.
+
+    save_version refuses draft_ready + qa_report.passed=true, so a downgrade
+    must flip ``passed`` and say why instead of silently contradicting QA.
+    """
+    return {**qa_report, "passed": False, "draft_override_reason": reason}
 
 
 def process_job(job: dict) -> None:
@@ -911,6 +930,7 @@ def process_job(job: dict) -> None:
             )
 
         final_qa_status, layout_warnings = classify_qa_report(qa_report)
+        draft_override_reason: str | None = None
         if final_qa_status == "failed":
             fail_job(job, str(qa_report), "qa_failed")
             return
@@ -927,12 +947,16 @@ def process_job(job: dict) -> None:
                 verify_ok = False
                 verify_warnings = [{"code": "verification_error", "message": "Vérification de la révision impossible."}]
             if not verify_ok:
-                if final_qa_status == "ready":
+                if final_qa_status == "passed":
                     final_qa_status = "draft"
+                    draft_override_reason = "layout_revision_unverified"
                 layout_warnings = [*layout_warnings, *verify_warnings]
         # If we have fidelity soft warnings, force draft_ready even if QA passed
         if fidelity_soft_warnings and final_qa_status == "passed":
             final_qa_status = "draft"
+            draft_override_reason = "fidelity_soft_warnings"
+        if draft_override_reason:
+            qa_report = _mark_qa_report_draft_override(qa_report, draft_override_reason)
         request_status = "draft_ready" if final_qa_status == "draft" else "ready"
         version_qa_status = "draft" if final_qa_status == "draft" else "passed"
 

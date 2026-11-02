@@ -51,13 +51,12 @@ def test_process_job_removes_workdir_on_success(tmp_path, monkeypatch):
     monkeypatch.setattr(worker_main, "forbidden_candidate_name_parts", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         worker_main,
-        "run_bounded_layout_variant_loop",
+        "run_layout",
         lambda **kwargs: SimpleNamespace(
-            hard_failure=None,
-            selected=SimpleNamespace(name="default"),
-            selected_pdf=b"%PDF-1.4",
-            selected_report={},
-            attempts=[SimpleNamespace(name="default", status="passed", score=1.0)],
+            pdf=kwargs["workdir"] / "final.pdf",
+            qa_report={"passed": True},
+            attempts_count=1,
+            selected_variant="default",
         ),
     )
     monkeypatch.setattr(worker_main, "classify_qa_report", lambda report: ("passed", []))

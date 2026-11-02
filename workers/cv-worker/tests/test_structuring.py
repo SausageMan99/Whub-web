@@ -134,6 +134,14 @@ class TestStructuringErrorClassification:
         assert result["category"] == "model_config_error"
         assert "model_config_error" not in RETRYABLE_STRUCTURING_CATEGORIES
 
+    def test_classifies_version_gate_errors_as_non_retryable_internal_error(self):
+        from src.structuring import RETRYABLE_STRUCTURING_CATEGORIES
+
+        result = classify_structuring_error(ValueError("draft_ready requests must carry a non-passing QA report"))
+
+        assert result["category"] == "worker_internal_error"
+        assert "worker_internal_error" not in RETRYABLE_STRUCTURING_CATEGORIES
+
     def test_keeps_residual_model_failures_in_transient_bucket(self):
         result = classify_structuring_error("OpenRouter upstream failure: fallback exhausted")
 

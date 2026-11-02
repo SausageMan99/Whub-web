@@ -234,8 +234,10 @@ class RendererOverflowTest(unittest.TestCase):
 
         self.assertGreater(doc.page_count, 1)
         self.assertIn('Cloud & DevOps (suite)', text)
+        # Skills now render as a wrapped paragraph: compare on collapsed whitespace.
+        flat_text = ' '.join(text.split())
         for i in range(1, 80):
-            self.assertIn(f'Compétence technique longue {i:02d}', text)
+            self.assertIn(f'Compétence technique longue {i:02d}', flat_text)
         self.assertIn('ARCHITECTE CLOUD CHEZ CLIENT', text)
         self.assert_no_text_below_margin(pdf_path)
 
