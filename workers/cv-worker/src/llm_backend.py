@@ -17,7 +17,7 @@ import json
 import logging
 import subprocess
 import time
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 _RETRYABLE_HTTP_STATUSES = {408, 429, 500, 502, 503, 504}
+
+# Optional hook (model bake-off, cost tracking): called with each completion's
+# model, provider and usage. Must be thread-safe: long-CV blocks run in parallel.
+usage_observer: Callable[[dict[str, Any]], None] | None = None
 
 SYSTEM_PROMPT = (
     "Tu es le moteur de structuration du portail interne W hub CV Factory. "
@@ -116,9 +120,10 @@ def build_request_payload(prompt: str) -> dict[str, Any]:
         # require_parameters: only route to endpoints that honour the schema.
         # data_collection=deny: never route CV text to providers that train on it.
         "provider": {"require_parameters": True, "data_collection": "deny"},
-        "temperature": settings.whub_llm_temperature,
         "max_tokens": settings.whub_llm_max_output_tokens,
     }
+    if settings.whub_llm_temperature is not None:
+        payload["temperature"] = settings.whub_llm_temperature
     if len(models) > 1:
         payload["models"] = models
     if settings.whub_llm_reasoning_effort:
@@ -191,6 +196,8 @@ def openrouter_runner(prompt: str, timeout: int, *, client: httpx.Client | None 
         usage.get("cost"),
         choice.get("finish_reason"),
     )
+    if usage_observer is not None:
+        usage_observer({"model": body.get("model"), "provider": body.get("provider"), **usage})
     if choice.get("finish_reason") == "length":
         return 1, "", "openrouter output truncated (finish_reason=length): augmenter WHUB_LLM_MAX_OUTPUT_TOKENS"
     content = ((choice.get("message") or {}).get("content") or "").strip()

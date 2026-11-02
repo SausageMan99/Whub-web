@@ -67,7 +67,8 @@ class Settings(BaseSettings):
     whub_llm_backend: str = "hermes"
     openrouter_api_key: str = ""
     whub_fallback_model: str = ""
-    whub_llm_temperature: float = 0.0
+    # None = provider default; several models reject an explicit temperature.
+    whub_llm_temperature: float | None = None
     whub_llm_max_output_tokens: int = 32000
     whub_llm_reasoning_effort: str = ""
     # Long-CV blocks are independent calls: run them concurrently (openrouter only).

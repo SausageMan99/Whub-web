@@ -62,6 +62,8 @@ def test_payload_enforces_strict_schema_and_data_policy():
     assert payload["provider"] == {"require_parameters": True, "data_collection": "deny"}
     assert payload["messages"][-1] == {"role": "user", "content": "prompt"}
     assert "models" not in payload
+    # Reasoning models (Claude Haiku 5.5, GPT-6) reject an explicit temperature.
+    assert "temperature" not in payload
 
 
 def test_payload_lists_fallback_model_when_configured(monkeypatch):

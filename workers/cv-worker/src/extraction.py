@@ -1,9 +1,18 @@
 from pathlib import Path
 from dataclasses import dataclass
+import logging
+import os
 import re
 import fitz
+from .text_readability import READABILITY_OCR_THRESHOLD, text_readability
 from .config import settings
 from .supabase_client import client
+
+log = logging.getLogger(__name__)
+
+_OCR_LANGUAGES = "fra+eng"
+_OCR_DPI = 300
+
 
 class ExtractionError(Exception):
     pass
@@ -22,14 +31,14 @@ def _sort_blocks(blocks: list[_TextBlock]) -> list[_TextBlock]:
     return sorted(blocks, key=lambda block: (round(block.y0, 1), round(block.x0, 1)))
 
 
-def _page_text_visual_order(page) -> str:
+def _page_text_visual_order(page, textpage=None) -> str:
     """Extract page text in reading order.
 
     Normal PDFs are sorted top-to-bottom. Sidebar layouts are emitted as
     header/main column first, sidebar second, so skills do not get injected into
     experience bodies.
     """
-    raw_blocks = page.get_text("blocks")
+    raw_blocks = page.get_text("blocks", textpage=textpage) if textpage is not None else page.get_text("blocks")
     blocks: list[_TextBlock] = []
     for raw in raw_blocks:
         if len(raw) < 5:
@@ -107,11 +116,38 @@ def _strip_control_chars(text: str) -> str:
     return _CONTROL_CHAR_RE.sub(" ", text or "")
 
 
+def _clean_extracted_text(raw: str) -> str:
+    return _strip_pdf_footer_lines(_strip_control_chars(_normalize_pdf_text_chars(raw)))
+
+
+def _ocr_pdf_text(doc) -> str:
+    os.environ.setdefault("TESSDATA_PREFIX", "/usr/share/tesseract-ocr/5/tessdata")
+    pages = []
+    for page in doc:
+        textpage = page.get_textpage_ocr(language=_OCR_LANGUAGES, dpi=_OCR_DPI, full=True)
+        pages.append(_page_text_visual_order(page, textpage=textpage))
+    return _clean_extracted_text("\n".join(pages))
+
+
 def extract_pdf_text(path: Path) -> str:
     doc = fitz.open(str(path))
-    text = _normalize_pdf_text_chars("\n".join(_page_text_visual_order(page) for page in doc))
-    text = _strip_control_chars(text)
-    text = _strip_pdf_footer_lines(text)
+    text = _clean_extracted_text("\n".join(_page_text_visual_order(page) for page in doc))
+    native_readability = text_readability(text)
+    if len(text.strip()) < 400 or native_readability < READABILITY_OCR_THRESHOLD:
+        # Scanned PDFs or broken font maps: the text layer is missing or
+        # gibberish, so the model would guess content. OCR the rendered pages.
+        try:
+            ocr_text = _ocr_pdf_text(doc)
+        except Exception as exc:  # noqa: BLE001 - OCR is best effort; fall back to native text
+            log.warning("ocr fallback failed: %s", type(exc).__name__)
+        else:
+            ocr_readability = text_readability(ocr_text)
+            log.info(
+                "ocr fallback native_chars=%d native_readability=%.2f ocr_chars=%d ocr_readability=%.2f",
+                len(text), native_readability, len(ocr_text), ocr_readability,
+            )
+            if ocr_readability >= READABILITY_OCR_THRESHOLD and len(ocr_text.strip()) >= len(text.strip()) * 0.5:
+                text = ocr_text
     if len(text.strip()) < 400:
         raise ExtractionError("Texte source trop court: PDF probablement scanné ou illisible")
     return text

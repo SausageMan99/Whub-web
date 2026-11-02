@@ -20,6 +20,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .text_readability import READABILITY_OCR_THRESHOLD, text_readability
+
 # Pattern kept conservative: matches the same contact surfaces as
 # ``qa.CONTACT_PATTERNS`` but expressed at the JSON level for redaction
 # enforcement. False positives are acceptable here because we only refuse to
@@ -116,6 +118,7 @@ def classify_source_profile(text: str) -> dict[str, Any]:
 
     return {
         "profile": profile,
+        "readability": round(text_readability(normalized), 3),
         "chars": chars,
         "line_count": len(lines),
         "mission_markers": mission_markers,
@@ -132,6 +135,9 @@ def should_require_human_review(profile: dict[str, Any]) -> bool:
     if source_profile == "scanned" and chars < 500:
         return True
     if chars < 250 or line_count < 5:
+        return True
+    # Gibberish text layer that OCR could not rescue: the model would invent.
+    if float(profile.get("readability", 1.0)) < READABILITY_OCR_THRESHOLD:
         return True
     return False
 
