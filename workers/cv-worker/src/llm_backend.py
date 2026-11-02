@@ -124,6 +124,8 @@ def build_request_payload(prompt: str) -> dict[str, Any]:
     }
     if settings.whub_llm_temperature is not None:
         payload["temperature"] = settings.whub_llm_temperature
+    if settings.whub_llm_zero_data_retention:
+        payload["provider"]["zdr"] = True
     if len(models) > 1:
         payload["models"] = models
     if settings.whub_llm_reasoning_effort:

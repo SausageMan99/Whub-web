@@ -191,3 +191,9 @@ def test_long_cv_blocks_run_in_parallel_and_keep_source_order(monkeypatch):
 
     assert captured["order"] == [1, 2, 3, 4, 5, 6]
     assert sorted(seen_labels) == sorted(f"{i}/6 experience" for i in range(1, 7))
+
+
+def test_payload_requests_zero_data_retention_when_enabled(monkeypatch):
+    monkeypatch.setattr(llm_backend.settings, "whub_llm_zero_data_retention", True)
+
+    assert build_request_payload("prompt")["provider"]["zdr"] is True

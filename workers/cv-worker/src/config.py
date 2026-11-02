@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     whub_llm_temperature: float | None = None
     whub_llm_max_output_tokens: int = 32000
     whub_llm_reasoning_effort: str = ""
+    # Route only to zero-data-retention endpoints (primary and fallback must offer one).
+    whub_llm_zero_data_retention: bool = False
     # Long-CV blocks are independent calls: run them concurrently (openrouter only).
     whub_long_cv_block_parallelism: int = 4
 

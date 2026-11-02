@@ -169,6 +169,10 @@ Le worker extrait le texte du PDF source avec PyMuPDF.
 
 Cette étape donne le texte brut qui servira à construire le CV W hub.
 
+Si la couche texte est absente (PDF scanné) ou illisible (police dont les glyphes sont mappés sur des codes privés : le texte sort « chiffré »), le worker relit les pages par OCR (PyMuPDF + Tesseract `fra+eng`, 300 dpi). La lisibilité est mesurée par `text_readability()` (part de tokens ressemblant à des mots ; un vrai CV est entre 0,85 et 0,96). Si l'OCR ne rend pas le texte lisible non plus, la demande passe en `needs_human_review` au lieu de laisser le modèle deviner le contenu.
+
+Dépendance système : paquet `tesseract-ocr-fra` sur le VPS du worker.
+
 ### Étape 4 — Profilage qualité source
 
 Avant d'appeler l'IA, le worker analyse le texte source pour classifier le type de CV :
@@ -192,7 +196,13 @@ Le worker nettoie le texte pour réduire les éléments qui ne doivent pas appar
 
 ### Étape 6 — Structuration IA
 
-Le worker appelle le modèle IA via Hermes.
+Le worker appelle le modèle IA directement via l'API OpenRouter (`WHUB_LLM_BACKEND=openrouter`, module `src/llm_backend.py`), avec une sortie JSON **contrainte par un schéma strict** : le modèle ne peut pas renvoyer de JSON invalide. Les requêtes refusent les fournisseurs qui réutilisent les données (`data_collection=deny`) et n'utilisent que des endpoints qui respectent le schéma (`require_parameters`).
+
+Les CV longs (> 15 000 caractères) sont découpés en blocs structurés en parallèle (`WHUB_LONG_CV_BLOCK_PARALLELISM`, 4 par défaut).
+
+L'ancien chemin `hermes chat` reste disponible en secours avec `WHUB_LLM_BACKEND=hermes`. Il dépend de la CLI Hermes, qui change à chaque mise à jour : c'est une mise à jour de Hermes qui a cassé la production du 16 au 30/10/2026.
+
+Le choix du modèle se rejoue avec `workers/cv-worker/scripts/model_bakeoff.py` sur le banc de CV de test (voir `ops/`).
 
 Objectif : transformer le texte source en JSON structuré exploitable par le renderer.
 
@@ -463,6 +473,17 @@ journalctl -u whub-cv-worker.service -n 100 --no-pager
 
 Un déploiement Vercel ne redémarre pas le worker. Si le code worker change, il faut redémarrer `whub-cv-worker.service` séparément.
 
+### Surveillance
+
+`scripts/cv_health_alert.py` vérifie le service, les échecs consécutifs sur les vraies demandes (3 ou plus), les demandes bloquées dans la file et, avec `--smoke`, un CV de référence de bout en bout. Les alertes partent sur le canal Telegram de Hermes (`TELEGRAM_HOME_CHANNEL`), au plus une fois toutes les 6 h pour le même problème, avec un message « rétabli » au retour à la normale.
+
+```bash
+python3 scripts/cv_health_alert.py --dry-run
+python3 scripts/cv_health_alert.py --test
+```
+
+Planification recommandée (crontab root) : contrôle toutes les 15 min, et `--smoke` une fois par jour.
+
 ## Variables d'environnement principales
 
 ### Web
@@ -484,9 +505,11 @@ Variables typiques côté `workers/cv-worker/.env` ou service systemd :
 - `WORKER_NAME`
 - `POLL_INTERVAL_SECONDS`
 - `MAX_ATTEMPTS`
-- `WHUB_PRIMARY_PROVIDER`
-- `WHUB_PRIMARY_MODEL`
-- `HERMES_PROFILE`
+- `WHUB_LLM_BACKEND` (`openrouter` en production, `hermes` en secours)
+- `OPENROUTER_API_KEY`
+- `WHUB_PRIMARY_MODEL` et `WHUB_FALLBACK_MODEL` (secours automatique OpenRouter)
+- `WHUB_LLM_MAX_OUTPUT_TOKENS`, `WHUB_LLM_REASONING_EFFORT`, `WHUB_LONG_CV_BLOCK_PARALLELISM`
+- `WHUB_PRIMARY_PROVIDER`, `HERMES_PROFILE` (backend `hermes` uniquement)
 - `WHUB_RENDERER_PATH`
 - `WHUB_ASSETS_DIR`
 - `WHUB_FONTS_DIR`

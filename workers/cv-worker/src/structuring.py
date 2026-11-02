@@ -1843,6 +1843,35 @@ def _coalesce_heading_only_blocks(blocks: list[dict]) -> list[dict]:
     return final_blocks
 
 
+def _has_experience_header(exp: dict) -> bool:
+    return bool(str(exp.get("date") or "").strip() or str(exp.get("role") or "").strip())
+
+
+def _merge_split_experience_headers(experiences: list) -> list:
+    """Re-attach an experience body to the header a block boundary cut it from.
+
+    Long CVs are structured block by block; when a boundary falls between an
+    experience's date/role and its missions, one block yields a header without
+    sections and the next yields sections without a header
+    (experience_header_without_body + headerless_experience_sections).
+    """
+    merged: list = []
+    for exp in experiences:
+        previous = merged[-1] if merged else None
+        if (
+            isinstance(exp, dict)
+            and isinstance(previous, dict)
+            and not _has_experience_header(exp)
+            and _has_experience_sections(exp)
+            and _has_experience_header(previous)
+            and not _has_experience_sections(previous)
+        ):
+            merged[-1] = {**previous, "sections": list(exp.get("sections") or [])}
+            continue
+        merged.append(exp)
+    return merged
+
+
 def assemble_structured_blocks(parts: list[dict], candidate_first_name: str | None = None) -> dict:
     if not parts:
         raise StructuringError("CV long: aucun bloc structuré à assembler")
@@ -1866,7 +1895,12 @@ def assemble_structured_blocks(parts: list[dict], candidate_first_name: str | No
             if not isinstance(value, list):
                 raise StructuringError(f"CV long: bloc structuré invalide, {key} doit être une liste")
             assembled[key].extend(value)
+        for key in ["certifications", "languages"]:
+            for item in part.get(key) or []:
+                if item not in assembled.setdefault(key, []):
+                    assembled[key].append(item)
 
+    assembled["experiences"] = _merge_split_experience_headers(assembled["experiences"])
     enforce_client_first_name(assembled, candidate_first_name)
     if descriptions:
         assembled["description"] = "\n".join(descriptions)
