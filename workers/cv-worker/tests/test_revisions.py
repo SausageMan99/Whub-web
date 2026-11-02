@@ -31,6 +31,11 @@ def test_classifies_saut_de_page_correction_as_layout_only():
     assert classify_revision_intent(body).kind == "layout_only"
 
 
+def test_classifies_skill_category_rework_as_content_even_with_mettre():
+    body = "Peux tu mettre les compétences techniques sous forme de ligne par catégorie"
+    assert classify_revision_intent(body).kind == "content"
+
+
 def test_classifies_missing_experience_as_content():
     body = "Mission manquant"
     assert classify_revision_intent(body).kind == "content"

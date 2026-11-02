@@ -9,7 +9,7 @@ LAYOUT_ONLY_RE = re.compile(
     re.I,
 )
 CONTENT_CHANGE_RE = re.compile(
-    r"\b(ajout(?:e|er)|supprim(?:e|er)|corrig(?:e|er)\s+le\s+texte|modifi(?:e|er)\s+le\s+texte|r[eé][eé]cris|r[eé]dige|enl[eè]ve|change\s+la\s+mission|manquant|oubli[eé]|rajout(?:e|er)|compl[eé]ter)\b",
+    r"\b(ajout(?:e|er)|supprim(?:e|er)|corrig(?:e|er)\s+le\s+texte|modifi(?:e|er)\s+le\s+texte|r[eé][eé]cris|r[eé]dige|enl[eè]ve|change\s+la\s+mission|manquant|oubli[eé]|rajout(?:e|er)|compl[eé]ter|comp[ée]tences?|cat[ée]gor(?:ie|ies)|stack|technolog(?:ie|ies))\b",
     re.I,
 )
 RESET_RE = re.compile(

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -168,3 +169,48 @@ class TestRenderPdf:
         assert not output_path.exists()
         assert "Poppins fonts incomplete" in result.stderr
         assert str(partial_fonts_dir) in result.stderr
+
+    def test_renderer_embeds_only_poppins_fonts(self, tmp_path: Path):
+        if not shutil.which("pdffonts"):
+            pytest.skip("pdffonts is required to inspect embedded PDF fonts")
+
+        input_path = tmp_path / "input.json"
+        output_path = tmp_path / "output.pdf"
+        input_path.write_text(
+            json.dumps(
+                {
+                    "name": "JEAN",
+                    "title": "Développeur full stack",
+                    "formations": [],
+                    "skills": [{"category": "Backend", "items": ["Python", "Node.js"]}],
+                    "experiences": [
+                        {
+                            "date": "2024",
+                            "role": "Développeur",
+                            "company_highlight": "Client",
+                            "sections": [{"heading": "Missions", "content": ["Développement applicatif."]}],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        render = subprocess.run(
+            [sys.executable, str(DEFAULT_WHUB_RENDERER_PATH), str(input_path), str(output_path)],
+            text=True,
+            capture_output=True,
+            env={
+                **os.environ,
+                "WHUB_ASSETS_DIR": str(DEFAULT_WHUB_ASSETS_DIR),
+                "WHUB_FONTS_DIR": str(DEFAULT_WHUB_FONTS_DIR),
+            },
+        )
+        assert render.returncode == 0, render.stderr or render.stdout
+
+        fonts = subprocess.run(["pdffonts", str(output_path)], text=True, capture_output=True, check=True).stdout
+        assert "Poppins-Regular" in fonts
+        assert "Poppins-Bold" in fonts
+        assert "Poppins-SemiBold" in fonts
+        assert "Poppins-Light" in fonts
+        assert "Helvetica" not in fonts
