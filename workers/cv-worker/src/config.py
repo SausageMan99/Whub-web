@@ -61,6 +61,18 @@ class Settings(BaseSettings):
     whub_primary_provider: str = "openrouter"
     # Nemotron 3 Ultra free via OpenRouter
 
+    # ── Structuring backend ────────────────────────────────────────────
+    # "openrouter": direct API call with schema-constrained JSON (llm_backend.py).
+    # "hermes": legacy `hermes chat` subprocess, kept as an escape hatch.
+    whub_llm_backend: str = "hermes"
+    openrouter_api_key: str = ""
+    whub_fallback_model: str = ""
+    whub_llm_temperature: float = 0.0
+    whub_llm_max_output_tokens: int = 32000
+    whub_llm_reasoning_effort: str = ""
+    # Long-CV blocks are independent calls: run them concurrently (openrouter only).
+    whub_long_cv_block_parallelism: int = 4
+
     # ── Rendering assets ───────────────────────────────────────────────
     whub_renderer_path: str = str(DEFAULT_WHUB_RENDERER_PATH)
     whub_assets_dir: str = str(DEFAULT_WHUB_ASSETS_DIR)

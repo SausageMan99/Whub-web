@@ -11,7 +11,10 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable, cast
 
+from concurrent.futures import ThreadPoolExecutor
+
 from .config import settings
+from .llm_backend import openrouter_runner
 from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
 
 log = logging.getLogger("whub-cv-worker.structuring")
@@ -211,6 +214,8 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
 
     if re.search(r"\b(unsupported version (request_status|qa_status)|(ready|draft_ready) requests (must|require))\b", normalized):
         category = "worker_internal_error"
+    elif re.search(r"\b(invalid_params|couldn t start the model connection|openrouter http (400|401|402|403|404))\b", normalized):
+        category = "model_config_error"
     elif flattened_categories and all(category == "source_fidelity" for category in flattened_categories):
         category = "source_fidelity"
     elif re.search(r"\b(source sanitization error|sourcesanitizationerror|sanitization|sanitisation|sanitized text shrunk unusually|texte source trop court)\b", normalized):
@@ -229,8 +234,6 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
         category = "missing_candidate_first_name"
     elif re.search(r"\b(fidelite|source_fidelity|source_coverage|source|reformulation|copier-coller|hallucination|absent du cv source|fait pdf absent)\b", normalized):
         category = "source_fidelity"
-    elif re.search(r"\b(invalid_params|couldn t start the model connection)\b", normalized):
-        category = "model_config_error"
     elif re.search(r"\b(pre_model_subprocess_error|pre model subprocess error|embedded null byte|null byte|argument list too long)\b", normalized):
         category = "pre_model_subprocess_error"
     elif re.search(r"\b(timeout|timed out|delai depasse)\b", normalized):
@@ -2957,6 +2960,12 @@ def _sanitize_prompt_for_subprocess(prompt: str) -> str:
     return _STRUCTURING_PROMPT_CONTROL_RE.sub(" ", prompt or "")
 
 
+def default_structuring_runner() -> HermesRunner:
+    if settings.whub_llm_backend == "openrouter":
+        return openrouter_runner
+    return _default_hermes_runner
+
+
 def _default_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
     prompt = _sanitize_prompt_for_subprocess(prompt)
     with tempfile.TemporaryDirectory(prefix="whub-hermes-") as tmp:
@@ -3048,7 +3057,12 @@ def build_whub_json(
     hermes_runner: HermesRunner | None = None,
 ) -> dict:
     compacted_text = compact_extracted_text(extracted_text)
-    runner = hermes_runner or _default_hermes_runner
+    runner = hermes_runner or default_structuring_runner()
+    block_parallelism = (
+        max(1, settings.whub_long_cv_block_parallelism)
+        if hermes_runner is None and settings.whub_llm_backend == "openrouter"
+        else 1
+    )
 
     use_default_long_threshold = long_cv_threshold == LONG_CV_CHAR_THRESHOLD
     use_single_pass = len(compacted_text) <= long_cv_threshold or (
@@ -3073,12 +3087,22 @@ def build_whub_json(
         if not blocks:
             raise StructuringError("CV long: texte extrait vide après compactage")
         log.info("hermes structuring mode=long chars=%d threshold=%d blocks=%d", len(compacted_text), long_cv_threshold, len(blocks))
-        structured_blocks: list[dict] = []
+        labels: list[str] = []
         for i, block in enumerate(blocks, start=1):
             label = f"{i}/{len(blocks)} {block['kind']}"
             if block.get("part"):
                 label += f" part {block['part']}"
-            structured_blocks.append(_run_block(block["text"], instructions, comments, candidate_first_name, runner, label))
+            labels.append(label)
+
+        def run_one(index: int) -> dict:
+            return _run_block(blocks[index]["text"], instructions, comments, candidate_first_name, runner, labels[index])
+
+        if block_parallelism > 1:
+            # map() keeps source order and re-raises the first block failure.
+            with ThreadPoolExecutor(max_workers=block_parallelism) as pool:
+                structured_blocks = list(pool.map(run_one, range(len(blocks))))
+        else:
+            structured_blocks = [run_one(index) for index in range(len(blocks))]
         data = assemble_structured_blocks(structured_blocks, candidate_first_name)
 
     enforce_client_first_name(data, candidate_first_name)
