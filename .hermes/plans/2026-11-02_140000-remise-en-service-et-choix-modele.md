@@ -20,6 +20,10 @@
 4. Commit, push (avec les 2 commits non poussés), restart `whub-cv-worker`.
 5. Rejouer 1 CV réel → `draft_ready`/`ready` attendu. Relancer les demandes échouées depuis le 16/10.
 
+> **Statut 02/11** — Phase 0 faite (170df53) : 9/10 demandes bloquées récupérées.
+> Phase 1 faite (3612b4d, 9d86470) : banc 9/11, 0 échec inattendu, Heidi récupérée —
+> voir `ops/cv-smoke-baseline-2026-11-02.md`. Restent noel/yannick (→ phase 2) et le test S4 rouge (hors périmètre).
+
 ## Phase 1 — Corriger les échecs connus du banc (≈ 1 j)
 
 | Cas | Problème | Action |
