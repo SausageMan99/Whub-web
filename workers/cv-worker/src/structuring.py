@@ -180,6 +180,7 @@ STRUCTURING_ERROR_PUBLIC_MESSAGES = {
     "model_timeout": "Délai dépassé lors de l'appel au modèle de structuration.",
     "model_nonzero_exit": "Le modèle de structuration a échoué (sortie en erreur).",
     "pre_model_subprocess_error": "Échec technique avant l'appel au modèle de structuration (entrée invalide).",
+    "model_config_error": "Appel au modèle refusé par Hermes (paramètres invalides) : configuration du worker à corriger.",
     "transient_model_failure": "Échec temporaire du modèle de structuration.",
 }
 
@@ -225,6 +226,8 @@ def classify_structuring_error(error: Exception | str) -> dict[str, str]:
         category = "missing_candidate_first_name"
     elif re.search(r"\b(fidelite|source_fidelity|source_coverage|source|reformulation|copier-coller|hallucination|absent du cv source|fait pdf absent)\b", normalized):
         category = "source_fidelity"
+    elif re.search(r"\b(invalid_params|couldn t start the model connection)\b", normalized):
+        category = "model_config_error"
     elif re.search(r"\b(pre_model_subprocess_error|pre model subprocess error|embedded null byte|null byte|argument list too long)\b", normalized):
         category = "pre_model_subprocess_error"
     elif re.search(r"\b(timeout|timed out|delai depasse)\b", normalized):
@@ -2962,7 +2965,9 @@ def _default_hermes_runner(prompt: str, timeout: int) -> tuple[int, str, str]:
             "-Q",
             "-s", "whub-client-cv-generator",
             "-t", "",
-            "--source", "whub-cv-worker",
+            # Hermes >= 0.22 rejects unknown source tags with invalid_params;
+            # "tool" is its reserved tag for third-party integrations.
+            "--source", "tool",
             "-q", prompt_path.read_text(encoding="utf-8"),
         ]
         if settings.whub_primary_model:

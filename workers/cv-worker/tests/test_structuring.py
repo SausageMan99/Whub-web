@@ -121,6 +121,19 @@ class TestStructuringErrorClassification:
         assert result["category"] == "pre_model_subprocess_error"
         assert result["message"] == "Échec technique avant l'appel au modèle de structuration (entrée invalide)."
 
+    def test_classifies_hermes_invalid_params_as_non_retryable_config_error(self):
+        from src.structuring import RETRYABLE_STRUCTURING_CATEGORIES
+
+        result = classify_structuring_error(
+            StructuringError(
+                "Échec structuration Hermes (single-pass, returncode=1): Hermes couldn't start the model "
+                "connection: invalid_params. Your message was not sent. Run `hermes doctor` to check the setup."
+            )
+        )
+
+        assert result["category"] == "model_config_error"
+        assert "model_config_error" not in RETRYABLE_STRUCTURING_CATEGORIES
+
     def test_keeps_residual_model_failures_in_transient_bucket(self):
         result = classify_structuring_error("OpenRouter upstream failure: fallback exhausted")
 
@@ -176,6 +189,20 @@ class TestHermesRunnerSubprocessGuards:
         joined = " ".join(str(part) for part in captured["cmd"])
         assert "\x00" not in joined
         assert "\x0c" not in joined
+
+    def test_runner_uses_hermes_integration_source_tag(self, monkeypatch):
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+        monkeypatch.setattr("src.structuring.subprocess.run", fake_run)
+
+        _default_hermes_runner("prompt propre", 42)
+
+        cmd = captured["cmd"]
+        assert cmd[cmd.index("--source") + 1] == "tool"
 
     def test_runner_maps_argv_failures_to_pre_model_error(self, monkeypatch):
         def fake_run(cmd, **kwargs):
