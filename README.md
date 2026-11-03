@@ -482,7 +482,7 @@ python3 scripts/cv_health_alert.py --dry-run
 python3 scripts/cv_health_alert.py --test
 ```
 
-Planification recommandée (crontab root) : contrôle toutes les 15 min, et `--smoke` une fois par jour.
+Planification en place depuis le 03/11 (crontab root, bloc `# BEGIN/END whub-cv-health`) : contrôle toutes les 15 min, et `--smoke` chaque jour à 7h30 heure de Paris. Le serveur est en UTC : la ligne tourne à 5h30 et 6h30 UTC et ne s'exécute que s'il est 7h à Paris, ce qui suit le changement d'heure. Journal : `/root/.local/state/whub-cv-health.log`.
 
 ## Variables d'environnement principales
 
