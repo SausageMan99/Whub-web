@@ -103,6 +103,14 @@ Checklist avant demande de review :
 - Toute modif worker doit être suivie d'un `systemctl restart whub-cv-worker.service`
 - Tout changement de statut, event_type, ou catégorie d'erreur = bump du scope dans le commit
 - `assert_quality_report_is_redacted` doit toujours passer : pas de contact dans les rapports
+- **Fidélité** : un nettoyage automatique (source ou JSON) ne touche que ce qu'il doit retirer. Une ligne ou une phrase sans coordonnée ni nom interdit reste identique au caractère près.
+- **Contrôles QA et de fidélité** : corriger un faux positif s'accompagne d'un test qui prouve qu'un vrai problème reste détecté (exemple : `tests/test_experience_coverage_layouts.py`).
+- **Mesurer avant/après** :
+  - changement de modèle, de prompt, de nettoyage ou de contrôle : `workers/cv-worker/scripts/model_bakeoff.py` (couverture, copie exacte) ;
+  - changement de mise en page : rendu des mêmes JSON avant/après ;
+  - dans les deux cas, puis `python3 scripts/cv_smoke_battery.py --reset` sur la prod (11/11 attendus).
+- **Seuils recopiés** : un seuil de la QA recopié dans le renderer (script autonome, qui ne peut pas importer `src/`) porte un commentaire qui pointe vers sa source, par exemple `QA_DENSE_PAGE_CHARS`.
+- **Comptes rendus** : une décision ou un banc daté va dans `ops/` (voir `ops/README.md`), et la ligne correspondante dans `CHANGELOG.md`.
 
 ## Supabase
 

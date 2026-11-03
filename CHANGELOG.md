@@ -9,6 +9,74 @@ Toutes les modifications notables du projet sont documentées ici. Le format sui
 - Pre-push gate via `.githooks/pre-push`
 - CI GitHub Actions via `.github/workflows/ci.yml`
 
+## [0.2.0] - 2026-11-03
+
+Remise en service après la panne du 16 au 30/10/2026, puis fiabilisation de la fidélité et de la mise en page. Banc prod : 9/11 le 02/11, puis 11/11 dont 8 ready le 03/11 (3 ready le matin du 03/11).
+
+### Corrigé
+- **Panne d'octobre** : Hermes v0.22 refusait `--source whub-cv-worker` (`invalid_params`). Le worker utilise `--source tool` (`170df53`), et 9 des 10 demandes bloquées ont été récupérées.
+- **Rejet de version** : un CV dont la QA passait mais qui avait des alertes de fidélité douces était rejeté par `save_version` (« draft_ready requests must carry a non-passing QA report », cas Heidi). Le rapport est désormais marqué `passed: false` + `draft_override_reason` (`9d86470`).
+- La rétrogradation après une révision de mise en page comparait à `"ready"` au lieu de `"passed"`.
+- Les commentaires de révision qui portent sur les compétences ou les catégories déclenchent une révision de contenu, plus seulement un nouveau rendu (`3612b4d`).
+- **CV longs découpés en blocs** (`8f9bfcf`) : les langues et certifications de tous les blocs sont conservées, et une expérience séparée de ses missions est recollée (cas Amina).
+- **Le nettoyage de la source n'altère plus le texte** (`8584ad3`) :
+  - `ASP.NET`, `ADO.NET`, `VB.NET` ne sont plus supprimés comme noms de domaine ;
+  - les lignes sans coordonnée gardent leur ponctuation (« : », « ; », virgules, puces).
+- **Le nettoyage du JSON n'efface plus de mots** (`8584ad3`) : « LinkedIn », « contact », « email » ne sont plus retirés des phrases sans coordonnée (« campagnes LinkedIn Ads »).
+- Les ligatures PDF (« ﬁ », « ﬂ »…) sont écrites en lettres normales à l'extraction (`8584ad3`).
+- Les titres en lettres espacées (« E X P É R I E N C E S ») ferment la section Compétences du parseur de secours (`8584ad3`).
+- **Fausses alertes de couverture des expériences** (`047fba2`), sur oussama, hodard, rayan et yannick :
+  - date seule sur sa ligne, puis poste ;
+  - prénom et titre répétés en haut de page ;
+  - colonne latérale entre deux pages de missions ;
+  - titres « (suite) » / « — suite » ;
+  - champs « Libellé : valeur » collés à une mission.
+- Les puces de polices symboles (Wingdings) et les sous-puces Word « o » isolées deviennent « • texte » à l'extraction (`047fba2`).
+- Le parseur de compétences de secours ne coupe plus aux virgules entre parenthèses (`047fba2`).
+- **Pagination** (`c5707ca`) :
+  - plus de dernière page presque vide (zahia, noel) ni de page de suite à 33 % (amina) ;
+  - plus de titre d'expérience orphelin en bas de page ;
+  - la page 1 n'est plus sous-comptée.
+- **Faux positifs de la QA** (`c5707ca`) :
+  - `skill_overflow_page_created` sur les blocs « X (suite) » de la page 1 et sur « Recette (suite) » ;
+  - `pdf_fact_absent_from_source` sur le prénom du portail et sur les catégories de la taxonomie W hub (« Stack principale »).
+
+### Ajouté
+- **Backend `openrouter`** (`src/llm_backend.py`, `db067be`) :
+  - appel direct à l'API OpenRouter, sortie contrainte par un schéma JSON strict (`CV_JSON_SCHEMA`) ;
+  - fournisseurs filtrés : `require_parameters`, `data_collection=deny`, `zdr` en option ;
+  - secours automatique `models=[principal, secours]`, une relance sur les erreurs transitoires ;
+  - blocs de CV longs structurés en parallèle.
+- Nouvelles catégories d'erreur non relancées : `model_config_error` et `worker_internal_error`.
+- **OCR de secours** (`7628b1e`) : Tesseract `fra+eng` quand la couche texte manque ou est illisible ; score `text_readability` ; `needs_human_review` si même l'OCR échoue (cas Benjamin).
+- **Alertes de santé Telegram** (`scripts/cv_health_alert.py`, `f4231cc`) :
+  - worker arrêté, 3 échecs d'affilée, file bloquée, Supabase injoignable, test quotidien en échec ;
+  - installées en cron le 03/11 : toutes les 15 min, test de bout en bout à 7h30 heure de Paris.
+- **`scripts/model_bakeoff.py`** : comparaison de modèles hors prod sur le banc de CV (couverture, copie exacte, statut, durée, coût).
+- **Compétences lues d'après les styles du PDF** (`visual_skills_extraction._extract_styled_skills`, `047fba2`) :
+  - pour les modèles Canva à deux colonnes : titre de section, catégories en gras, puces, colonnes séparées ;
+  - remplacement des compétences du modèle seulement en cas de confiance élevée.
+- **Mise en page** (`c5707ca`) :
+  - équilibrage des pages de suite en caractères et en hauteur ;
+  - absorption des petits reliquats ;
+  - protection de l'ouverture des expériences ;
+  - expériences en page 2 si la page 1 déborderait.
+- Variante de mise en page `grouped`, essayée quand la base passe en forçant les expériences sur leur propre page ; à score égal, la variante la plus courte gagne (`c5707ca`).
+- `WHUB_SKILL_CATEGORY_TAXONOMY` : la taxonomie de catégories de compétences, partagée par le prompt et la QA (`c5707ca`).
+- Alerte indicative `page_dense_but_acceptable` (`qa.ADVISORY_LAYOUT_CODES`) : seule, elle laisse le CV en ready et reste visible dans le rapport et l'événement `ready` (`7c29b13`).
+- Documentation datée dans `ops/` : bancs, choix du modèle, fidélité et compétences, pagination.
+
+### Modifié
+- **Modèle en prod** : `google/gemini-2.5-flash` conservé après comparaison de 6 modèles, `anthropic/claude-haiku-5.5` en secours.
+- **Seuil d'appel unique** : CV traités en un seul appel jusqu'à 40 000 caractères (`WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD`).
+- `temperature` n'est plus envoyée par défaut : les modèles à raisonnement la refusent.
+- La règle « page trop vide » du renderer est alignée sur celle de la QA (≤ 46 %, ≤ 1 700 caractères).
+
+### Connu
+- Le test S4 (`test_worker_role.py::test_supabase_client_source_has_no_service_role_fallback`) reste rouge : les points de sécurité S1 à S4 sont hors périmètre pour l'instant.
+- Les valeurs par défaut du code (backend `hermes`, modèle Nemotron, seuil 15 000) ne sont pas celles de la prod, qui reposent sur `.env`.
+- Gemini 2.5 Flash n'a pas d'endpoint « zero data retention ».
+
 ## [0.1.0] - 2026-06-11
 
 Premier état de prod stable après stabilisation des quality loops.
@@ -40,5 +108,6 @@ Premier état de prod stable après stabilisation des quality loops.
 - Auth désactivée en dev (no-auth mode) par décision projet. À réactiver pour mise en prod réelle.
 - Auth des server actions repose sur `createSupabaseAdminClient()` (service role) avec rate limiting. Pas d'auth utilisateur final.
 
-[Unreleased]: https://github.com/SausageMan99/Whub-web/compare/dd61fb0...HEAD
+[Unreleased]: https://github.com/SausageMan99/Whub-web/compare/7c29b13...HEAD
+[0.2.0]: https://github.com/SausageMan99/Whub-web/compare/dd61fb0...7c29b13
 [0.1.0]: https://github.com/SausageMan99/Whub-web/releases/tag/v0.1.0

@@ -82,8 +82,9 @@ Utilisateur télécharge ou demande une correction
 - **Base de données** : Supabase Postgres.
 - **Storage** : Supabase Storage.
 - **Worker** : Python 3.11, `uv`, systemd sur VPS.
-- **IA** : appels via Hermes CLI / OpenRouter selon configuration worker.
-- **PDF** : extraction avec PyMuPDF, rendu avec ReportLab et renderer W hub.
+- **IA** : appel direct à l'API OpenRouter avec sortie JSON contrainte par schéma. En production, le modèle principal est `google/gemini-2.5-flash` et le secours automatique `anthropic/claude-haiku-5.5`. La CLI Hermes reste disponible comme chemin de secours (`WHUB_LLM_BACKEND=hermes`).
+- **PDF** : extraction avec PyMuPDF, OCR Tesseract (`fra+eng`) en secours, rendu avec ReportLab et le renderer W hub du dépôt (`workers/cv-worker/renderer/whub_cv_renderer.py`).
+- **Surveillance** : script d'alerte Telegram lancé par cron (voir [Surveillance](#surveillance)).
 - **Queue** : BullMQ côté web en tentative d'enqueue, avec fallback polling Postgres côté worker.
 
 ## Structure du dépôt
@@ -101,10 +102,16 @@ Utilisateur télécharge ou demande une correction
 │   ├── renderer/                 # Renderer PDF W hub
 │   ├── assets/                   # Logo, watermark, polices, assets W hub
 │   ├── tests/                    # Tests Python worker
-│   └── eval/                     # Cas d'évaluation et smoke tests
+│   ├── eval/                     # Cas d'évaluation et smoke tests
+│   └── scripts/model_bakeoff.py  # Comparaison de modèles hors prod (banc de CV)
 │
 ├── supabase/migrations/          # Schéma DB, RPC, RLS, statuts, policies
-├── scripts/                      # Gates qualité et smoke tests
+├── scripts/                      # Gates qualité, smoke tests, alertes de santé
+│   ├── e2e_smoke.py              # Un CV de bout en bout sur la prod
+│   ├── cv_smoke_battery.py       # Les 11 CV du banc sur la prod
+│   └── cv_health_alert.py        # Alertes Telegram (cron)
+├── cv_test_bank/                 # CV de test réels (PDF ignorés par git)
+├── ops/                          # Bancs datés, décisions, comptes rendus d'incident
 └── package.json                  # Workspace npm web
 ```
 
@@ -165,11 +172,22 @@ Le chemin du fichier vient de `cv_requests.source_file_path`.
 
 ### Étape 3 — Extraction du texte
 
-Le worker extrait le texte du PDF source avec PyMuPDF.
+Le worker extrait le texte du PDF source avec PyMuPDF, dans l'ordre visuel des blocs (`src/extraction.py`).
 
 Cette étape donne le texte brut qui servira à construire le CV W hub.
 
-Si la couche texte est absente (PDF scanné) ou illisible (police dont les glyphes sont mappés sur des codes privés : le texte sort « chiffré »), le worker relit les pages par OCR (PyMuPDF + Tesseract `fra+eng`, 300 dpi). La lisibilité est mesurée par `text_readability()` (part de tokens ressemblant à des mots ; un vrai CV est entre 0,85 et 0,96). Si l'OCR ne rend pas le texte lisible non plus, la demande passe en `needs_human_review` au lieu de laisser le modèle deviner le contenu.
+**OCR de secours.** La couche texte peut être absente (PDF scanné) ou illisible : certaines polices ont leurs glyphes mappés sur des codes privés, et le texte sort « chiffré » (cas Benjamin). Le worker relit alors les pages par OCR (PyMuPDF + Tesseract `fra+eng`, 300 dpi).
+
+- **Déclenchement** : moins de 400 caractères, ou lisibilité `text_readability()` inférieure à 0,5. La lisibilité est la part de tokens qui ressemblent à des mots : un vrai CV est entre 0,85 et 0,96, le texte chiffré de Benjamin à 0,06.
+- **Choix du texte** : le texte OCR n'est retenu que s'il est lisible et fait au moins la moitié du texte natif.
+- **Échec** : si l'OCR ne rend pas le texte lisible non plus, la demande passe en `needs_human_review` au lieu de laisser le modèle deviner le contenu.
+
+**Normalisations sans perte** (`_clean_extracted_text`) :
+
+- caractères de contrôle (octets NUL…) remplacés par des espaces ;
+- lignes de pied de page « CV créé sur… » / « 1/3 » retirées ;
+- ligatures typographiques (« ﬁ », « ﬂ », « ﬀ »…) écrites en lettres normales ;
+- puces de polices symboles (Wingdings ``, ``, ``…) et sous-puces Word extraites comme un « o » seul sur sa ligne, réécrites en « • texte » sur une seule ligne. Sans ça, toute une expérience était lue comme un seul élément (cas Yannick).
 
 Dépendance système : paquet `tesseract-ocr-fra` sur le VPS du worker.
 
@@ -192,60 +210,157 @@ Cette étape ne doit jamais stocker de contact candidat brut dans le rapport qua
 
 ### Étape 5 — Nettoyage du texte source
 
-Le worker nettoie le texte pour réduire les éléments qui ne doivent pas apparaître dans le CV final, notamment les contacts candidat ou certains artefacts du PDF source.
+Le worker retire du texte source ce qui ne doit pas apparaître dans le CV final (`src/source_sanitizer.py`) :
+
+- coordonnées : email, téléphone, LinkedIn, GitHub, URL, adresse dans l'en-tête ;
+- lignes de plateformes ATS (Hellowork : « CV téléchargé depuis », TJM, disponibilité, prétentions…) ;
+- libellés de contact orphelins.
+
+Règle de fidélité (03/11/2026) : **une ligne sans coordonnée est transmise telle quelle**. Le nettoyage de ponctuation (espaces avant « : » et « ; », virgules ou puces en bout de ligne) ne s'applique qu'aux lignes dont on vient de retirer une coordonnée. Avant cette règle, toutes les lignes perdaient la typographie française, leurs virgules finales et leurs puces.
+
+Les noms techniques en `.net` (`ASP.NET`, `ADO.NET`, `VB.NET`, `React.NET`…) ne sont pas des noms de domaine : ils sont conservés (`is_dotnet_technical_token`). Avant, « ASP.NET MVC 5 » devenait « MVC 5 ».
+
+Le rapport de nettoyage ne contient que des compteurs, jamais les valeurs retirées.
 
 ### Étape 6 — Structuration IA
 
-Le worker appelle le modèle IA directement via l'API OpenRouter (`WHUB_LLM_BACKEND=openrouter`, module `src/llm_backend.py`), avec une sortie JSON **contrainte par un schéma strict** : le modèle ne peut pas renvoyer de JSON invalide. Les requêtes refusent les fournisseurs qui réutilisent les données (`data_collection=deny`) et n'utilisent que des endpoints qui respectent le schéma (`require_parameters`).
+Objectif : transformer le texte source en JSON structuré exploitable par le renderer (nom, titre, description, formations, certifications, langues, compétences, expériences), sans rien inventer.
 
-Les CV longs (> 15 000 caractères) sont découpés en blocs structurés en parallèle (`WHUB_LONG_CV_BLOCK_PARALLELISM`, 4 par défaut).
+**Appel modèle.** Le worker appelle le modèle directement via l'API OpenRouter (`WHUB_LLM_BACKEND=openrouter`, module `src/llm_backend.py`) :
 
-L'ancien chemin `hermes chat` reste disponible en secours avec `WHUB_LLM_BACKEND=hermes`. Il dépend de la CLI Hermes, qui change à chaque mise à jour : c'est une mise à jour de Hermes qui a cassé la production du 16 au 30/10/2026.
+- **Schéma strict** : la sortie JSON est contrainte par un schéma (`CV_JSON_SCHEMA`, toutes les propriétés requises), donc le modèle ne peut pas renvoyer de JSON invalide.
+- **Choix du fournisseur** : `provider.require_parameters=true` (seuls les fournisseurs qui respectent le schéma), `data_collection=deny` (pas de fournisseur qui entraîne ses modèles sur les données). `zdr=true` en option (`WHUB_LLM_ZERO_DATA_RETENTION`), à laisser à `false` avec Gemini 2.5 Flash, qui n'a pas d'endpoint ZDR.
+- **Modèles** : `models=[WHUB_PRIMARY_MODEL, WHUB_FALLBACK_MODEL]`. OpenRouter bascule automatiquement sur le secours si le principal est indisponible.
+- **Erreurs** :
+  - une relance sur les erreurs 408/429/5xx et les erreurs réseau ;
+  - un délai dépassé est classé `model_timeout` ;
+  - une réponse tronquée (`finish_reason=length`) est une erreur ;
+  - une clé absente ou refusée (401/402/403/404) est classée `model_config_error`, sans relance.
+- **Paramètres** : pas de `temperature` envoyée par défaut, car les modèles à raisonnement (Haiku 5.5, GPT-6) la refusent. Chaque appel est journalisé avec le modèle, le fournisseur, les tokens et le coût.
 
-Le choix du modèle se rejoue avec `workers/cv-worker/scripts/model_bakeoff.py` sur le banc de CV de test (voir `ops/`).
+**Choix du modèle (02-03/11/2026).** Six modèles ont été comparés sur les 11 CV du banc avec `scripts/model_bakeoff.py`, sur deux critères :
 
-Objectif : transformer le texte source en JSON structuré exploitable par le renderer.
+- la **couverture** : part des lignes du CV source retrouvées telles quelles ;
+- la **copie exacte** : part des phrases d'expérience qui sont un extrait mot pour mot.
 
-Le JSON doit contenir les blocs nécessaires au CV W hub : identité utile, titre, résumé, expériences, compétences, formations, outils, etc.
+Gemini 2.5 Flash est retenu : meilleure couverture en un seul appel, 2,5 fois plus rapide que Haiku, copie exacte à 0,99–1,0 une fois les nettoyeurs corrigés. Détail : [`ops/model-bakeoff-2026-11-02.md`](ops/model-bakeoff-2026-11-02.md).
+
+**Un appel ou des blocs.** Jusqu'à `WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD` caractères (40 000 en prod), le CV part en **un seul appel**. Au-delà, il est découpé en blocs structurés en parallèle (`WHUB_LONG_CV_BLOCK_PARALLELISM`, 4 par défaut), dont l'ordre est conservé. Le découpage séparait parfois une expérience de ses missions (cas Amina, en échec avec tous les modèles), d'où le seuil relevé. À l'assemblage :
+
+- les langues et certifications de tous les blocs sont fusionnées sans doublon (elles étaient perdues) ;
+- une expérience réduite à son en-tête est recollée au bloc de missions qui la suit.
+
+**Chemin de secours Hermes.** L'ancien chemin `hermes chat` reste disponible avec `WHUB_LLM_BACKEND=hermes` (`--source tool`). Il dépend de la CLI Hermes, qui change à chaque mise à jour : c'est Hermes v0.22, refusant l'ancienne valeur `--source whub-cv-worker`, qui a cassé la production du 16 au 30/10/2026.
 
 À ce stade, la règle importante est : l'IA structure, elle ne doit pas inventer.
 
+### Étape 6 bis — Compétences : le CV source fait foi
+
+Après la structuration, `src/visual_skills_extraction.py` relit la section Compétences **directement dans le PDF source**. Si la lecture est fiable, elle remplace les compétences proposées par le modèle (`_source_overrides.skills` dans le JSON).
+
+Deux lecteurs, le premier qui est fiable gagne :
+
+1. **Titres connus** (cas Omar / Ezzoubir) : une liste de titres de catégories reconnus.
+2. **Styles du PDF** (03/11/2026), pour les modèles Canva à deux colonnes (7 des 11 CV du banc) :
+   - **la section** : le grand titre « C O M P É T E N C E S … » (taille ≥ 1,3 × le corps du texte) ;
+   - **les colonnes** : chaque ligne appartient au titre de section de sa colonne, donc la colonne « Formations » de droite ne se mélange plus aux compétences ;
+   - **les catégories** : lignes en **gras** (un titre sur deux lignes est recollé) ;
+   - **les compétences** : les puces « • », avec leurs lignes de suite.
+
+   Une puce reste entière telle que le candidat l'a écrite (« CRM (PEGA, Salesforce) : audit, migration des données, plan de décommissionnement »). Elle n'est découpée que si c'est une vraie liste d'outils (« Python, Java, Next.js » : au moins 3 morceaux, ou 2 mots isolés, sans mot de liaison ni « : »). Les catégories hors compétences (langues, loisirs, réseaux sociaux, certifications) sont écartées, et « X (suite) » est fusionnée avec « X ».
+
+**Garde-fous** : le remplacement efface les compétences du modèle, donc dans le moindre doute, on les garde :
+
+- section non fermée par un autre titre (elle pourrait continuer page suivante) ;
+- lignes sans catégorie ;
+- moins de 2 catégories ou de 6 éléments ;
+- élément de plus de 120 caractères ;
+- fragment de phrase coupée (« risques. Data & Cloud: AWS »).
+
+Les compétences que le modèle ajoutait depuis le texte des missions (outils cités dans une expérience) n'apparaissent plus dans la section Compétences, mais elles restent dans les missions, copiées mot pour mot.
+
+Le parseur de secours `src/skills_intelligence.py`, utilisé quand aucun des deux lecteurs n'est fiable :
+
+- ne coupe plus aux virgules entre parenthèses (« Méthodologies agiles (certifiée PSPO) ») ;
+- reconnaît les titres en lettres espacées comme fin de section.
+
+Détail : [`ops/cv-fidelity-qa-and-skills-2026-11-03.md`](ops/cv-fidelity-qa-and-skills-2026-11-03.md).
+
 ### Étape 7 — Contrôles de sécurité et fidélité
 
-Le worker vérifie notamment :
+**Nettoyage du JSON produit** (`sanitize_contact_in_json`, `sanitize_identity_terms_in_json`) : les coordonnées et le nom de famille du candidat sont retirés du JSON. Depuis le 03/11/2026, seules les chaînes qui contiennent **vraiment** une coordonnée (email, téléphone, URL, profil LinkedIn/GitHub) ou le nom interdit sont retouchées. Avant, les mots « LinkedIn », « contact » ou « email » étaient effacés de toutes les phrases : « campagnes LinkedIn Ads » devenait « campagnes Ads ».
 
-- absence de contact candidat interdit ;
-- cohérence avec le CV source ;
-- conservation des expériences importantes ;
-- absence d'hallucination visible ;
-- qualité suffisante de l'extraction ;
-- capacité à générer un PDF utile.
+**Contrôle de fidélité** (`validate_source_fidelity`) : il compare le JSON au texte source nettoyé.
 
-Si la fidélité est insuffisante, la demande peut finir en `failed` avec une erreur métier comme `source_fidelity`.
+- **Bloquants** (`failed`, catégorie `source_fidelity`) : coordonnée ou identité interdite, en-tête d'expérience sans contenu, structure incohérente.
+- **Alertes douces** (`_fidelity_soft_warnings`) : elles envoient le CV en `draft_ready` pour relecture humaine.
+  - `experience_content_rewritten_or_absent_from_source` : une phrase d'expérience qui n'est pas un copier-coller de la source ;
+  - `source_coverage_missing_experience_item` : une mission de la source absente du CV ;
+  - `source_coverage_missing_section` : une section métier absente (réalisations, certifications, langues…) ;
+  - `synthetic_technical_environment` : un titre « Environnement technique » inventé ;
+  - `title_absent_from_source`, `company_highlight_absent_from_source`…
 
-Si le CV source est trop incertain ou trop pauvre, la demande peut passer en `needs_human_review`.
+**Contrôle de couverture des expériences** (`extract_source_experience_coverage_items`) : il relève chaque mission de la source sous les titres « Missions », « Réalisations », « Livrables », etc. Depuis le 03/11/2026, il ne prend plus pour des missions les lignes de mise en page des PDF :
+
+| Ligne de mise en page | Traitement |
+|---|---|
+| une plage de dates seule (« 07/2022 – 01/2024 », « De mai 2022 à août 2024 ») | ouvre une nouvelle expérience ; la ligne suivante (poste/entreprise) est son en-tête |
+| le prénom du candidat seul sur une ligne | en-tête de page : le prénom et le titre qui suit sont ignorés, sans couper la mission en cours |
+| un titre en lettres espacées (« D E S C R I P T I O N ») | ferme la section (colonne latérale) |
+| « Missions (suite) », « Autres — suite » | rouvrent la section |
+| « Environnement fonctionnel : … » | commence un nouvel élément |
+
+Une mission vraiment supprimée reste signalée : c'est testé dans `tests/test_experience_coverage_layouts.py`. Ces corrections ont supprimé les fausses alertes d'oussama, hodard et rayan. Détail : [`ops/cv-fidelity-qa-and-skills-2026-11-03.md`](ops/cv-fidelity-qa-and-skills-2026-11-03.md).
+
+**Ce qui envoie en `needs_human_review` avant tout appel modèle** :
+
+- texte de moins de 250 caractères ou de moins de 5 lignes ;
+- profil `scanned` à moins de 500 caractères ;
+- lisibilité inférieure à 0,5 après OCR.
 
 ### Étape 8 — Mise en page
 
-Le worker prépare les options de mise en page via le package `src/layout/`.
+Le package `src/layout/` (point d'entrée `run_layout`) rend le PDF en une ou deux variantes et garde la meilleure :
 
-Ce bloc gère :
+1. **Variante `base`** : options issues de `build_layout_packing_options`. Un gros CV (plus de 8 expériences, ou plus de 120 unités de contenu, ou une expérience de plus de 30 unités) a ses expériences forcées sur leur propre page.
+2. **Seconde variante**, une seule au maximum :
+   - `layout_retry` si la base a une alerte purement de mise en page (densité, page vide, saut de page) ;
+   - `grouped` (03/11/2026) si la base **passe** mais force les expériences sur de nouvelles pages : on essaie aussi la version regroupée.
+3. **Sélection** (`select_best_layout_variant`) : meilleur score de « goût humain », puis statut `passed`, puis **le moins de pages**. Noel : 10 pages au lieu de 12.
 
-- le packing des expériences ;
-- les variantes de layout ;
-- les retries de mise en page ;
-- la sélection de la meilleure variante ;
-- les erreurs de layout bloquantes ou non bloquantes.
+Le contenu n'est jamais modifié par la mise en page (`assert_layout_retry_preserves_content`).
 
 ### Étape 9 — Rendu PDF
 
-Le renderer W hub génère un PDF avec la charte W hub.
+Le renderer W hub (`workers/cv-worker/renderer/whub_cv_renderer.py`, lancé en sous-processus) génère un PDF à la charte W hub. Les assets sont dans `workers/cv-worker/assets/`. Il ne décide pas du contenu métier : il transforme le JSON en PDF.
 
-Les assets nécessaires sont dans `workers/cv-worker/assets/`.
+- **Page 1** : nom, titre, description, compétences sur deux colonnes, colonne « Formation & Diplômes » à droite (formations, certifications, langues), puis le début des expériences.
+- **Pages suivantes** : expériences en pleine largeur, prénom en en-tête.
 
-Le renderer ne décide pas du contenu métier. Il transforme le JSON structuré en PDF.
+**Règles de pagination** (03/11/2026, détail dans [`ops/cv-pagination-2026-11-03.md`](ops/cv-pagination-2026-11-03.md)) :
 
-### Étape 10 — Sauvegarde de la version
+- **Anti-crowding** : une page s'arrête vers `page_dense_char_threshold` caractères (2 850), en comptant **tout** le texte de la page comme la QA (description, compétences, colonne latérale comprises). Une puce ne fait jamais franchir la ligne QA des 3 000 caractères.
+- **Équilibrage des pages de suite** : à chaque nouvelle page, le renderer estime le texte d'expériences restant, en caractères **et** en hauteur. Si la dernière page ne recevrait qu'un reliquat, le reste est réparti également sur les pages nécessaires. Sinon les pages sont remplies normalement, pour ne pas ajouter de page.
+- **Reliquat** : un reste de moins de 450 caractères qui tient physiquement reste sur la page courante.
+- **Ouverture d'expérience** : la date, le poste et la première section restent ensemble, sans coupure de densité entre eux. Si la première section fait moins de 120 caractères (« Systèmes : macOS… »), la section suivante en fait partie. Une ouverture qui ne tient pas en bas de page passe entière à la page suivante.
+- **Page 1 surchargée** : si les compétences, la colonne latérale et l'ouverture de la première expérience dépasseraient la ligne QA, les expériences commencent en page 2.
+- **Page « trop vide »** : même définition que la QA (≤ 46 % de hauteur et ≤ 1 700 caractères d'expériences).
+- **Compétences** : une catégorie de plus de 8 éléments ou 470 caractères est répartie en blocs « X (suite) » dans les colonnes. Seul ce qui ne tient pas en page 1 part sur une page « Compétences techniques (suite) ».
+
+### Étape 10 — QA du PDF et décision ready / draft_ready
+
+`src/qa.py::run_qa` inspecte le PDF rendu :
+
+- **Sécurité** : coordonnées, glyphes cassés, texte hors marge, logo et filigrane présents.
+- **Intégrité du contenu** :
+  - tout fait du JSON est dans le PDF ;
+  - les lieux de mission et les sections métier de la source sont dans le PDF ;
+  - tout fait du PDF est dans la source. Exceptions autorisées : les libellés du gabarit, le **prénom du portail** et la **taxonomie de catégories W hub** que le prompt impose (`WHUB_SKILL_CATEGORY_TAXONOMY`, partagée par le prompt et la QA).
+- **Mise en page** (`find_layout_issues`) : page trop dense ou trop vide, dernière page clairsemée, titre d'expérience orphelin, page de compétences en débordement, bloc de compétences trop long…
+
+La décision est prise par `classify_qa_report` (voir [Règles ready / draft_ready](#règles-ready--draft_ready)).
+
+### Étape 11 — Sauvegarde de la version
 
 Quand une version est produite, le worker sauvegarde :
 
@@ -255,7 +370,14 @@ Quand une version est produite, le worker sauvegarde :
 - une ligne dans `cv_versions` ;
 - le lien vers la version courante dans `cv_requests.current_version_id`.
 
-### Étape 11 — Événements
+`save_version` refuse les incohérences :
+
+- `ready` exige `qa_report.passed = true` ;
+- `draft_ready` exige `qa_report.passed != true`.
+
+Quand le worker rétrograde en draft un CV dont la QA est passée (alertes de fidélité douces, révision de mise en page non vérifiée), il marque le rapport avec `passed: false` et `draft_override_reason` (`fidelity_soft_warnings`, `layout_revision_unverified`). Avant ce correctif du 02/11/2026, la version était rejetée et la demande finissait en échec (cas Heidi).
+
+### Étape 12 — Événements
 
 Le worker écrit des événements dans `cv_events`.
 
@@ -280,6 +402,23 @@ Les statuts principaux de `cv_requests.status` sont :
 - `dead_letter` : la demande est considérée comme bloquée après trop d'échecs.
 - `cancelled` : demande annulée.
 - `archived` : demande archivée.
+
+## Règles ready / draft_ready
+
+Un PDF généré finit dans l'un de ces états. La règle vit dans `src/qa.py::classify_qa_report` et `src/main.py::process_job` :
+
+| Situation | Statut |
+|---|---|
+| aucune alerte | `ready` |
+| seule alerte : `page_dense_but_acceptable` (alerte **indicative**, `qa.ADVISORY_LAYOUT_CODES`, décision du 03/11/2026) | `ready` ; l'alerte reste visible dans le rapport, dans l'événement `ready` et dans le score |
+| alerte de mise en page connue (`SOFT_LAYOUT_CODES` : page trop dense ou trop vide, dernière page clairsemée, titre orphelin, débordement de compétences…) | `draft_ready` |
+| alerte de fidélité douce (reformulation, mission ou section absente…) | `draft_ready` (`draft_override_reason=fidelity_soft_warnings`) |
+| révision de mise en page dont l'amélioration n'est pas vérifiée | `draft_ready` (`draft_override_reason=layout_revision_unverified`) |
+| problème d'intégrité du contenu dans le PDF sans alerte de mise en page | `failed` / `qa_failed`, sauf si `run_layout` peut le livrer en draft (`_draft_ready_for_layout_hard_failure`) |
+| coordonnée dans le PDF, logo ou filigrane absent, PDF vide, code de mise en page inconnu | `failed` / `qa_failed` |
+| erreur bloquante de fidélité, de sécurité ou de modèle à la structuration | `failed` (voir [Catégories d'erreurs](#9-catégories-derreurs-cf-classify_structuring_error)) |
+
+`draft_ready` n'est pas un échec : le PDF est téléchargeable, et la relecture humaine décide. Un brouillon signale en général un vrai écart du modèle (mission reformulée, mot retiré, catégorie inventée) ou une mise en page discutable.
 
 ## Tables Supabase importantes
 
@@ -405,6 +544,49 @@ uv run pytest \
   -q
 ```
 
+### Suite complète du worker
+
+```bash
+cd workers/cv-worker
+../../.venv/bin/python -m pytest -q
+```
+
+Attendu au 03/11/2026 : 665 tests passés, 1 en échec connu (`test_worker_role.py::test_supabase_client_source_has_no_service_role_fallback`, point de sécurité S4, hors périmètre pour l'instant). Les tests qui lisent les PDF du banc (`cv_test_bank/*/input.pdf`, ignorés par git) sont sautés si ces fichiers sont absents.
+
+### Banc de CV de test sur la prod
+
+Les 11 CV de `cv_test_bank/` (oussama, zahia, thorez, dense, sanitize, hodard, rayan, amina, benjamin, noel, yannick) passent dans la vraie chaîne : upload, worker, QA, puis nettoyage des demandes.
+
+```bash
+python3 scripts/cv_smoke_battery.py --reset
+```
+
+```bash
+python3 scripts/e2e_smoke.py --case sanitize
+```
+
+Résultats dans `scripts/cv_smoke_results.jsonl` et `/tmp/cv_smoke_battery.log`. Les demandes de test sont déposées sous `smoke/` et ignorées par les alertes de santé. Historique : [`ops/cv-smoke-baseline-2026-11-02.md`](ops/cv-smoke-baseline-2026-11-02.md) (9/11), puis le 03/11 : 11/11, dont 8 ready.
+
+### Comparer des modèles hors prod
+
+```bash
+cd workers/cv-worker
+set -a && . ../../.env && set +a
+../../.venv/bin/python scripts/model_bakeoff.py run --model google/gemini-2.5-flash --out /tmp/bakeoff/gemini.jsonl
+```
+
+```bash
+../../.venv/bin/python scripts/model_bakeoff.py report /tmp/bakeoff/*.jsonl
+```
+
+Même pipeline que la prod (extraction, nettoyage, structuration, compétences, mise en page, QA), sans base de données. Le rapport donne par modèle :
+
+- le statut (ready / draft / échec) ;
+- la **couverture** (lignes source retrouvées telles quelles) et la **copie exacte** (phrases d'expérience copiées mot pour mot) ;
+- les alertes de mise en page, la durée et le coût.
+
+`--cases zahia,noel` limite le banc. Variables utiles : `WHUB_LLM_ZERO_DATA_RETENTION=true` pour un modèle compatible ZDR, `WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD` pour tester le seuil d'appel unique.
+
 ### Gate qualité principale
 
 Depuis la racine :
@@ -497,26 +679,31 @@ Variables typiques côté `apps/web/.env.local` ou Vercel :
 
 ### Worker
 
-Variables typiques côté `workers/cv-worker/.env` ou service systemd :
+Le service systemd lit `/root/whub-cv-factory/.env` (`EnvironmentFile`), et `.env.example` en donne le modèle. **Attention** : plusieurs valeurs par défaut du code ne sont pas celles de la prod. Un `.env` complet est donc obligatoire.
 
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `WORKER_DATABASE_URL`
-- `WORKER_NAME`
-- `POLL_INTERVAL_SECONDS`
-- `MAX_ATTEMPTS`
-- `WHUB_LLM_BACKEND` (`openrouter` en production, `hermes` en secours)
-- `OPENROUTER_API_KEY`
-- `WHUB_PRIMARY_MODEL` et `WHUB_FALLBACK_MODEL` (secours automatique OpenRouter) — en prod `google/gemini-2.5-flash` + `anthropic/claude-haiku-5.5`, choix mesuré dans `ops/model-bakeoff-2026-11-02.md`
-- `WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD` (40000 en prod : en dessous, un seul appel modèle, sans découpage en blocs)
-- `WHUB_LLM_ZERO_DATA_RETENTION` (`false` avec Gemini 2.5 Flash, qui n'a pas d'endpoint ZDR)
-- `WHUB_LLM_MAX_OUTPUT_TOKENS`, `WHUB_LLM_REASONING_EFFORT`, `WHUB_LONG_CV_BLOCK_PARALLELISM`
-- `WHUB_PRIMARY_PROVIDER`, `HERMES_PROFILE` (backend `hermes` uniquement)
-- `WHUB_RENDERER_PATH`
-- `WHUB_ASSETS_DIR`
-- `WHUB_FONTS_DIR`
+| Variable | Défaut du code | Prod (03/11/2026) | Rôle |
+|---|---|---|---|
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | — | renseignées | accès Supabase |
+| `WORKER_DATABASE_URL` | — | rôle `whub_worker` | accès Postgres du worker |
+| `WORKER_NAME` | `whub-cv-worker-01` | | verrou des demandes |
+| `POLL_INTERVAL_SECONDS` / `MAX_ATTEMPTS` | `10` / `3` | | polling, tentatives |
+| `WHUB_LLM_BACKEND` | `hermes` | `openrouter` | appel direct OpenRouter ou CLI Hermes |
+| `OPENROUTER_API_KEY` | vide | renseignée | clé OpenRouter (absente = `model_config_error`) |
+| `WHUB_PRIMARY_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` | `google/gemini-2.5-flash` | modèle principal |
+| `WHUB_FALLBACK_MODEL` | vide | `anthropic/claude-haiku-5.5` | secours automatique OpenRouter |
+| `WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD` | `15000` | `40000` | taille max d'un CV traité en un seul appel |
+| `WHUB_LONG_CV_CHAR_THRESHOLD` | `10000` | `10000` | seuil « CV long » |
+| `WHUB_LONG_CV_BLOCK_PARALLELISM` | `4` | | blocs structurés en parallèle (OpenRouter) |
+| `WHUB_LLM_ZERO_DATA_RETENTION` | `false` | `false` | endpoints ZDR seulement ; aucun pour Gemini 2.5 Flash |
+| `WHUB_LLM_TEMPERATURE` | non envoyée | | refusée par les modèles à raisonnement |
+| `WHUB_LLM_MAX_OUTPUT_TOKENS` | `32000` | | taille max de la réponse |
+| `WHUB_LLM_REASONING_EFFORT` | vide | | `low` / `medium` / `high` si le modèle le gère |
+| `WHUB_PRIMARY_PROVIDER`, `HERMES_PROFILE`, `HERMES_CLI_PATH` | `openrouter`, `default`, `hermes` | | backend `hermes` uniquement |
+| `WHUB_RENDERER_PATH`, `WHUB_ASSETS_DIR`, `WHUB_FONTS_DIR` | dossiers du dépôt | | renderer, logo, filigrane, polices |
 
 Le worker doit utiliser le rôle Postgres `whub_worker` via `WORKER_DATABASE_URL` pour les opérations DB. Le service role Supabase ne doit pas être le chemin normal du worker.
+
+Le script d'alerte lit en plus `TELEGRAM_BOT_TOKEN` et `TELEGRAM_HOME_CHANNEL` dans `/root/.hermes/.env`.
 
 ## Diagnostic d'une demande bloquée
 
@@ -574,6 +761,42 @@ Ce n'est pas forcément une panne infra. C'est souvent un problème de qualité 
 
 Regarder `cv_versions`, `current_version_id`, `qa_status` et les événements `cv_events`.
 
+### Toutes les demandes échouent avec « Le modèle de structuration a échoué »
+
+C'est l'incident du 16 au 30/10/2026 : une mise à jour de Hermes (v0.22) refusait `--source whub-cv-worker` avec `invalid_params`. Le backend `openrouter` ne dépend plus de Hermes. Si `WHUB_LLM_BACKEND=hermes` est remis, vérifier `hermes --version` et l'argument `--source tool`.
+
+Les erreurs de configuration du modèle sont classées `model_config_error` et ne sont pas relancées :
+
+- `invalid_params` de Hermes ;
+- clé OpenRouter absente ;
+- réponse HTTP 400, 401, 402, 403 ou 404.
+
+Après correction, relancer les demandes échouées avec la RPC `unlock_job`.
+
+### `openrouter … 404 No endpoints found that can handle the requested parameters`
+
+Le modèle demandé n'a pas de fournisseur compatible avec les paramètres envoyés :
+
+- `zdr=true` avec Gemini 2.5 Flash, qui n'a pas d'endpoint ZDR ;
+- une `temperature` explicite avec un modèle à raisonnement (Haiku 5.5, GPT-6).
+
+Corriger `WHUB_LLM_ZERO_DATA_RETENTION` ou `WHUB_LLM_TEMPERATURE`.
+
+### `draft_ready requests must carry a non-passing QA report`
+
+Le worker essayait d'enregistrer en draft un rapport QA marqué `passed`. C'est corrigé depuis le 02/11/2026 (`_mark_qa_report_draft_override`), et l'erreur est classée `worker_internal_error`. Si elle réapparaît, un nouveau chemin de rétrogradation en draft a oublié de marquer le rapport.
+
+### Un CV complet passe en `draft_ready` avec des alertes de couverture
+
+Lire le message de chaque alerte dans `qa_report.quality_report.soft_warnings` / `_fidelity_soft_warnings` :
+
+- **une vraie mission manque** : c'est un écart du modèle, à relire ;
+- **l'élément cité est une ligne de mise en page du PDF source** (en-tête de page, date seule, colonne latérale…) : c'est un faux positif du contrôle de couverture. Ajouter le cas dans `tests/test_experience_coverage_layouts.py` avant de corriger `extract_source_experience_coverage_items`.
+
+### Le texte du CV généré est « chiffré » ou vide alors que le PDF source est lisible
+
+La police du PDF source mappe ses glyphes sur des codes privés. L'OCR de secours doit prendre le relais : vérifier que `tesseract-ocr-fra` est installé (`tesseract --list-langs`) et que le journal contient `ocr fallback … ocr_readability=…`.
+
 ## Règles qualité importantes
 
 - Le rapport qualité doit être redacted : pas d'email, téléphone, LinkedIn, GitHub ou URL candidat brute.
@@ -614,14 +837,22 @@ Cette section rassemble tout ce qu'il faut connaître pour interroger le projet 
 ┌──────────────────────────────────────────┴─────────────────────────┐
 │  Worker Python (systemd : whub-cv-worker.service, sur le VPS)        │
 │  ├─ main.py          : boucle poll + process_job                    │
-│  ├─ extraction.py    : PyMuPDF                                       │
+│  ├─ extraction.py    : PyMuPDF + OCR Tesseract + normalisations     │
+│  ├─ text_readability : score de lisibilité (déclenche l'OCR)        │
 │  ├─ source_sanitizer : retrait contacts/liens/adresses              │
 │  ├─ quality_report.py: QualityReportBuilder + classify_source_profile│
-│  ├─ structuring.py   : appel Hermes (minimax-m3) + assert_no_contact│
-│  ├─ layout/          : packing + variants + retry                   │
+│  ├─ structuring.py   : prompt, blocs, fidélité, nettoyage du JSON   │
+│  ├─ llm_backend.py   : appel OpenRouter, schéma JSON strict         │
+│  ├─ visual_skills_   : compétences lues dans le PDF source          │
+│  │  extraction.py                                                    │
+│  ├─ skills_intelli-  : parseur de compétences de secours            │
+│  │  gence.py                                                         │
+│  ├─ layout/          : packing + variants (base/retry/grouped)      │
 │  ├─ rendering.py     : appelle renderer/whub_cv_renderer.py         │
 │  ├─ qa.py            : run_qa, classify_qa_report                   │
 │  └─ storage.py       : upload input.json / final.pdf / qa.json     │
+│                                                                     │
+│  OpenRouter : google/gemini-2.5-flash → secours claude-haiku-5.5    │
 └──────┬──────────────────────────────────────────────────────────────┘
        │ INSERT/UPDATE
        ▼
@@ -757,9 +988,13 @@ worker_claimed               → le worker a lock la demande
 extraction_done              → texte PDF extrait (payload: {chars: N})
 quality_source_profiled      → profil source classifié (payload: {source_profile, scores, metrics})
 source_sanitized             → counts de sanitization (payload: {removed_email_count, removed_phone_count, …})
-layout_variant_selected      → uniquement si attempts_count > 1 (payload: {selected, attempts_count})
+layout_revision_detected     → révision « mise en page seulement » : contenu réutilisé, seul le rendu est refait
+                               (payload: {comments_count, from_version_id, intent: "layout_only", routing: "renderer_only"})
+layout_variant_selected      → uniquement si attempts_count > 1 (payload: {selected: base|layout_retry|grouped, attempts_count})
 draft_ready  OU  ready       → fin de run (payload: {version_id, version_number, layout_warnings?, fidelity_warnings?})
 ```
+
+`layout_warnings` figure dans l'événement `draft_ready`, et aussi dans l'événement `ready` quand le CV porte une alerte indicative (`page_dense_but_acceptable`).
 
 En cas d'échec :
 
@@ -779,7 +1014,7 @@ Chaque run de `process_job` mesure ces timings et les log en fin de course :
 download_source              (téléchargement depuis cv-sources)
 extract_text                 (PyMuPDF)
 load_comments                (SELECT cv_comments non résolus)
-hermes_structuring           (appel modèle + repair + coalesce)
+hermes_structuring           (structuration, quel que soit le backend : appel modèle, blocs, fidélité, compétences)
 render_pdf_qa_layout_variants (layout: base + retry)
 upload_and_finalize          (save_version + INSERT cv_versions)
 ```
@@ -828,7 +1063,13 @@ risky           (réservé)
 unknown         (fallback)
 ```
 
-Le score d'extraction démarre à 88/100, descend à 72 pour `two_column`/`risky`, à 35 pour `scanned`. En dessous de 500 chars sur un profil scanné, ou sous 250 chars / 5 lignes, `should_require_human_review` renvoie `True` → la demande passe en `needs_human_review` sans appel LLM.
+Le score d'extraction démarre à 88/100, descend à 72 pour `two_column`/`risky`, à 35 pour `scanned`. Le profil contient aussi `readability`, le score de lisibilité du texte (voir l'étape 3).
+
+`should_require_human_review` renvoie `True` dans trois cas, et la demande passe alors en `needs_human_review` sans appel LLM :
+
+- profil scanné de moins de 500 caractères ;
+- moins de 250 caractères ou moins de 5 lignes ;
+- lisibilité inférieure à 0,5, même après OCR.
 
 ### 9. Catégories d'erreurs (cf. `classify_structuring_error`)
 
@@ -839,12 +1080,20 @@ contact_leak                   → email/téléphone/LinkedIn/GitHub dans le JSO
 identity_leak                  → nom de famille candidat dans zone interdite
 source_fidelity                → reformulation, hallucination, fait absent du CV source
 source_sanitization            → sanitizer a retiré trop de contenu
-structuring_invalid_json       → JSON Hermès ou renderer invalide/incomplet
+structuring_invalid_json       → JSON du modèle ou du renderer invalide/incomplet      (relancée)
 layout_density                 → page_too_dense, page_too_sparse, overflow, orphan
 renderer_asset                 → logo/watermark/asset manquant
 missing_candidate_first_name   → pas de pattern Prénom NOM détectable
-transient_model_failure        → timeout, fallback, crash
+model_timeout                  → délai dépassé à l'appel modèle                        (relancée)
+model_nonzero_exit             → le modèle a répondu en erreur                         (relancée)
+model_config_error             → invalid_params Hermes, clé OpenRouter absente,
+                                 HTTP 400/401/402/403/404 : configuration à corriger   (non relancée)
+pre_model_subprocess_error     → échec technique avant l'appel modèle (entrée invalide)
+worker_internal_error          → incohérence de statut à l'enregistrement de la version (non relancée)
+transient_model_failure        → échec temporaire du modèle                            (relancée)
 ```
+
+Seules les catégories de `RETRYABLE_STRUCTURING_CATEGORIES` sont relancées automatiquement. `model_config_error` et `worker_internal_error` sont testées **avant** les autres : une erreur de configuration ne doit plus se faire passer pour un échec temporaire du modèle, comme pendant l'incident d'octobre 2026.
 
 La catégorie est exposée dans `cv_events.payload.error_category` (clé standardisée). L'utilisateur final ne voit que le message public, jamais la stack.
 
@@ -868,10 +1117,17 @@ Le rapport attaché à chaque version contient un bloc `quality_report` ajouté 
     final_qa_status
   },
   hard_blockers: [ { code, stage, ... } ],   // bloquent la publication
-  soft_warnings: [ { code, stage, page?, ... } ],  // affichés en UI, n bloquent pas
+  soft_warnings: [ { code, stage, page?, ... } ],  // affichés en UI ; envoient en draft_ready sauf alerte indicative
   layout_issues: [ { code, page, message } ]      // détail brut (privé, jamais affiché)
 }
 ```
+
+Le rapport QA brut contient aussi :
+
+- `passed` : `true` seulement sans alerte bloquante ; une alerte indicative seule le laisse à `true` ;
+- `human_taste` : score de 0 à 100, pénalités et mesures page par page (caractères, hauteur utilisée) ;
+- `layout_metrics` : les mesures de chaque page ;
+- `draft_override_reason` (`fidelity_soft_warnings`, `layout_revision_unverified`) quand le worker a rétrogradé une QA passée en draft.
 
 `assert_quality_report_is_redacted` refuse tout rapport contenant un email, téléphone, URL ou LinkedIn/GitHub détectable. Cette contrainte est testée.
 
@@ -957,23 +1213,49 @@ Ces requêtes couvrent : incidents worker bloqués, observabilité qualité, aud
 5. Appliquer les migrations Supabase si nécessaire.
 6. Pusher sur `main`.
 7. Déployer Vercel.
-8. Redémarrer le worker si nécessaire.
-9. Lancer un smoke E2E avec un vrai PDF.
+8. Redémarrer le worker si nécessaire (`systemctl restart whub-cv-worker`).
+9. Lancer le banc complet : `python3 scripts/cv_smoke_battery.py --reset` (11/11 attendus).
 10. Vérifier `cv_requests`, `cv_events`, `cv_versions` et `journalctl`.
+
+Pour un changement de modèle, de prompt, de nettoyage ou de contrôle de fidélité, comparer d'abord hors prod avec `scripts/model_bakeoff.py` : couverture et copie exacte, avant/après.
+
+Pour un changement de mise en page, refaire le rendu des mêmes JSON avant/après. La sortie du modèle varie d'un appel à l'autre, et seul un rendu sur données identiques isole l'effet du changement.
 
 ## État de maturité
 
-Le projet est fonctionnel mais doit être considéré comme un outil en stabilisation.
+Le projet est fonctionnel et repassé en service le 02/11/2026 après l'incident d'octobre. Il doit rester considéré comme un outil en stabilisation.
 
-Les zones les plus critiques sont :
+État au 03/11/2026 :
 
-1. Fidélité au CV source.
-2. Statuts compréhensibles pour W hub.
-3. Sécurité et confidentialité des CV.
-4. Reproductibilité depuis GitHub.
-5. Observabilité des erreurs worker.
+- **Banc prod** : 11/11 CV générés, dont 8 en ready, sans aucune alerte de pagination.
+- **Brouillons restants** : ce sont de vrais écarts du modèle, que la relecture humaine doit voir (mission reformulée, mot retiré, section manquante).
+- **Fidélité mesurée** : couverture du CV source 0,82, copie exacte des expériences 0,999 (Gemini 2.5 Flash, 11 CV).
+- **Surveillance** : alertes Telegram toutes les 15 min et test de bout en bout quotidien.
 
-Tant que ces cinq points ne sont pas solides, il faut éviter de présenter le projet comme une production totalement mature.
+Points ouverts :
+
+1. **Sécurité** : les points S1 à S4 de `AUDIT_ARCHITECTURE.md` sont volontairement hors périmètre pour l'instant. Le test S4 (`test_worker_role.py`) reste rouge.
+2. **Défauts du code** : ils ne correspondent pas à la prod (backend `hermes`, modèle Nemotron, seuil 15 000) ; la prod repose sur `.env`.
+3. **Données** : Gemini 2.5 Flash n'a pas d'endpoint « zero data retention ». Les fournisseurs n'entraînent pas leurs modèles sur les CV (`data_collection=deny`), mais ils peuvent les conserver.
+4. **Annexes de compétences sans titre** (cas Yannick) : elles restent lues comme des missions par le contrôle de couverture.
+5. **Code en double** : `src/layout_variants.py`, `layout_intelligence.py`, `layout_retry.py` et `layout_packing.py` sont d'anciennes copies de `src/layout/`. La prod passe par `src/layout/` (`run_layout`), avec une exception : `rendering.py` importe encore `assert_layout_retry_preserves_content` depuis `src/layout_retry.py`. Une modification de la mise en page se fait dans `src/layout/`, et des tests historiques visent encore les anciennes copies.
+
+## Historique des évolutions récentes
+
+| Date | Changement | Détail |
+|---|---|---|
+| 16–30/10/2026 | Panne : toutes les demandes en échec (Hermes v0.22 refuse `--source whub-cv-worker`) | [`.hermes/plans/2026-11-02_140000-remise-en-service-et-choix-modele.md`](.hermes/plans/2026-11-02_140000-remise-en-service-et-choix-modele.md) |
+| 02/11 | Remise en service (`--source tool`), 9 demandes bloquées récupérées ; erreurs de configuration classées à part | idem |
+| 02/11 | Correctif : un draft issu d'une QA passée n'est plus rejeté (cas Heidi) ; commentaires de compétences routés vers une révision de contenu | [`ops/cv-smoke-baseline-2026-11-02.md`](ops/cv-smoke-baseline-2026-11-02.md) |
+| 02/11 | Appel direct OpenRouter avec schéma JSON strict ; blocs en parallèle | étape 6 |
+| 02/11 | OCR de secours pour les PDF illisibles (cas Benjamin) | étape 3 |
+| 02/11 | Alertes Telegram de santé (installées en cron le 03/11) | [Surveillance](#surveillance) |
+| 02–03/11 | Comparaison de 6 modèles : Gemini 2.5 Flash conservé, Haiku 5.5 en secours, un seul appel jusqu'à 40 000 caractères | [`ops/model-bakeoff-2026-11-02.md`](ops/model-bakeoff-2026-11-02.md) |
+| 03/11 | Les nettoyeurs n'altèrent plus le texte (ASP.NET, ponctuation, « LinkedIn Ads ») ; ligatures et puces Wingdings normalisées | étapes 3, 5, 7 |
+| 03/11 | Fin des fausses alertes de couverture (en-têtes, colonne latérale, « (suite) ») ; compétences lues d'après les styles du PDF | [`ops/cv-fidelity-qa-and-skills-2026-11-03.md`](ops/cv-fidelity-qa-and-skills-2026-11-03.md) |
+| 03/11 | Pagination équilibrée, ouverture d'expérience protégée, variante regroupée, moins de pages à score égal ; faux positifs QA retirés ; page dense acceptable seule = ready | [`ops/cv-pagination-2026-11-03.md`](ops/cv-pagination-2026-11-03.md) |
+
+Le détail par version figure dans [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Explication courte pour non-technique
 

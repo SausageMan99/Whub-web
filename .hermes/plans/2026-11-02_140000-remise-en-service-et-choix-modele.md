@@ -73,6 +73,14 @@ fidélité / couverture source / JSON valide / durée / coût, + PDF côte à c�
 Point RGPD à trancher en même temps : activer le « zero data retention » OpenRouter et/ou privilégier
 un fournisseur UE, puisque le texte des CV passe chez le fournisseur.
 
+> **Statut 03/11 (fin de journée)** :
+> - **Phase 4 faite** : alertes Telegram en cron (toutes les 15 min, test quotidien à 7h30 heure de Paris), voir README § Surveillance.
+> - **Au-delà du plan** :
+>   - fausses alertes de fidélité et compétences d'après les styles du PDF (`ops/cv-fidelity-qa-and-skills-2026-11-03.md`) ;
+>   - pagination équilibrée, faux positifs QA retirés, page dense acceptable seule = ready (`ops/cv-pagination-2026-11-03.md`).
+> - **Banc prod** : 11/11, dont 8 ready.
+> - **Hermes** : pas épinglé, mais il n'est plus sur le chemin principal (backend `openrouter`).
+
 ## Phase 4 — Rester opérationnel
 
 - Alerte (Telegram via Hermes, ou email) si 3 échecs consécutifs ou aucun succès en 24 h —

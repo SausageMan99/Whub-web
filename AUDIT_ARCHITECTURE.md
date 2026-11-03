@@ -4,6 +4,15 @@
 **Scope :** `apps/web` (Next.js), `workers/cv-worker` (Python), `supabase/` (SQL), stockage & chaîne asynchrone  
 **Objectif :** Identifier les failles de sécurité, points de fragilité opérationnels et proposer un plan de succession d’erreurs (fallback) robuste.
 
+> **Mise à jour du 03/11/2026.** Cet audit date de mai 2026 et reste conservé tel quel. Ce qui a changé depuis :
+>
+> - **Structuration** : ce n'est plus la CLI Hermes avec un délai de 600 s. Le worker appelle directement OpenRouter, avec un schéma JSON strict, Gemini 2.5 Flash et Claude Haiku 5.5 en secours automatique, et une relance sur les erreurs transitoires. Les erreurs de configuration (`model_config_error`) ne sont plus confondues avec des pannes temporaires. Hermes reste un chemin de secours (`WHUB_LLM_BACKEND=hermes`). Concerne §1, §2 et §5.1 B.
+> - **F7** : le renderer, le logo, le filigrane et les polices sont dans le dépôt (`workers/cv-worker/renderer/`, `workers/cv-worker/assets/`), et le worker les utilise par défaut.
+> - **F8** : `scripts/cv_health_alert.py` alerte sur Telegram toutes les 15 min en cron, et un test de bout en bout tourne chaque jour. Alertes : worker arrêté, 3 échecs d'affilée, file bloquée, Supabase injoignable. Il n'y a toujours pas d'endpoint de métriques.
+> - **S1 à S4** : toujours ouverts, hors périmètre par décision du 02/11/2026. Le test S4 (`test_worker_role.py`) reste rouge.
+>
+> Le fonctionnement courant est décrit dans le [README](README.md), l'historique dans [`CHANGELOG.md`](CHANGELOG.md) et [`ops/`](ops/README.md).
+
 ---
 
 ## 1. Vue d’ensemble de l’architecture
