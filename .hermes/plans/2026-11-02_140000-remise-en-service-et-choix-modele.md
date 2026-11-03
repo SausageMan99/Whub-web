@@ -23,6 +23,11 @@
 > **Statut 02/11** — Phase 0 faite (170df53) : 9/10 demandes bloquées récupérées.
 > Phase 1 faite (3612b4d, 9d86470) : banc 9/11, 0 échec inattendu, Heidi récupérée —
 > voir `ops/cv-smoke-baseline-2026-11-02.md`. Restent noel/yannick (→ phase 2) et le test S4 rouge (hors périmètre).
+>
+> **Statut 03/11** — Phase 2 faite : backend OpenRouter direct + schéma JSON strict, noel/yannick passent.
+> Phase 3 faite : Gemini 2.5 Flash conservé (meilleure couverture, le plus rapide), Haiku 5.5 en secours,
+> un seul appel jusqu'à 40 000 caractères ; nettoyeurs corrigés pour ne plus altérer le texte —
+> voir `ops/model-bakeoff-2026-11-02.md`. Phase 4 : script d'alerte prêt (`scripts/cv_health_alert.py`), cron à valider.
 
 ## Phase 1 — Corriger les échecs connus du banc (≈ 1 j)
 

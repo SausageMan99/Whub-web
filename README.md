@@ -507,7 +507,9 @@ Variables typiques côté `workers/cv-worker/.env` ou service systemd :
 - `MAX_ATTEMPTS`
 - `WHUB_LLM_BACKEND` (`openrouter` en production, `hermes` en secours)
 - `OPENROUTER_API_KEY`
-- `WHUB_PRIMARY_MODEL` et `WHUB_FALLBACK_MODEL` (secours automatique OpenRouter)
+- `WHUB_PRIMARY_MODEL` et `WHUB_FALLBACK_MODEL` (secours automatique OpenRouter) — en prod `google/gemini-2.5-flash` + `anthropic/claude-haiku-5.5`, choix mesuré dans `ops/model-bakeoff-2026-11-02.md`
+- `WHUB_MEDIUM_CV_SINGLE_PASS_THRESHOLD` (40000 en prod : en dessous, un seul appel modèle, sans découpage en blocs)
+- `WHUB_LLM_ZERO_DATA_RETENTION` (`false` avec Gemini 2.5 Flash, qui n'a pas d'endpoint ZDR)
 - `WHUB_LLM_MAX_OUTPUT_TOKENS`, `WHUB_LLM_REASONING_EFFORT`, `WHUB_LONG_CV_BLOCK_PARALLELISM`
 - `WHUB_PRIMARY_PROVIDER`, `HERMES_PROFILE` (backend `hermes` uniquement)
 - `WHUB_RENDERER_PATH`

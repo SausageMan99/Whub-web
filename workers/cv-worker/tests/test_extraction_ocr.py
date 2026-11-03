@@ -74,3 +74,7 @@ def test_benjamin_fixture_is_rescued_by_real_ocr():
 
     assert text_readability(text) > 0.7
     assert "Lead Support IT" in text
+
+
+def test_typographic_ligatures_are_expanded():
+    assert extraction._clean_extracted_text("mise en place du ﬁchier Docker, ﬂux, eﬀort") == "mise en place du fichier Docker, flux, effort"

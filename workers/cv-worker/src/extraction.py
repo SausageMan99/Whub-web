@@ -81,6 +81,13 @@ def _normalize_pdf_text_chars(text: str) -> str:
         "ᵉ": "e",
         "ᵒ": "o",
         "ᵃ": "a",
+        "ﬀ": "ff",
+        "ﬁ": "fi",
+        "ﬂ": "fl",
+        "ﬃ": "ffi",
+        "ﬄ": "ffl",
+        "ﬅ": "st",
+        "ﬆ": "st",
     }))
 
 

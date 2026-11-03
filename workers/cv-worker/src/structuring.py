@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .config import settings
 from .llm_backend import openrouter_runner
+from .source_sanitizer import is_dotnet_technical_token as _is_dotnet_technical_false_positive
 from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
 
 log = logging.getLogger("whub-cv-worker.structuring")
@@ -136,39 +137,6 @@ def _detector_matches_contact(category: str, detector: re.Pattern[str], text: st
     if category != "url":
         return detector.search(text) is not None
     return any(not _is_dotnet_technical_false_positive(match.group(0)) for match in detector.finditer(text))
-
-
-def _is_dotnet_technical_false_positive(value: str) -> bool:
-    """Return true for merged tech tokens such as React.NET / application.NET.
-
-    PDF cleanup/model output can remove the space before the .NET framework
-    token. Those strings look like bare .net domains to the URL regex, but they
-    are stack content, not candidate contact surfaces. Real URLs with scheme,
-    www, path, or non-.NET TLDs remain contact hits.
-    """
-    token = (value or "").strip().strip(".,;:()[]{}")
-    lowered = token.lower()
-    if not lowered.endswith(".net"):
-        return False
-    if "://" in lowered or lowered.startswith("www.") or "/" in lowered:
-        return False
-    label = token.rsplit(".", 1)[0]
-    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9+#-]{1,30}", label):
-        return False
-    tech_labels = {
-        "api",
-        "application",
-        "applications",
-        "asp",
-        "c#",
-        "dot",
-        "framework",
-        "mvc",
-        "react",
-        "stack",
-        "web",
-    }
-    return label.casefold() in tech_labels
 
 
 STRUCTURING_ERROR_PUBLIC_MESSAGES = {
@@ -358,6 +326,8 @@ def _sanitize_identity_text(text: str, terms: list[str]) -> str:
         if not escaped:
             continue
         cleaned = re.sub(rf"(?<![\wÀ-ÖØ-öø-ÿ]){escaped}(?![\wÀ-ÖØ-öø-ÿ])", "", cleaned, flags=re.I)
+    if cleaned == str(text):
+        return cleaned
     cleaned = re.sub(r"\s+([,;:])", r"\1", cleaned)
     cleaned = re.sub(r"\s+\.(?!\s*(?:NET|Net|net)\b)", ".", cleaned)
     cleaned = re.sub(r"(?:\s*[-–—|•]\s*){2,}", " - ", cleaned)
@@ -400,6 +370,10 @@ def _is_empty_contact_sanitized_value(value: object) -> bool:
 
 def _sanitize_contact_text(text: str) -> str:
     original = str(text)
+    if not _has_contact_surface(original):
+        # Label words ("LinkedIn Ads", "support email") and French punctuation
+        # spacing are CV content: leave strings without real contact data as-is.
+        return original
     had_email_or_phone = EMAIL_CONTACT_RE.search(original) is not None or PHONE_CONTACT_RE.search(original) is not None
     cleaned = EMAIL_CONTACT_RE.sub("", original)
     cleaned = PHONE_CONTACT_RE.sub("", cleaned)
@@ -417,6 +391,10 @@ def _sanitize_contact_text(text: str) -> str:
     cleaned = re.sub(r"(?:\s*[-–—|•]\s*){2,}", " - ", cleaned)
     cleaned = re.sub(r"^[\s,;:|•\-–—]+|[\s,;:|•\-–—]+$", "", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _has_contact_surface(text: str) -> bool:
+    return any(_detector_matches_contact(category, detector, text) for category, detector in CONTACT_DETECTORS)
 
 
 def _strip_url_contacts_preserving_dotnet_terms(text: str) -> str:

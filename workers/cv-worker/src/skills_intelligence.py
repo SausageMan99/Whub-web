@@ -48,6 +48,19 @@ _SECTION_STOP_RE = re.compile(
 )
 
 
+_LETTER_SPACED_RE = re.compile(r"^\s*(?:\S\s+){3,}\S\s*$")
+
+
+def _is_letter_spaced_stop(line: str) -> bool:
+    """Match Canva-style headings extracted as ``E X P É R I E N C E S``."""
+    if not _LETTER_SPACED_RE.match(line) or any(len(token) > 1 for token in line.split()):
+        return False
+    collapsed = re.sub(r"\s+", "", line)
+    return _SECTION_STOP_RE.match(collapsed) is not None or re.match(
+        r"(?:exp[ée]riences?|formations?|dipl[oô]mes?|certifications?|langues?|projets?)", collapsed, re.IGNORECASE
+    ) is not None
+
+
 def _extract_skills_lines(source_text: str) -> list[str]:
     """Return the lines between the `COMPÉTENCES` heading and the next section.
 
@@ -64,7 +77,7 @@ def _extract_skills_lines(source_text: str) -> list[str]:
 
     out: list[str] = []
     for line in lines[start_index:]:
-        if out and _SECTION_STOP_RE.match(line.strip()):
+        if out and (_SECTION_STOP_RE.match(line.strip()) or _is_letter_spaced_stop(line)):
             break
         if line.strip():
             out.append(line.strip())

@@ -129,7 +129,10 @@ def sanitize_source_text(
         removed_github_profile_count += counts["github"]
         removed_url_count += counts["url"]
 
-        cleaned = _cleanup_contact_residue(cleaned)
+        if any(counts.values()):
+            # Only tidy what a removal left behind: untouched lines go to the
+            # model verbatim (French " : " / " ; " spacing included).
+            cleaned = _cleanup_contact_residue(cleaned)
         if not cleaned or _EMPTY_PUNCT_RE.fullmatch(cleaned) or CONTACT_LABEL_PREFIX_RE.fullmatch(cleaned):
             removed_empty_or_boilerplate_line_count += 1
             continue
@@ -188,6 +191,41 @@ def _is_header_address_line(line: str, in_header: bool, previous_line_was_street
     return False
 
 
+def is_dotnet_technical_token(value: str) -> bool:
+    """Return true for .NET tech tokens such as ASP.NET / ADO.NET / React.NET.
+
+    PDF cleanup/model output can remove the space before the .NET framework
+    token. Those strings look like bare .net domains to the URL regex, but they
+    are stack content, not candidate contact surfaces. Real URLs with scheme,
+    www, path, or non-.NET TLDs remain contact hits.
+    """
+    token = (value or "").strip().strip(".,;:()[]{}")
+    lowered = token.lower()
+    if not lowered.endswith(".net"):
+        return False
+    if "://" in lowered or lowered.startswith("www.") or "/" in lowered:
+        return False
+    label = token.rsplit(".", 1)[0]
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9+#-]{1,30}", label):
+        return False
+    tech_labels = {
+        "ado",
+        "api",
+        "application",
+        "applications",
+        "asp",
+        "c#",
+        "dot",
+        "framework",
+        "mvc",
+        "react",
+        "stack",
+        "vb",
+        "web",
+    }
+    return label.casefold() in tech_labels
+
+
 def _strip_leading_contact_icon(line: str) -> str:
     """Drop decorative PDF icon glyphs before address detection.
 
@@ -205,7 +243,13 @@ def _sanitize_inline_contacts(line: str) -> tuple[str, dict[str, int]]:
     cleaned, counts["phone"] = PHONE_RE.subn("", cleaned)
     cleaned, counts["linkedin"] = LINKEDIN_RE.subn("", cleaned)
     cleaned, counts["github"] = GITHUB_PROFILE_RE.subn("", cleaned)
-    cleaned, counts["url"] = URL_RE.subn("", cleaned)
+    def _drop_url(match: re.Match[str]) -> str:
+        if is_dotnet_technical_token(match.group(0)):
+            return match.group(0)
+        counts["url"] += 1
+        return ""
+
+    cleaned = URL_RE.sub(_drop_url, cleaned)
     return cleaned, counts
 
 

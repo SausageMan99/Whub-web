@@ -481,18 +481,18 @@ Footer : document de candidature exporté depuis hellowork.com pour le profil ca
         assert "Compétences" in sanitized
         assert "JavaScript, TypeScript, Node.js, React, Next.js, Python" in sanitized
         assert "Formations" in sanitized
-        assert "2014 - 2016: Master Expert en ingénierie logicielle" in sanitized
-        assert "2011 - 2014: Licence informatique" in sanitized
+        assert "2014 - 2016 : Master Expert en ingénierie logicielle" in sanitized
+        assert "2011 - 2014 : Licence informatique" in sanitized
 
         for expected in [
-            "Janvier 2023 - Mai 2026: Lead développeur full stack - Th@Bot Labs",
+            "Janvier 2023 - Mai 2026 : Lead développeur full stack - Th@Bot Labs",
             "assistant conversationnel nommé Th@Bot",
             "services Node.js et Python exposant une API REST",
             "pipelines GitHub Actions",
-            "Septembre 2020 - Décembre 2022: Ingénieur full stack senior - Retail Media Conseil",
+            "Septembre 2020 - Décembre 2022 : Ingénieur full stack senior - Retail Media Conseil",
             "campagnes LinkedIn Ads et Google Ads",
             "API REST d'export de rapports",
-            "Mars 2017 - Août 2020: Développeur web confirmé - Banque Nord Europe",
+            "Mars 2017 - Août 2020 : Développeur web confirmé - Banque Nord Europe",
             "modules Node.js et .NET",
             "GitHub Actions",
             "LinkedIn Ads",
@@ -523,3 +523,41 @@ Footer : document de candidature exporté depuis hellowork.com pour le profil ca
             assert forbidden_report_value.casefold() not in report_text
 
         assert len(sanitized) >= 400
+
+
+def test_keeps_dotnet_framework_names_that_look_like_domains():
+    # Yannick: "ASP.NET" matched the bare .net domain pattern and vanished,
+    # leaving "MVC 5" and "d' 4.6 Web API" in the generated CV.
+    raw = f"""
+{BUSINESS_CONTENT}
+Environnement technique : C#, ASP.NET MVC 5, ADO.NET, VB.NET, Angular 7
+Refonte d'AngularJS 1.7 vers Angular 4 et d'ASP.NET 4.6 Web API vers ASP.NET Core 2.1 Web API
+"""
+
+    result = _sanitize(raw)
+
+    assert "C#, ASP.NET MVC 5, ADO.NET, VB.NET, Angular 7" in result.text
+    assert "d'ASP.NET 4.6 Web API vers ASP.NET Core 2.1 Web API" in result.text
+    assert result.report.removed_url_count == 0
+
+
+def test_lines_without_contact_data_are_kept_verbatim():
+    lines = [
+        "Environnement technique : C#, Dapper ; Jira",
+        "Méthodologie : SCRUM (Sprint 2 semaines)",
+        "Missions :",
+    ]
+    raw = BUSINESS_CONTENT + "\n" + "\n".join(lines) + "\n"
+
+    result = _sanitize(raw)
+
+    for line in lines:
+        assert line in result.text.splitlines()
+
+
+def test_real_domains_are_still_removed():
+    result = _sanitize(f"{BUSINESS_CONTENT}\nPortfolio : jean-dupont.dev ; blog www.jeandupont.net\n")
+
+    assert "jean-dupont.dev" not in result.text
+    assert "jeandupont.net" not in result.text
+    assert result.report.removed_url_count == 2

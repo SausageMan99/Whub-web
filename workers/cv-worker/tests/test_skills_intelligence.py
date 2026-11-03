@@ -343,3 +343,27 @@ def test_source_gate_attaches_skill_quality_warnings_for_bad_display():
         w["code"] in {"too_many_skill_items", "too_many_autres_items", "continued_autres_category"}
         for w in warnings
     )
+
+
+def test_letter_spaced_section_heading_ends_the_skills_section():
+    # Zahia: Canva-style headings are extracted as "E X P É R I E N C E S".
+    source = "\n".join([
+        "Compétences techniques",
+        "• Cartographie applicative",
+        "• Formation des utilisateurs finaux",
+        "E X P É R I E N C E S   P R O F E S S I O N N E L L E S",
+        "Juin 2023 – A ce jour GROUPE KLESIA — CHEF DE PROJET",
+        "Mise en place d'un décisionnel Power BI",
+    ])
+
+    from src.skills_intelligence import _extract_skills_lines
+
+    assert _extract_skills_lines(source) == ["• Cartographie applicative", "• Formation des utilisateurs finaux"]
+
+
+def test_letter_spaced_heading_with_single_spaces_also_stops():
+    source = "Compétences\nPython, SQL\nE X P É R I E N C E S P R O F E S S I O N N E L L E S\nMission chez EDF"
+
+    from src.skills_intelligence import _extract_skills_lines
+
+    assert _extract_skills_lines(source) == ["Python, SQL"]
