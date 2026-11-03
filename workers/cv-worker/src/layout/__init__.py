@@ -39,6 +39,20 @@ class LayoutResult:
     selected_variant: str
 
 
+def _forces_experience_pages(options: dict[str, Any]) -> bool:
+    return bool(options.get("force_experiences_new_page") or options.get("force_page_break_before_experience_indexes"))
+
+
+def _grouped_experience_options(options: dict[str, Any]) -> dict[str, Any]:
+    grouped = deepcopy(options)
+    grouped.update({
+        "force_experiences_new_page": False,
+        "force_page_break_before_experience_indexes": [],
+        "allow_grouping": True,
+    })
+    return grouped
+
+
 def run_layout(
     *,
     structured: dict[str, Any],
@@ -106,6 +120,11 @@ def run_layout(
             from .intelligence import build_layout_retry_options
             retry_options = build_layout_retry_options(options, first.qa_report)
             _try_variant("layout_retry", retry_options, "output_layout_retry.pdf")
+        elif first.status == "passed" and _forces_experience_pages(options) and len(attempts) < max_attempts:
+            # Heavy CVs put experiences on their own pages. That passes QA but
+            # can cost pages; the grouped layout competes, the selector keeps
+            # the shorter one at equal quality.
+            _try_variant("grouped", _grouped_experience_options(options), "output_grouped.pdf")
 
     selection = select_best_layout_variant(attempts)
 

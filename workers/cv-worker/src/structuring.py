@@ -139,6 +139,30 @@ def _detector_matches_contact(category: str, detector: re.Pattern[str], text: st
     return any(not _is_dotnet_technical_false_positive(match.group(0)) for match in detector.finditer(text))
 
 
+# Closed taxonomy the prompt gives the model for skills[].category. QA allows
+# these labels in the PDF even though the source CV never wrote them.
+WHUB_SKILL_CATEGORY_TAXONOMY = (
+    "Stack principale",
+    "Langages",
+    "Frontend",
+    "Backend",
+    "Frameworks & Librairies",
+    "Bases de données",
+    "Cloud & DevOps",
+    "Data & BI",
+    "Architecture & Conception",
+    "Tests & Qualité",
+    "Outils & Environnements",
+    "Méthodologies",
+    "Langues",
+    "Certifications",
+)
+
+
+def _skill_taxonomy_for_prompt() -> str:
+    return ", ".join(f"`{label}`" for label in WHUB_SKILL_CATEGORY_TAXONOMY)
+
+
 STRUCTURING_ERROR_PUBLIC_MESSAGES = {
     "contact_leak": "Coordonnées détectées dans la structuration du CV.",
     "identity_leak": "Identité candidat détectée dans une zone non autorisée.",
@@ -2953,7 +2977,7 @@ Règles non négociables:
 - Distinction critique: `skills[].items[]` ne contient **PAS** les langages de programmation (Java, Python, JavaScript, C++, C#, PHP, Ruby, Go, Rust, TypeScript, SQL, etc. — ce sont des compétences techniques qui restent dans `skills`). Le champ `languages` est **uniquement** pour les langues parlées/écrites par le candidat avec niveau (ex: "Français — courant", "Anglais — technique", "Arabe — natif").
 - Nettoie les artefacts visuels de compétences: étoiles, jauges, icônes, niveaux graphiques et répétitions. Garde seulement le libellé utile; ne transforme pas des jauges en niveaux expert/intermédiaire sauf niveau textuel explicite.
 - Déduplique et normalise sans changer le sens: `JS`/`Javascript` => `JavaScript`, `Jquery` => `jQuery`, `Bootsrap` => `Bootstrap`, `Mac OS`/`MacOS` => `macOS`. Préserve `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server` comme technologies distinctes si elles sont présentes.
-- Taxonomie fermée pour `skills[].category`: `Stack principale`, `Langages`, `Frontend`, `Backend`, `Frameworks & Librairies`, `Bases de données`, `Cloud & DevOps`, `Data & BI`, `Architecture & Conception`, `Tests & Qualité`, `Outils & Environnements`, `Méthodologies`, `Langues`, `Certifications`.
+- Taxonomie fermée pour `skills[].category`: {_skill_taxonomy_for_prompt()}.
 - N'utilise jamais `Autres` comme catégorie normale. Si le contenu est réel mais secondaire, préfère `Outils & Environnements` ou `Méthodologies`.
 - Hiérarchise les catégories: stack principale et technologies récentes d'abord; outils, IDE, OS et méthodes ensuite; langues/certifications séparées. Vise 3 à 6 catégories visibles, avec 3 à 8 items courts par catégorie quand le volume source le permet.
 - Ne supprime pas une compétence importante présente dans la source; tu peux seulement compacter des variantes faibles/redondantes si le sens reste identique et source-backed.

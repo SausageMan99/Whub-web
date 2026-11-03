@@ -11,6 +11,7 @@ from .structuring import (
     _iter_json_strings,
     _normalize_for_fidelity,
     _role_fact_fragments,
+    WHUB_SKILL_CATEGORY_TAXONOMY,
 )
 
 CONTACT_PATTERNS = {
@@ -317,6 +318,27 @@ def score_human_taste(
     }
 
 
+def _has_skill_continuation_heading(blocks: list[dict[str, Any]]) -> bool:
+    """A skills heading continued on this page: "Cloud & DevOps (suite)" or the
+    renderer's spaced "C O M P É T E N C E S ... ( S U I T E )" page title.
+
+    Only the heading line itself counts: "Recette (suite)" stays an experience
+    section even when "Outils" appears further down the page, and skill blocks
+    the renderer labels "(suite)" inside page 1 are not a continuation page.
+    """
+    for block in blocks:
+        for line in block.get("lines", []):
+            line_text = " ".join("".join(span.get("text", "") for span in line.get("spans", [])).split())
+            compact = re.sub(r"\s+", "", line_text)
+            match = re.match(r"^(.*?)\(\s*suite\s*\)$", line_text, re.I) or re.match(r"^(.*?)\(suite\)$", compact, re.I)
+            if not match:
+                continue
+            heading = match.group(1)
+            if SKILL_HEADING_RE.search(heading) and not EXPERIENCE_SECTION_RE.search(heading):
+                return True
+    return False
+
+
 def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
     """Detect visually ugly but technically valid CV layouts.
 
@@ -339,7 +361,7 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
         used_ratio = float(metric["used_ratio"])
         blank_after_pt = float(metric["blank_after_pt"])
 
-        if "(suite)" in text and SKILL_HEADING_RE.search(text) and not EXPERIENCE_SECTION_RE.search(text.split("(suite)", 1)[0]):
+        if page_index > 1 and _has_skill_continuation_heading(blocks):
             findings.append(_issue(
                 "skill_overflow_page_created",
                 page_index,
@@ -583,10 +605,15 @@ def find_pdf_source_fidelity_issues(text: str, source_text: str | None = None, s
                 "section": entry["section"],
                 "fact": fact,
             })
+        # The client-facing first name comes from the portal and the renderer
+        # prints it on every page; a source CV may not carry it as text.
+        display_name = _normalize_for_fidelity(str((structured_data or {}).get("name") or ""))
         for entity in _extract_pdf_source_sensitive_entities(text):
             if _contains_fidelity_fact(source_normalized, entity):
                 continue
-            if entity in ALLOWED_RENDERER_LABEL_FACTS:
+            if entity in ALLOWED_RENDERER_LABEL_FACTS or entity in WHUB_SKILL_CATEGORY_TAXONOMY:
+                continue
+            if display_name and _normalize_for_fidelity(entity) == display_name:
                 continue
             issues.append({
                 "code": "pdf_fact_absent_from_source",

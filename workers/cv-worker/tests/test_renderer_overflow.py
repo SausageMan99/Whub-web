@@ -377,7 +377,8 @@ class RendererOverflowTest(unittest.TestCase):
             renderer.current_name = 'LINO'
             renderer.new_page(False, 'LINO')
             renderer.flow(renderer.left, renderer.y, renderer.right - renderer.left)
-            renderer.current_page_chars = 120
+            renderer.current_page_chars = renderer.current_page_flow_chars = 120
+            renderer.flow_chars_remaining = 5000  # experiences still to render
             renderer.y = renderer.page_start_y + 120
             page_before = renderer.page
             moved = renderer.maybe_break_before_experience(
@@ -517,7 +518,8 @@ class RendererOverflowTest(unittest.TestCase):
             renderer.current_name = 'LINO'
             renderer.new_page(False, 'LINO')
             renderer.flow(renderer.left, renderer.y, renderer.right - renderer.left)
-            renderer.current_page_chars = 2100
+            renderer.current_page_chars = renderer.current_page_flow_chars = 2100
+            renderer.flow_chars_remaining = 5000  # experiences still to render
             renderer.y = renderer.page_start_y + 380
             page_before = renderer.page
             moved = renderer.maybe_break_before_experience(
@@ -533,6 +535,45 @@ class RendererOverflowTest(unittest.TestCase):
         self.assertTrue(moved)
         self.assertEqual(renderer.page, page_before + 1)
 
+
+    def test_density_break_never_separates_an_experience_opener_from_its_first_section(self):
+        # Noel (grouped layout): date + role drawn at the page bottom, then the
+        # first section went to the next page because the page was text-dense.
+        renderer_module = load_renderer_module()
+        renderer_module.prep_assets()
+        renderer_module.register_fonts(renderer_module.ensure_poppins())
+        with tempfile.TemporaryDirectory() as tmp:
+            renderer = renderer_module.Renderer(str(Path(tmp) / 'opener.pdf'), {'anti_crowding': True, 'page_dense_char_threshold': 100})
+            renderer.current_name = 'LINO'
+            renderer.new_page(False, 'LINO')
+            renderer.flow(renderer.left, renderer.y, renderer.right - renderer.left)
+            renderer.flow_chars_remaining = 5000
+            renderer.y = renderer.page_start_y + 300
+            page_before = renderer.page
+            exp = {
+                'date': 'Décembre 2022 à mars 2023',
+                'role': 'GPI - Mac & PC',
+                'sections': [
+                    {'heading': 'Systèmes', 'content': ['macOS - Windows - iOS']},
+                    {'heading': 'Missions clés', 'content': ['création des comptes', 'affectation des ressources IT']},
+                ],
+            }
+            # The page is already over its density budget when the opener is drawn.
+            renderer.maybe_break_before_experience = lambda *_a, **_k: False
+            renderer.current_page_chars = 500
+            drawn_on = {}
+            original_subhead = renderer.subhead
+
+            def recording_subhead(heading):
+                drawn_on.setdefault(heading, renderer.page)
+                return original_subhead(heading)
+
+            renderer.subhead = recording_subhead
+            renderer.render_experience(exp, index=3, total=6)
+
+        self.assertEqual(drawn_on['Systèmes'], page_before, 'the first section must stay with the date and role')
+        # "Systèmes" is one short line: the missions heading belongs to the opener too.
+        self.assertEqual(drawn_on['Missions clés'], page_before, 'a one-line first section needs the next section with it')
 
 if __name__ == '__main__':
     unittest.main()

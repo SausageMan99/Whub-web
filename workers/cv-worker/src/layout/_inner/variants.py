@@ -71,6 +71,8 @@ def select_best_layout_variant(attempts: list[LayoutVariantAttempt]) -> LayoutVa
         key=lambda attempt: (
             attempt.score,
             1 if attempt.status == "passed" else 0,
+            # Same quality: the shorter CV reads better (noel: 10 vs 12 pages).
+            -int((attempt.qa_report or {}).get("pages") or 0),
             -attempts.index(attempt),
         ),
     )
