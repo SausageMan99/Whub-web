@@ -55,3 +55,25 @@ def test_classifies_empty_body_as_unknown():
 def test_classifies_bare_phrase_as_unknown_when_neither_keyword_matches():
     body = "C'est super, merci beaucoup pour ton aide !"
     assert classify_revision_intent(body).kind == "unknown"
+
+
+def test_skills_cleanup_comments_from_test_clement_request_skills_revision():
+    # Request 7aaaa48c (2026-11-03): both comments were ignored because the
+    # source skills were reinjected over the model's answer.
+    from src.revisions import requests_skills_revision
+
+    for body in (
+        "Nettoie la section Compétences : retire les doublons et ne mélange pas la formation (Licence, université) avec les compétences.",
+        "Dans Compétences, supprime la catégorie Projets : « 2014 Licence Informatique Université Paris Cité » est une formation, pas une compétence.",
+    ):
+        assert requests_skills_revision([{"comment_type": "revision", "body": body}])
+
+
+def test_skills_revision_ignores_layout_reset_history_and_non_skill_comments():
+    from src.revisions import requests_skills_revision
+
+    assert not requests_skills_revision([])
+    assert not requests_skills_revision([{"comment_type": "revision", "body": "Mettre les compétences en page 2"}])
+    assert not requests_skills_revision([{"comment_type": "revision", "body": "Repartir du source : tout refaire, compétences comprises"}])
+    assert not requests_skills_revision([{"comment_type": "history", "body": "Supprime la catégorie Projets des compétences"}])
+    assert not requests_skills_revision([{"comment_type": "revision", "body": "Ajoute la mission manquante chez ACME"}])

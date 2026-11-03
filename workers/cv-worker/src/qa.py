@@ -5,6 +5,7 @@ import fitz
 
 from .structuring import (
     extract_experience_location_facts,
+    REVISION_REMOVED_SOURCE_FACTS_KEY,
     extract_source_business_coverage_facts,
     find_numbered_placeholder_repetitions,
     _contains_fidelity_fact,
@@ -605,9 +606,14 @@ def find_pdf_source_fidelity_issues(text: str, source_text: str | None = None, s
                 "fact": location,
             })
 
+        revision_removed_facts = {
+            str(entry.get("fact") or "")
+            for entry in (structured_data or {}).get(REVISION_REMOVED_SOURCE_FACTS_KEY) or []
+            if isinstance(entry, dict)
+        }
         for entry in extract_source_business_coverage_facts(source_text or ""):
             fact = entry["fact"]
-            if _contains_fidelity_fact(pdf_normalized, fact):
+            if fact in revision_removed_facts or _contains_fidelity_fact(pdf_normalized, fact):
                 continue
             issues.append({
                 "code": "source_coverage_missing_section",
