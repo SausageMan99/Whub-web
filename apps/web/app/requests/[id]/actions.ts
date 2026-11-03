@@ -23,6 +23,55 @@ function normalizeRevisionCategory(value: FormDataEntryValue | null): string {
   return ALLOWED_REVISION_CATEGORIES.has(raw) ? raw : "other";
 }
 
+function normalizeAuthor(value: FormDataEntryValue | null): string | null {
+  const raw = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return raw ? raw.slice(0, 40) : null;
+}
+
+function revalidateWorkspace(requestId: string) {
+  revalidatePath(`/requests/${requestId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/demandes", "layout");
+}
+
+/** Marque la dernière version comme relue et prête à envoyer au client. */
+export async function markReadyToSend(formData: FormData) {
+  const rateLimit = await checkRateLimit({ action: "validate", limit: 30, windowMs: 60_000 });
+  if (!rateLimit.allowed) throw new Error("rate_limited");
+
+  const requestId = String(formData.get("request_id") || "").trim();
+  const versionId = String(formData.get("version_id") || "").trim();
+  const cancel = formData.get("cancel") === "1";
+  if (!requestId || !versionId) throw new Error("Missing request or version id");
+
+  const admin = createSupabaseAdminClient();
+  const { data: request, error: lookupError } = await admin
+    .from("cv_requests")
+    .select("id,status")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (lookupError || !request) throw new Error("Request not found");
+  if (!["ready", "draft_ready"].includes(request.status)) throw new Error("Request is not reviewable");
+
+  const { data: version } = await admin
+    .from("cv_versions")
+    .select("id")
+    .eq("id", versionId)
+    .eq("request_id", requestId)
+    .maybeSingle();
+  if (!version) throw new Error("Version not found");
+
+  const { error: eventError } = await admin.from("cv_events").insert({
+    request_id: requestId,
+    actor_type: "user",
+    event_type: cancel ? "human_validation_cancelled" : "human_validated",
+    payload: { version_id: versionId, by: normalizeAuthor(formData.get("author")) },
+  });
+  if (eventError) throw new Error("Validation event failed");
+
+  revalidateWorkspace(requestId);
+}
+
 export async function addComment(formData: FormData) {
   const rateLimit = await checkRateLimit({
     action: "comment",
@@ -39,6 +88,8 @@ export async function addComment(formData: FormData) {
 
   const category = normalizeRevisionCategory(formData.get("category"));
   const metadata: Record<string, unknown> = { category };
+  const author = normalizeAuthor(formData.get("author"));
+  if (author) metadata.author = author;
 
   const admin = createSupabaseAdminClient();
   const { data: request, error: lookupError } = await admin
@@ -67,8 +118,7 @@ export async function addComment(formData: FormData) {
 
     const { data: duplicate } = await duplicateQuery.maybeSingle();
     if (duplicate) {
-      revalidatePath(`/requests/${requestId}`);
-      revalidatePath("/dashboard");
+      revalidateWorkspace(requestId);
       return;
     }
   }
@@ -119,8 +169,7 @@ export async function addComment(formData: FormData) {
 
   if (eventError) throw new Error("Revision event failed");
 
-  revalidatePath(`/requests/${requestId}`);
-  revalidatePath("/dashboard");
+  revalidateWorkspace(requestId);
 }
 
 export async function retryRequest(formData: FormData): Promise<CreateRequestResult> {
@@ -198,8 +247,7 @@ export async function retryRequest(formData: FormData): Promise<CreateRequestRes
 
   if (eventError) throw new Error("Retry event failed");
 
-  revalidatePath(`/requests/${requestId}`);
-  revalidatePath("/dashboard");
+  revalidateWorkspace(requestId);
   if (enqueueError) {
     console.warn("BullMQ retry enqueue unavailable; unlocked request remains submitted for polling worker fallback", {
       requestId,

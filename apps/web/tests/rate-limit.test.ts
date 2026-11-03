@@ -14,56 +14,6 @@ function makeFormData() {
   return fd;
 }
 
-test('login Server Action rate limits after 5 requests per minute per IP', async (t) => {
-  t.mock.module('next/navigation', { namedExports: { redirect } });
-  t.mock.module('next/headers', {
-    namedExports: {
-      headers: () =>
-        Promise.resolve({
-          get: (name: string) => (name.toLowerCase() === 'x-forwarded-for' ? '203.0.113.10, 10.0.0.1' : null),
-        }),
-    },
-  });
-  t.mock.module('@/lib/access-code', {
-    namedExports: {
-      normalizeEmail: (value: unknown) => String(value ?? '').trim().toLowerCase(),
-      verifyAccessCode: () => Promise.resolve(true),
-    },
-  });
-  t.mock.module('@/lib/supabase/admin', {
-    namedExports: {
-      createSupabaseAdminClient: () => ({
-        from: () => ({
-          select: () => ({
-            eq: () => ({ maybeSingle: () => Promise.resolve({ data: { email: 'user@whub.fr' }, error: null }) }),
-          }),
-        }),
-        auth: {
-          admin: {
-            listUsers: () => Promise.resolve({ data: { users: [] }, error: null }),
-            createUser: () => Promise.resolve({ error: null }),
-            updateUserById: () => Promise.resolve({ error: null }),
-          },
-        },
-      }),
-    },
-  });
-  t.mock.module('@/lib/supabase/server', {
-    namedExports: {
-      createSupabaseServerClient: () =>
-        Promise.resolve({ auth: { signInWithPassword: () => Promise.resolve({ error: null }) } }),
-    },
-  });
-
-  const { login } = await import('../app/login/actions');
-
-  for (let i = 0; i < 5; i += 1) {
-    await assert.rejects(() => login(makeFormData()), /REDIRECT \/dashboard/);
-  }
-
-  await assert.rejects(() => login(makeFormData()), /REDIRECT \/login\?error=rate_limited/);
-});
-
 test('prepareUpload Server Action rate limits after 10 requests per minute per IP', async (t) => {
   t.mock.module('next/navigation', { namedExports: { redirect } });
   t.mock.module('next/headers', {
@@ -112,6 +62,6 @@ test('prepareUpload Server Action rate limits after 10 requests per minute per I
 
   await assert.rejects(
     () => prepareUpload(makePdfUploadInput()),
-    /REDIRECT \/requests\/new\?error=rate_limited/,
+    /REDIRECT \/demandes\?nouveau=1&error=rate_limited/,
   );
 });

@@ -137,7 +137,7 @@ test('retryRequest — resets failed request into submitted queue', async () => 
   assert.equal(state.updatedPayload?.worker_attempts, 0);
   assert.equal(state.insertedEvent?.request_id, 'req-retry');
   assert.equal(state.insertedEvent?.event_type, 'retry_requested');
-  assert.deepEqual(state.revalidated, ['/requests/req-retry', '/dashboard']);
+  assert.deepEqual(state.revalidated, ['/requests/req-retry', '/dashboard', '/demandes']);
 });
 
 test('retryRequest — rejects unauthenticated users', async () => {

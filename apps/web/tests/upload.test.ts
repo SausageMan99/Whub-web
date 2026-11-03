@@ -212,7 +212,7 @@ test('prepareUpload — creates signed upload URL with sanitized source path', a
 test('prepareUpload — redirects to upload_failed on signed URL error', async () => {
   reset();
   state.uploadError = new Error('boom');
-  await assert.rejects(() => preparePdfUpload(), /REDIRECT \/requests\/new\?error=upload_failed/);
+  await assert.rejects(() => preparePdfUpload(), /REDIRECT \/demandes\?nouveau=1&error=upload_failed/);
 });
 
 test('createRequest — creates a request even in auth-disabled mode', async () => {
@@ -311,22 +311,18 @@ test('createRequest — trims candidate first name before insert', async () => {
   assert.equal(row.candidate_first_name, 'Jérémy');
 });
 
-test('new request page — exposes upload, first-name and message workflow without advanced fields', () => {
-  const source = readFileSync(join(process.cwd(), 'app/requests/new/page.tsx'), 'utf8');
-  const formSource = readFileSync(join(process.cwd(), 'app/requests/new/NewRequestForm.tsx'), 'utf8');
+test('new CV dialog — exposes upload, first-name and message workflow without advanced fields', () => {
+  const formSource = readFileSync(join(process.cwd(), 'components/workspace/NewCvDialog.tsx'), 'utf8');
 
-  assert.match(source, /Dépose un CV/);
-  assert.match(source, /Récupère une version client/);
   assert.match(formSource, /name="file"/);
   assert.match(formSource, /name="candidate_first_name"/);
-  assert.match(formSource, /Prénom candidat/);
+  assert.match(formSource, /Prénom du candidat/);
   assert.match(formSource, /name="instructions"/);
-  assert.match(formSource, /Générer la version client/);
-  assert.match(formSource, /Consigne optionnelle/);
+  assert.match(formSource, /Lancer la mise au format/);
+  assert.match(formSource, /onDrop/);
   assert.doesNotMatch(formSource, /name="title"/);
   assert.doesNotMatch(formSource, /priority/);
   assert.doesNotMatch(formSource, /cv_intentions/);
-  assert.doesNotMatch(formSource, /buildGuidedInstructions/);
 });
 
 test('createRequest — rejects missing candidate first name before cv_requests insert', async () => {

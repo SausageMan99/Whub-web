@@ -123,6 +123,6 @@ test('prepareUpload — rejects PDFs larger than 10MB', async () => {
   bytes.set(new TextEncoder().encode('%PDF-'), 0);
   const file = makeFile(bytes);
 
-  await assert.rejects(() => callPrepareUpload(file), /REDIRECT \/requests\/new\?error=file_too_large/);
+  await assert.rejects(() => callPrepareUpload(file), /REDIRECT \/demandes\?nouveau=1&error=file_too_large/);
   assert.equal(recordedCalls.length, 0, 'oversized PDF must not get a signed upload URL');
 });

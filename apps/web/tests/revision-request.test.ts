@@ -179,7 +179,7 @@ test('addComment — records a revision request linked to the current version', 
   assert.equal(payload?.version_number, 1);
   assert.equal(payload?.qa_status, 'passed');
   assert.equal(payload?.from_status, 'ready');
-  assert.deepEqual(state.revalidated, ['/requests/req1', '/dashboard']);
+  assert.deepEqual(state.revalidated, ['/requests/req1', '/dashboard', '/demandes']);
 });
 
 test('addComment — ignores blank messages', async () => {
