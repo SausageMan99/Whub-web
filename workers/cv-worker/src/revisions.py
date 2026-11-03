@@ -18,6 +18,18 @@ RESET_RE = re.compile(
 )
 
 
+SKILLS_TARGET_RE = re.compile(
+    r"\b(comp[ée]tences?|skills?|cat[ée]gor(?:ie|ies)|stack|technolog(?:ie|ies)|outils?|doublons?)\b",
+    re.I,
+)
+# "Mettre les compétences en page 2" names the skills but only moves them.
+SKILLS_EDIT_RE = re.compile(
+    r"\b(supprim\w*|retir\w*|enl[eè]v\w*|nettoi\w*|nettoy\w*|ajout\w*|rajout\w*|corrig\w*|modifi\w*|remplac\w*"
+    r"|renomm\w*|regroup\w*|fusionn\w*|s[ée]par\w*|class\w*|d[ée]doublonn\w*|doublons?|m[ée]lang\w*)\b",
+    re.I,
+)
+
+
 @dataclass(frozen=True)
 class RevisionIntent:
     kind: str  # "layout_only" | "content" | "reset" | "unknown"
@@ -39,3 +51,23 @@ def classify_revision_intent(body: str) -> RevisionIntent:
     if has_layout and has_content:
         return RevisionIntent("content", "mixed_content_priority")
     return RevisionIntent("unknown", "no_specific_match")
+
+
+def requests_skills_revision(comments: list[dict] | None) -> bool:
+    """True when an unresolved revision comment asks to change the skills content.
+
+    The deterministic "source wins" passes (source skills merge, coverage-fact
+    reinjection, visual skills override) must then let the model's answer to
+    the comment stand, or the comment has no effect.
+    """
+    for comment in comments or []:
+        if not isinstance(comment, dict) or comment.get("comment_type") != "revision":
+            continue
+        body = str(comment.get("body") or "")
+        if (
+            classify_revision_intent(body).kind == "content"
+            and SKILLS_TARGET_RE.search(body)
+            and SKILLS_EDIT_RE.search(body)
+        ):
+            return True
+    return False

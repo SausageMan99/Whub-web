@@ -18,6 +18,8 @@ Toutes les modifications notables du projet sont documentées ici. Le format sui
 - Les pages lisaient `cv_events.metadata`, une colonne qui n'existe pas (c'est `payload`) : le suivi des étapes et les badges ne s'affichaient jamais.
 - Le halo de l'ancienne page d'accueil masquait le bouton principal ; la zone « Dépose le PDF ici » n'acceptait pas le glisser-déposer.
 - Le nom du fichier source (souvent avec le nom de famille) n'est plus affiché.
+- **Moteur : les corrections sur les compétences ont un effet.** Un commentaire de révision qui modifie les compétences (« supprime la catégorie Projets », « retire les doublons ») n'est plus annulé par la fusion des compétences source, la réinjection des faits source ni la lecture des styles du PDF ; les faits retirés à la demande sont tracés dans `_revision_removed_source_facts` et ne sont plus signalés par la QA (demande « Test-Clément », 3 novembre 2026).
+- **Moteur : la formation ne fuit plus dans les compétences.** Une année seule sur sa ligne (colonne formations lue entre deux lignes de compétences) termine le fait source : « API REST Node.js » n'absorbe plus « 2014 Licence Informatique Université Paris Cité » (même cas chez Zahia). « plateforme Th@Bot » n'est plus écarté comme une adresse e-mail. Une compétence qui contient un diplôme ou une école donne l'avertissement `skill_item_contains_formation` (CV en brouillon à relire).
 
 ### Accès libre encadré
 - `noindex` et `robots.txt` (`Disallow: /`) ; page `/login` supprimée (elle affichait la règle du code d'accès).

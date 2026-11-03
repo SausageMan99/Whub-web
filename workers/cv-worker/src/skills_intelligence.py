@@ -678,10 +678,12 @@ def _merge_languages(existing: list, discovered: list[dict[str, str]]) -> list[d
     return merged
 
 
-def apply_skills_intelligence(data: dict, source_text: str) -> dict:
+def apply_skills_intelligence(data: dict, source_text: str, *, merge_source_skills: bool = True) -> dict:
     """Merge LLM `skills` with the deterministic source parser, then dedup.
 
-    - Source-parsed skills fill gaps the LLM may have missed (atomic coverage).
+    - Source-parsed skills fill gaps the LLM may have missed (atomic coverage),
+      unless ``merge_source_skills`` is False: a revision comment asked the
+      model to change the skills, so what it left out stays out.
     - LLM-provided `languages` are merged with the source-detected ones.
     - Spoken-language items in `skills` are removed (they live in `languages`).
     - The result preserves the W hub taxonomy and dedups globally.
@@ -709,8 +711,9 @@ def apply_skills_intelligence(data: dict, source_text: str) -> dict:
                 out["languages"] = _merge_languages(existing, langs)
             if remaining:
                 merged_raw.append({"category": category, "items": remaining})
-    for category, items in source_parsed.skills_by_category.items():
-        merged_raw.append({"category": category, "items": list(items)})
+    if merge_source_skills:
+        for category, items in source_parsed.skills_by_category.items():
+            merged_raw.append({"category": category, "items": list(items)})
 
     out["skills"] = build_display_skills(merged_raw, source_text=source_text)
 

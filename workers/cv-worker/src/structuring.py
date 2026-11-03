@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .config import settings
 from .llm_backend import openrouter_runner
 from .source_sanitizer import is_dotnet_technical_token as _is_dotnet_technical_false_positive
+from .revisions import requests_skills_revision
 from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
 
 log = logging.getLogger("whub-cv-worker.structuring")
@@ -50,6 +51,9 @@ CONTACT_DETECTORS = (
 )
 
 REQUIRED_TOP_LEVEL_KEYS = {"name", "title", "formations", "skills", "experiences"}
+# Source coverage facts a revision comment had the model take out of `skills`:
+# kept as an audit trail and skipped by the fidelity and PDF coverage checks.
+REVISION_REMOVED_SOURCE_FACTS_KEY = "_revision_removed_source_facts"
 MAX_PROMPT_CV_CHARS = 45000
 LONG_CV_CHAR_THRESHOLD = int(os.getenv("WHUB_LONG_CV_CHAR_THRESHOLD", "10000"))
 LONG_CV_BLOCK_TARGET_CHARS = int(os.getenv("WHUB_LONG_CV_BLOCK_TARGET_CHARS", "7000"))
@@ -1301,6 +1305,8 @@ SOFT_FIDELITY_CODES = frozenset({
     "experience_misclassified_as_formation",
     "experience_content_rewritten_or_absent_from_source",
     "source_coverage_missing_section",
+    # 2026-11-03: formations text read into a skill item (two-column sources).
+    "skill_item_contains_formation",
     "synthetic_technical_environment",
     "source_coverage_missing_experience_item",
     "headerless_experience_sections",
@@ -1314,6 +1320,38 @@ SOFT_FIDELITY_CODES = frozenset({
     "experience_role_fact_absent_from_source",
     "experience_date_absent_from_source",
 })
+
+
+def _add_skill_formation_leak_issues(data: dict, issues: list[dict]) -> None:
+    """Flag a skill item that carries a formation's degree or school.
+
+    Two-column sources interleave the formations sidebar with the skills
+    lines; "API REST Node.js 2014 Licence Informatique Université Paris Cité"
+    must reach the reviewer as a warning, not ship as a skill.
+    """
+    markers: list[str] = []
+    for formation in data.get("formations") or []:
+        if not isinstance(formation, dict):
+            continue
+        for key in ("degree", "school"):
+            marker = _normalize_for_fidelity(str(formation.get(key) or ""))
+            if len(marker) >= 8 and marker not in markers:
+                markers.append(marker)
+    if not markers:
+        return
+    for skill in data.get("skills") or []:
+        if not isinstance(skill, dict):
+            continue
+        for item in skill.get("items") or []:
+            item_normalized = _normalize_for_fidelity(str(item))
+            marker = next((m for m in markers if m in item_normalized and m != item_normalized), None)
+            if marker:
+                issues.append({
+                    "code": "skill_item_contains_formation",
+                    "message": f"Compétence mêlée à une formation ({skill.get('category')}): {str(item)[:120]}",
+                    "category": str(skill.get("category") or ""),
+                    "item": str(item)[:180],
+                })
 
 
 def _extract_fidelity_codes(error_message: str) -> list[str]:
@@ -1332,7 +1370,14 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
     punctuation), but not synonym substitutions or shortened/rephrased bullets.
     """
     issues: list[dict] = []
-    json_strings_with_paths = _iter_json_strings_with_paths(data)
+    revision_removed_facts = {
+        str(entry.get("fact") or "")
+        for entry in data.get(REVISION_REMOVED_SOURCE_FACTS_KEY) or []
+        if isinstance(entry, dict)
+    }
+    json_strings_with_paths = _iter_json_strings_with_paths(
+        {key: value for key, value in data.items() if key != REVISION_REMOVED_SOURCE_FACTS_KEY}
+    )
     json_strings = [text for _, text in json_strings_with_paths]
     source_normalized = _normalize_for_fidelity(source_text)
     forbidden_terms = forbidden_identity_terms if forbidden_identity_terms is not None else infer_forbidden_candidate_identity_terms(source_text)
@@ -1362,6 +1407,8 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
             "message": f"Nom complet affiché au lieu du prénom seul: {displayed_name}",
             "name": displayed_name,
         })
+
+    _add_skill_formation_leak_issues(data, issues)
 
     title_value = str(data.get("title") or "").strip()
     if source_normalized and title_value and not _contains_fidelity_fact(source_normalized, title_value):
@@ -1398,7 +1445,7 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
 
             for entry in extract_source_business_coverage_facts(source_text):
                 fact = entry["fact"]
-                if _contains_fidelity_fact(json_normalized, fact):
+                if fact in revision_removed_facts or _contains_fidelity_fact(json_normalized, fact):
                     continue
                 issues.append({
                     "code": "source_coverage_missing_section",
@@ -2051,6 +2098,9 @@ _EXPERIENCE_COVERAGE_HEADING_RE = re.compile(
 )
 
 
+_YEAR_ONLY_LINE_RE = re.compile(r"^(?:\d{2}/)?(?:19|20)\d{2}$")
+
+
 def _skill_key(value: str) -> str:
     return re.sub(r"[^a-z0-9+#.]+", "", value.lower())
 
@@ -2104,8 +2154,10 @@ def _is_allowed_source_coverage_exclusion(line: str) -> bool:
     if not cleaned:
         return True
     lower = cleaned.lower()
+    # A real e-mail address, not any "@": "plateforme Th@Bot" is a project name.
     return bool(
-        re.search(r"@|linkedin|github\.com|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b", cleaned, re.I)
+        EMAIL_CONTACT_RE.search(cleaned)
+        or re.search(r"linkedin|github\.com|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b", cleaned, re.I)
         or re.search(r"rue|avenue|boulevard|impasse|all[ée]e|\b\d{5}\b", lower)
         or "cv envoyé par hellowork" in lower
         or "données personnelles" in lower
@@ -2180,7 +2232,10 @@ def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, s
                 current_item = [inline_value]
                 flush_item()
             continue
-        if current_section and _looks_like_section_boundary(line):
+        # A year alone on its line opens a dated entry of another column (the
+        # formations sidebar is read between the skills lines): "API REST
+        # Node.js" must not absorb "2014 / Licence Informatique / Université".
+        if current_section and (_looks_like_section_boundary(line) or _YEAR_ONLY_LINE_RE.match(line)):
             flush_item()
             current_section = None
             continue
@@ -2707,13 +2762,18 @@ def _postprocess_skills_into_languages_and_certifications(data: dict) -> dict:
     return out
 
 
-def _source_gate_skills(data: dict, source_text: str) -> dict:
+def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: bool = True) -> dict:
     """Remove skill items that are not supported by the actual uploaded CV text.
 
     Skill curation may regroup and deduplicate, but it must not turn a model
     expansion into a visible client-facing fact. Experiences are not mutated here;
     this gate only filters the structured skills surface where hallucinated
     expansions are most common.
+
+    With ``reinject_source_facts`` False (a revision comment asked to change the
+    skills), the model's categories are kept as it answered and the source
+    coverage facts it removed are recorded under
+    ``REVISION_REMOVED_SOURCE_FACTS_KEY`` instead of being put back.
     """
     source_normalized = _normalize_for_fidelity(source_text or "")
     if not source_normalized:
@@ -2722,7 +2782,7 @@ def _source_gate_skills(data: dict, source_text: str) -> dict:
     gated = deepcopy(data)
     gated_skills: list[dict] = []
     promoted_business_items: dict[str, list[str]] = {}
-    has_source_faithful_skill_categories = any(
+    has_source_faithful_skill_categories = reinject_source_facts and any(
         _normalize_for_fidelity(str(skill.get("category") or "")) in _SOURCE_FAITHFUL_SKILL_CATEGORIES
         for skill in gated.get("skills") or []
         if isinstance(skill, dict)
@@ -2757,11 +2817,15 @@ def _source_gate_skills(data: dict, source_text: str) -> dict:
         if items:
             gated_skills.append({"category": section, "items": items})
     json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
+    removed_facts: list[dict[str, str]] = []
     for entry in extract_source_business_coverage_facts(source_text):
         fact = entry["fact"]
         if _contains_fidelity_fact(json_normalized, fact):
             continue
         if _is_competences_fact_covered_atomically(entry["section"], fact, source_text, gated_skills):
+            continue
+        if not reinject_source_facts:
+            removed_facts.append({"section": entry["section"], "fact": fact})
             continue
         target = next((skill for skill in gated_skills if _normalize_for_fidelity(str(skill.get("category") or "")) == _normalize_for_fidelity(entry["section"])), None)
         if target is None:
@@ -2772,6 +2836,10 @@ def _source_gate_skills(data: dict, source_text: str) -> dict:
             items.append(fact)
         json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
     gated["skills"] = gated_skills
+    if reinject_source_facts:
+        gated.pop(REVISION_REMOVED_SOURCE_FACTS_KEY, None)
+    else:
+        gated[REVISION_REMOVED_SOURCE_FACTS_KEY] = removed_facts
     return gated
 
 
@@ -2862,12 +2930,16 @@ def _source_gate_high_risk_experience_content(data: dict, source_text: str) -> d
     return gated
 
 
-def _source_gate_structured_data(data: dict, source_text: str) -> dict:
+def _source_gate_structured_data(data: dict, source_text: str, *, model_skills_authoritative: bool = False) -> dict:
+    # ``model_skills_authoritative``: a revision comment asked the model to
+    # change the skills; source skills must not be merged or reinjected over
+    # its answer (they would silently undo the requested removal).
+    merge_source = not model_skills_authoritative
     # Deterministic skills intelligence runs first: it owns language hoisting
     # and global dedup. If we let `_postprocess_skills_into_languages_and_...`
     # run first, it can leave orphan level fragments (`parlé`, `écrit`) inside
     # a residual `skills[Langues]` category that no later pass cleans.
-    rescued = apply_skills_intelligence(data, source_text)
+    rescued = apply_skills_intelligence(data, source_text, merge_source_skills=merge_source)
     # Rescue top-level `languages` and `certifications` from `skills[Langues]` /
     # `skills[Certifications]` BEFORE source-gating. This is the post-process that
     # turns "Arabe 5 Français 4 Anglais 4 Developpement Java8 Java17 Junit ..." into
@@ -2876,8 +2948,8 @@ def _source_gate_structured_data(data: dict, source_text: str) -> dict:
     # Skills may be regrouped/filtered as a compact client-facing surface, but
     # experiences must never be silently edited to pass validation. Rewritten or
     # hallucinated experience bullets are now rejected by validate_source_fidelity.
-    gated = _source_gate_skills(rescued, source_text)
-    gated = apply_skills_intelligence(gated, source_text)
+    gated = _source_gate_skills(rescued, source_text, reinject_source_facts=merge_source)
+    gated = apply_skills_intelligence(gated, source_text, merge_source_skills=merge_source)
     skill_warnings = evaluate_skills_display_quality(gated.get("skills") or [])
     if skill_warnings:
         gated["_skill_quality_warnings"] = skill_warnings
@@ -3195,13 +3267,14 @@ def build_whub_json(
 
     enforce_client_first_name(data, candidate_first_name)
     resolved_synthesis_mode = resolve_synthesis_mode(synthesis_mode, instructions, comments)
-    data = _source_gate_structured_data(data, compacted_text)
+    skills_revision = requests_skills_revision(comments)
+    data = _source_gate_structured_data(data, compacted_text, model_skills_authoritative=skills_revision)
     data = apply_client_synthesis_policy(
         data,
         resolved_synthesis_mode,
         allow_condensation=resolved_synthesis_mode != "complete",
     )
-    data = _source_gate_structured_data(data, compacted_text)
+    data = _source_gate_structured_data(data, compacted_text, model_skills_authoritative=skills_revision)
     enforce_client_first_name(data, candidate_first_name)
     data = sanitize_contact_in_json(data)
     assert_no_contact_in_json(data)

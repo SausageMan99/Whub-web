@@ -45,6 +45,7 @@ from .section_classifier import classify_sections
 from .source_coverage import compare_required_block_coverage
 from .block_sanitizer import sanitize_document
 from .visual_skills_extraction import apply_visual_skills_override, extract_visual_skills
+from .revisions import requests_skills_revision
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
@@ -892,7 +893,10 @@ def process_job(job: dict) -> None:
             structured = build_whub_json(
                 sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name
             )
-            structured = _apply_source_wins_post_structuring(structured, source)
+            # A revision comment on the skills is answered by the model: the
+            # source skills read from the PDF styles must not overwrite it.
+            if not requests_skills_revision(comments_for_prompt):
+                structured = _apply_source_wins_post_structuring(structured, source)
         enforce_client_first_name(structured, effective_first_name)
         # Soft fidelity warnings: extract and remove from data so they don't pollute the render
         fidelity_soft_warnings = structured.pop("_fidelity_soft_warnings", None)
