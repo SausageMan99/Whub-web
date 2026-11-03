@@ -986,7 +986,8 @@ def process_job(job: dict) -> None:
         )
         client.table("cv_comments").update({"resolved": True}).eq("request_id", request_id).eq("comment_type", "revision").execute()
         event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
-        if request_status == "draft_ready":
+        if request_status == "draft_ready" or layout_warnings:
+            # A ready CV can carry advisory layout warnings (qa.ADVISORY_LAYOUT_CODES).
             event_payload["layout_warnings"] = layout_warnings
         if fidelity_soft_warnings:
             event_payload["fidelity_warnings"] = fidelity_soft_warnings

@@ -55,6 +55,16 @@ SOFT_LAYOUT_CODES = {
     "page_underfilled_with_next_experience_fit",
 }
 
+# Reported and scored, but alone they do not keep a CV out of ready: a page 1
+# carrying description, skills and sidebar can sit just over the density line
+# with nothing left to move (decision of 2026-11-03).
+ADVISORY_LAYOUT_CODES = {"page_dense_but_acceptable"}
+
+
+def _blocking_layout_issues(issues: list[Any]) -> list[dict[str, Any]]:
+    return [issue for issue in issues if isinstance(issue, dict) and issue.get("code") not in ADVISORY_LAYOUT_CODES]
+
+
 ALLOWED_RENDERER_LABEL_FACTS = {
     # French/English renderer-side taxonomy labels (UI chrome, not candidate facts)
     "Bases de données", "Base de données", "Base de donnees", "Bases de donnees",
@@ -108,11 +118,11 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
     unknown_layout = [issue for issue in layout_issues if issue.get("code") not in SOFT_LAYOUT_CODES]
     if unknown_layout:
         return "failed", []
-    if layout_issues:
+    if _blocking_layout_issues(layout_issues) or (layout_issues and content_issues):
         return "draft", layout_issues
     if content_issues:
         return "failed", []
-    return "passed", []
+    return "passed", layout_issues
 
 
 class QAError(Exception):
@@ -701,7 +711,7 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
     has_logo = [1051, 398] in image_sizes
     has_watermark = [1192, 1192] in image_sizes
     report = {
-        "passed": not hits and not bad_glyphs and not content_integrity_issues and not overflow_hits and not layout_issues and has_logo and has_watermark and doc.page_count > 0,
+        "passed": not hits and not bad_glyphs and not content_integrity_issues and not overflow_hits and not _blocking_layout_issues(layout_issues) and has_logo and has_watermark and doc.page_count > 0,
         "pages": doc.page_count,
         "contact_hits": hits,
         "bad_glyphs": bad_glyphs,

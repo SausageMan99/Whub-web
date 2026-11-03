@@ -70,9 +70,16 @@ Banc prod (11 CV), le 03/11 à la fin de la journée : **11/11, 7 ready, aucune 
 
 Ce sont de vrais écarts, que la relecture humaine doit voir.
 
-## Point ouvert
+## Décision : page dense mais acceptable (03/11)
 
 Benjamin a parfois une page 1 à ~3 050 caractères, **sans aucune expérience** : description, 35 compétences et
-colonne latérale. La QA la classe `page_dense_but_acceptable`, et toute alerte de mise en page envoie en
-draft_ready. Le renderer ne peut l'alléger qu'en créant une page « Compétences (suite) », que la QA pénalise
-davantage. Il faut une décision de règle : `page_dense_but_acceptable` seule doit-elle bloquer ready ?
+colonne latérale. Le renderer ne peut l'alléger qu'en créant une page « Compétences (suite) », que la QA pénalise
+davantage.
+
+Décision : `page_dense_but_acceptable` seule ne bloque plus ready (`qa.ADVISORY_LAYOUT_CODES`).
+
+- L'alerte reste visible : rapport QA, alertes de l'événement `ready`, score de goût humain (−6).
+- À score égal, le moteur de variantes préfère toujours une mise en page sans elle.
+- Associée à une autre alerte de mise en page, ou à un problème de contenu, elle reste en draft_ready comme avant.
+
+Banc prod après cette décision : **11/11, 8 ready**, aucune alerte de pagination.

@@ -629,3 +629,41 @@ def test_process_job_infers_first_name_when_portal_omits_it(monkeypatch, tmp_pat
     assert saved["kwargs"]["request_status"] == "ready", (
         f"Expected status=ready, got {saved['kwargs']['request_status']}"
     )
+
+
+def test_process_job_advisory_dense_page_saves_ready_with_visible_warning(monkeypatch, tmp_path):
+    # 2026-11-03 decision: a page 1 just over the density line, alone, is ready.
+    saved = {}
+    events = []
+    warning = {"code": "page_dense_but_acceptable", "page": 1, "message": "Page 1 anormalement dense"}
+    report = _report(passed=True, layout_issues=[warning])
+    pdf_path = tmp_path / "output.pdf"
+    pdf_path.write_bytes(b"%PDF ready")
+
+    monkeypatch.setattr(worker_main.settings, "tmp_dir", str(tmp_path))
+    monkeypatch.setattr(worker_main.settings, "worker_name", "whub-cv-worker-hermes-local")
+    monkeypatch.setattr(worker_main, "download_source", lambda job, workdir: pdf_path)
+    monkeypatch.setattr(worker_main, "extract_pdf_text", lambda source: _MINIMAL_CV_SOURCE)
+    monkeypatch.setattr(worker_main, "build_whub_json", lambda *args: {"name": "BENJAMIN", "formations": [], "skills": [], "experiences": []})
+    monkeypatch.setattr(worker_main, "assert_no_contact_in_json", lambda structured: None)
+    monkeypatch.setattr(worker_main, "enforce_client_first_name", lambda structured, first_name: None)
+    monkeypatch.setattr(worker_main, "emit_event", lambda request_id, event, payload=None: events.append((event, payload or {})))
+    monkeypatch.setattr(worker_main, "save_version", lambda *args, **kwargs: saved.update({"args": args, "kwargs": kwargs}) or {"id": "version-1", "version_number": 1})
+
+    class _CommentsTable:
+        def select(self, *_args): return self
+        def update(self, *_args, **_kwargs): return self
+        def eq(self, *_args): return self
+        def execute(self): return type("Res", (), {"data": []})()
+
+    monkeypatch.setattr(worker_main.client, "table", lambda table: _CommentsTable())
+    monkeypatch.setattr(worker_main, "run_layout", lambda **kwargs: LayoutResult(
+        pdf=pdf_path, qa_report=report, layout_options={}, attempts_count=1, selected_variant="base",
+    ))
+
+    worker_main.process_job({"id": "request-1", "candidate_first_name": "BENJAMIN", "instructions": ""})
+
+    assert saved["kwargs"]["request_status"] == "ready"
+    assert saved["kwargs"]["qa_status"] == "passed"
+    assert saved["args"][3]["passed"] is True
+    assert ("ready", {"version_id": "version-1", "version_number": 1, "layout_warnings": [warning]}) in events

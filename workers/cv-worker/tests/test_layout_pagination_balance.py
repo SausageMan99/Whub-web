@@ -122,3 +122,53 @@ def test_candidate_display_name_printed_by_the_renderer_is_not_a_foreign_fact():
     # "Stack principale" is a W hub taxonomy label the prompt imposes: allowed
     # too. A label outside the taxonomy is still reported.
     assert [issue["fact"] for issue in issues if issue["code"] == "pdf_fact_absent_from_source"] == ["Stack Magique"]
+
+
+def _qa_report(*codes):
+    return {"pages": 2, "contact_hits": [], "has_logo": True, "has_watermark": True,
+            "layout_issues": [{"code": code, "page": 1} for code in codes], "content_integrity_issues": []}
+
+
+def test_dense_but_acceptable_page_alone_stays_ready_and_visible():
+    from src.qa import classify_qa_report
+
+    status, warnings = classify_qa_report(_qa_report("page_dense_but_acceptable"))
+
+    assert status == "passed"
+    assert [w["code"] for w in warnings] == ["page_dense_but_acceptable"]
+
+
+def test_dense_but_acceptable_with_another_layout_issue_is_still_draft():
+    from src.qa import classify_qa_report
+
+    status, warnings = classify_qa_report(_qa_report("page_dense_but_acceptable", "last_page_sparse"))
+
+    assert status == "draft"
+    assert {w["code"] for w in warnings} == {"page_dense_but_acceptable", "last_page_sparse"}
+
+
+def test_run_qa_marks_advisory_only_report_as_passed(tmp_path, monkeypatch):
+    from src import qa
+
+    monkeypatch.setattr(qa, "find_layout_issues", lambda _doc: [{"code": "page_dense_but_acceptable", "page": 1}])
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 120), "Développeur Java", fontsize=12)
+    page.insert_image(fitz.Rect(400, 20, 500, 60), pixmap=fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 1051, 398), 0))
+    page.insert_image(fitz.Rect(100, 300, 400, 600), pixmap=fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 1192, 1192), 0))
+    path = tmp_path / "cv.pdf"
+    doc.save(str(path))
+
+    report = qa.run_qa(path)
+
+    assert report["passed"] is True
+    assert [i["code"] for i in report["layout_issues"]] == ["page_dense_but_acceptable"]
+
+
+def test_advisory_layout_issue_with_content_issue_keeps_previous_draft_outcome():
+    from src.qa import classify_qa_report
+
+    report = _qa_report("page_dense_but_acceptable")
+    report["content_integrity_issues"] = [{"code": "pdf_fact_absent_from_source"}]
+
+    assert classify_qa_report(report)[0] == "draft"
