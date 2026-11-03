@@ -107,6 +107,31 @@ def _strip_pdf_footer_lines(text: str) -> str:
     return "\n".join(kept).strip()
 
 
+# Symbol fonts (Wingdings, Symbol) put their bullet glyphs in this private-use
+# block; they extract as unprintable characters, often alone on their line.
+# Word sub-bullets extract as a lone "o" line, the text on the next line.
+_SYMBOL_FONT_BULLET_RE = re.compile(r"^\s*[\uf000-\uf0ff]+\s*")
+_LONE_BULLET_LINE_RE = re.compile(r"^\s*[o◦▪■●•➢✓]\s*$")
+
+
+def _normalize_symbol_font_bullets(text: str) -> str:
+    out: list[str] = []
+    pending_bullet = False
+    for raw in str(text or "").splitlines():
+        match = _SYMBOL_FONT_BULLET_RE.match(raw)
+        line = raw[match.end():] if match else raw
+        if (match and not line.strip()) or _LONE_BULLET_LINE_RE.match(raw):
+            pending_bullet = True
+            continue
+        if pending_bullet and not line.strip():
+            continue
+        if match or pending_bullet:
+            line = "• " + line.strip()
+            pending_bullet = False
+        out.append(line)
+    return "\n".join(out)
+
+
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
@@ -124,7 +149,7 @@ def _strip_control_chars(text: str) -> str:
 
 
 def _clean_extracted_text(raw: str) -> str:
-    return _strip_pdf_footer_lines(_strip_control_chars(_normalize_pdf_text_chars(raw)))
+    return _strip_pdf_footer_lines(_normalize_symbol_font_bullets(_strip_control_chars(_normalize_pdf_text_chars(raw))))
 
 
 def _ocr_pdf_text(doc) -> str:

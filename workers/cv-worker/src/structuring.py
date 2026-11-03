@@ -1383,7 +1383,7 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
                     "fact": fact,
                 })
 
-            for entry in extract_source_experience_coverage_items(source_text):
+            for entry in extract_source_experience_coverage_items(source_text, str(data.get("name") or "")):
                 item = entry["item"]
                 if _contains_fidelity_fact(json_normalized, item):
                     continue
@@ -2016,11 +2016,13 @@ _BUSINESS_COVERAGE_HEADING_RE = re.compile(
     re.I,
 )
 _SECTION_BOUNDARY_RE = re.compile(
-    r"^(?:processus\s+m[ée]tiers|loisirs?|formations?|dipl[oô]mes?|exp[ée]riences?|parcours|mots[-\s]?cl[ée]s?|contact|coordonn[ée]es?)\b",
+    r"^(?:processus\s+m[ée]tiers|loisirs?|formations?|dipl[oô]mes?|exp[ée]riences?|parcours|mots[-\s]?cl[ée]s?|contact|coordonn[ée]es?"
+    r"|centres?\s+d['’]int[ée]r[êe]ts?|r[ée]seaux\s+sociaux)\b",
     re.I,
 )
 _EXPERIENCE_COVERAGE_HEADING_RE = re.compile(
-    r"^(?:missions?(?:\s+cl[ée]s?)?|responsabilit[ée]s?|r[ée]alisations?|livrables?(?:\s+cl[ée]s?)?|activit[ée]s?|t[âa]ches?)\s*:?$",
+    r"^(?:missions?(?:\s+cl[ée]s?)?|responsabilit[ée]s?|r[ée]alisations?|livrables?(?:\s+cl[ée]s?)?|activit[ée]s?|t[âa]ches?)"
+    r"(?:\s*\(suite\))?\s*:?$",
     re.I,
 )
 
@@ -2031,6 +2033,8 @@ def _skill_key(value: str) -> str:
 
 def _canonical_business_coverage_heading(line: str) -> str | None:
     cleaned = re.sub(r"\s+", " ", str(line or "").strip(" :•✓-–—\t"))
+    # Page-break continuations: "Autres — suite", "Compétences (suite)".
+    cleaned = re.sub(r"\s*(?:[-–—]\s*suite|\(suite\))$", "", cleaned, flags=re.I).strip(" :•✓-–—\t")
     if not cleaned:
         return None
     normalized = _normalize_for_fidelity(cleaned)
@@ -2061,6 +2065,8 @@ def _looks_like_section_boundary(line: str) -> bool:
         cleaned
         and (
             _SECTION_BOUNDARY_RE.match(cleaned)
+            or _is_letter_spaced_heading(cleaned)
+            or _DATE_RANGE_ONLY_LINE_RE.match(cleaned)
             or _canonical_business_coverage_heading(cleaned)
             or _split_business_coverage_inline_heading(cleaned)[0]
             or _is_experience_start_line(cleaned)
@@ -2174,7 +2180,31 @@ def extract_source_business_coverage_facts(source_text: str) -> list[dict[str, s
     return facts
 
 
-def extract_source_experience_coverage_items(source_text: str) -> list[dict[str, str]]:
+# Layout lines that sit between missions in extracted PDF text and are not
+# mission content: a date range alone on its line (the role/company follows on
+# the next line), a letter-spaced sidebar heading ("D E S C R I P T I O N") and
+# the candidate first name alone on a line, which opens the header repeated at
+# the top of every page (first name, then title).
+_DATE_RANGE_ONLY_LINE_RE = re.compile(
+    r"^(?:de\s+)?(?:(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+)?"
+    r"(?:\d{2}/)?\d{4}\s*(?:[-–—]|à|a|au|to)\s*"
+    r"(?:(?:(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+)?(?:\d{2}/)?\d{4}"
+    r"|aujourd[’']?hui|pr[ée]sent|ce\s+jour|à\s+ce\s+jour)$",
+    re.I,
+)
+_LETTER_SPACED_HEADING_RE = re.compile(r"^(?:\S\s+){3,}\S$")
+
+
+# "Environnement fonctionnel : Middle-Office" right after a bullet is a new field
+# of the experience, not the end of the bullet sentence.
+_LABELLED_FIELD_LINE_RE = re.compile(r"^[A-ZÀ-ÖØ-Þ][^:：]{2,40}\s*[:：]\s*\S")
+
+
+def _is_letter_spaced_heading(line: str) -> bool:
+    return bool(_LETTER_SPACED_HEADING_RE.match(line)) and all(len(token) == 1 for token in line.split())
+
+
+def extract_source_experience_coverage_items(source_text: str, candidate_first_name: str | None = None) -> list[dict[str, str]]:
     """Return explicit source experience items that must not be omitted.
 
     This records bullet/list items and conservative non-bulleted mission lines
@@ -2207,6 +2237,11 @@ def extract_source_experience_coverage_items(source_text: str) -> list[dict[str,
             return False
         return bool(re.search(r"[.!?…]\s*$", current_item[-1].strip()))
 
+    # Set after a date range or the page-header first name: the next line is
+    # the role/company or the page title, unless it is a bullet, a section
+    # boundary or the lower-case continuation of a mission cut by a page break.
+    expecting_header_line = False
+    first_name = _normalize_for_fidelity(candidate_first_name or "")
     for raw_line in compact_extracted_text(source_text or "").splitlines():
         line = raw_line.strip()
         if not line:
@@ -2215,8 +2250,25 @@ def extract_source_experience_coverage_items(source_text: str) -> list[dict[str,
         cleaned_heading = re.sub(r"\s+", " ", line.strip(" :•✓-–—\t"))
         if _EXPERIENCE_COVERAGE_HEADING_RE.match(cleaned_heading):
             flush_item()
-            current_heading = cleaned_heading.rstrip(":")
+            expecting_header_line = False
+            current_heading = re.sub(r"\s*\(suite\)$", "", cleaned_heading.rstrip(": "), flags=re.I)
             continue
+        if first_name and _normalize_for_fidelity(line) == first_name:
+            expecting_header_line = True
+            continue
+        if _DATE_RANGE_ONLY_LINE_RE.match(cleaned_heading):
+            flush_item()
+            expecting_header_line = True
+            continue
+        if expecting_header_line:
+            expecting_header_line = False
+            if (
+                len(line) <= 120
+                and not re.match(r"^[✓•\-*]\s*\S", line)
+                and not starts_continuation_line(line)
+                and not _looks_like_section_boundary(line)
+            ):
+                continue
         if current_heading and _looks_like_section_boundary(line):
             flush_item()
             current_heading = None
@@ -2232,7 +2284,7 @@ def extract_source_experience_coverage_items(source_text: str) -> list[dict[str,
             current_item = [cleaned]
         elif not current_item:
             current_item = [cleaned]
-        elif current_item_looks_complete() and not starts_continuation_line(cleaned):
+        elif (current_item_looks_complete() and not starts_continuation_line(cleaned)) or _LABELLED_FIELD_LINE_RE.match(cleaned):
             flush_item()
             current_item = [cleaned]
         else:

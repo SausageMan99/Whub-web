@@ -78,3 +78,21 @@ def test_benjamin_fixture_is_rescued_by_real_ocr():
 
 def test_typographic_ligatures_are_expanded():
     assert extraction._clean_extracted_text("mise en place du ﬁchier Docker, ﬂux, eﬀort") == "mise en place du fichier Docker, flux, effort"
+
+
+def test_symbol_font_bullets_become_regular_bullets():
+    # Yannick: Wingdings bullets are extracted as private-use glyphs, alone on
+    # their line, the bullet text following on the next line.
+    raw = "Missions\n\nRefonte d'un POC sous .NET Core\n Analyse de l'existant\n\n\nDéveloppement"
+
+    assert extraction._clean_extracted_text(raw) == (
+        "Missions\n• Refonte d'un POC sous .NET Core\n• Analyse de l'existant\n• Développement"
+    )
+
+
+def test_word_sub_bullets_alone_on_their_line_become_bullets():
+    raw = "Principes architecturaux :\no\nMicroservices\no\nArchitecture monolithique\nDesign patterns"
+
+    assert extraction._clean_extracted_text(raw) == (
+        "Principes architecturaux :\n• Microservices\n• Architecture monolithique\nDesign patterns"
+    )

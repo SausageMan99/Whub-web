@@ -367,3 +367,14 @@ def test_letter_spaced_heading_with_single_spaces_also_stops():
     from src.skills_intelligence import _extract_skills_lines
 
     assert _extract_skills_lines(source) == ["Python, SQL"]
+
+
+def test_skill_values_are_not_split_inside_parentheses():
+    from src.skills_intelligence import _split_skill_values
+
+    assert _split_skill_values("Méthodologies agiles (certifiée PSPO), Cycle V; Jira (Xray, Zephyr) / Git") == [
+        "Méthodologies agiles (certifiée PSPO)",
+        "Cycle V",
+        "Jira (Xray, Zephyr)",
+        "Git",
+    ]

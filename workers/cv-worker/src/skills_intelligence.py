@@ -239,7 +239,15 @@ def _fold_label(value: str) -> str:
 
 
 def _normalise_skill_label(value: str) -> str:
-    cleaned = re.sub(r"\s+", " ", str(value or "")).strip(" .,;:()[]{}•➢")
+    cleaned = re.sub(r"\s+", " ", str(value or "")).strip(" .,;:[]{}•➢")
+    # Edge parentheses go only when unbalanced ("(Kibana" from a cut list);
+    # "Méthodologies agiles (certifiée PSPO)" keeps its closing one.
+    while cleaned.endswith(")") and cleaned.count(")") > cleaned.count("("):
+        cleaned = cleaned[:-1].rstrip(" .,;:")
+    while cleaned.startswith("(") and cleaned.count("(") > cleaned.count(")"):
+        cleaned = cleaned[1:].lstrip(" .,;:")
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        cleaned = cleaned[1:-1].strip(" .,;:")
     if not cleaned:
         return ""
     folded = _fold_label(cleaned)
@@ -249,7 +257,21 @@ def _normalise_skill_label(value: str) -> str:
 
 
 def _split_skill_values(value: str) -> list[str]:
-    parts = re.split(r",|;|\s+\/\s+", value or "")
+    # Separators inside parentheses belong to the item: "Jira (Xray, Zephyr)".
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    text = value or ""
+    for match in re.finditer(r"[()]|,|;|\s+\/\s+", text):
+        token = match.group(0)
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            parts.append(text[start:match.start()])
+            start = match.end()
+    parts.append(text[start:])
     out: list[str] = []
     for part in parts:
         label = _normalise_skill_label(part)
