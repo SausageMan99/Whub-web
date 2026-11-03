@@ -1,5 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildCvDownloadFilename } from "@/lib/cv-ui";
+import { numberVersions } from "@/lib/workspace";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string; versionId: string }> }) {
   const { id, versionId } = await params;
@@ -23,9 +24,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     .eq("id", id)
     .maybeSingle();
 
+  // version_number vient d'une séquence globale : le fichier porte le rang de la version dans cette demande.
+  const { data: siblings } = await admin
+    .from("cv_versions")
+    .select("id,created_at,version_number")
+    .eq("request_id", id);
+  const ordinal = siblings?.length
+    ? numberVersions(siblings).find((v) => v.id === version.id)?.ordinal ?? version.version_number
+    : version.version_number;
+
   const downloadName = buildCvDownloadFilename(
     request?.candidate_first_name || request?.title || request?.source_file_name,
-    version.version_number
+    ordinal
   );
 
   const { data: signed, error: signedError } = await admin.storage

@@ -4,6 +4,29 @@ Toutes les modifications notables du projet sont documentées ici. Le format sui
 
 ## [Unreleased]
 
+### Interface : la table de relecture
+- **Un seul écran de travail `/demandes`** : la file des demandes à gauche, regroupée par action (à relire, en cours, bloqués, prêts à envoyer), avec recherche par prénom ou poste ; la demande ouverte au centre. `/`, `/dashboard`, `/requests/[id]` et `/requests/new` redirigent vers ce nouvel écran.
+- **Épreuve affichée dans la page** avec pdf.js (`/demandes/[id]/apercu/[versionId]` sert le PDF depuis le même domaine). Les points à vérifier du rapport qualité sont traduits en français clair, placés sur la page concernée (la zone vide d'une page presque vide est encadrée) et proposent une correction pré-remplie.
+- **Statut « Prêt à envoyer »** : la personne qui relit valide la dernière version. Sans migration : événement `human_validated` (et `human_validation_cancelled`) dans `cv_events`, avec la version et le prénom.
+- **Prénom du relecteur** gardé dans le navigateur (sans compte) ; il signe validations et corrections (`cv_comments.metadata.author`).
+- **Nouveau CV** dans une fenêtre ; glisser-déposer qui fonctionne partout dans l'écran ; le prénom est deviné depuis le nom du fichier ; seul l'en-tête du PDF est lu pour le contrôle.
+- **Présentation des nouveautés** au premier lancement, rouvrable depuis « Nouveautés ».
+- Nouveaux tokens de couleur et Poppins dans `globals.css` ; `tailwind.config.ts` (ignoré par Tailwind 4) supprimé.
+
+### Corrigé
+- Les numéros de version affichés venaient d'une séquence globale (« Version 246 ») : ils sont maintenant numérotés 1, 2, 3 par demande, y compris dans le nom du PDF téléchargé.
+- Les pages lisaient `cv_events.metadata`, une colonne qui n'existe pas (c'est `payload`) : le suivi des étapes et les badges ne s'affichaient jamais.
+- Le halo de l'ancienne page d'accueil masquait le bouton principal ; la zone « Dépose le PDF ici » n'acceptait pas le glisser-déposer.
+- Le nom du fichier source (souvent avec le nom de famille) n'est plus affiché.
+
+### Accès libre encadré
+- `noindex` et `robots.txt` (`Disallow: /`) ; page `/login` supprimée (elle affichait la règle du code d'accès).
+- Dépendances du front figées sur les versions du lockfile au lieu de `latest`.
+
+### Connu
+- 18 tests hérités échouent comme avant cette branche (`download`, `middleware`, `retryRequest`) : ils supposent l'authentification, désactivée.
+- Le limiteur de débit garde ses compteurs en mémoire tant qu'Upstash n'est pas configuré.
+
 ### À venir
 - Branch protection sur `main` (à activer via `scripts/setup-branch-protection.sh`)
 - Pre-push gate via `.githooks/pre-push`

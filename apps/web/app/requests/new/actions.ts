@@ -37,11 +37,11 @@ async function hasPdfMagicHeader(blob: Blob) {
 
 export async function prepareUpload({ fileName, fileType, fileSize }: { fileName: string; fileType: string; fileSize: number }) {
   const rateLimit = await checkRateLimit({ action: "upload", limit: 10, windowMs: 60_000 });
-  if (!rateLimit.allowed) redirect("/requests/new?error=rate_limited");
+  if (!rateLimit.allowed) redirect("/demandes?nouveau=1&error=rate_limited");
 
-  if (fileSize > MAX_UPLOAD_BYTES) redirect("/requests/new?error=file_too_large");
+  if (fileSize > MAX_UPLOAD_BYTES) redirect("/demandes?nouveau=1&error=file_too_large");
   if (fileType !== "application/pdf") {
-    redirect("/requests/new?error=pdf_required");
+    redirect("/demandes?nouveau=1&error=pdf_required");
   }
 
   const admin = createSupabaseAdminClient();
@@ -56,7 +56,7 @@ export async function prepareUpload({ fileName, fileType, fileSize }: { fileName
 
   if (error) {
     console.error("Signed upload URL failed", error);
-    redirect("/requests/new?error=upload_failed");
+    redirect("/demandes?nouveau=1&error=upload_failed");
   }
 
   return { requestId, sourcePath, signedUrl: data.signedUrl };

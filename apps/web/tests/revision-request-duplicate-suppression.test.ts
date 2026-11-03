@@ -216,7 +216,7 @@ test('test_duplicate_revision_within_window_is_suppressed', async () => {
   assert.equal(state.commentInsert, null, 'should not insert a new cv_comments row');
   assert.equal(state.requestUpdate, null, 'should not update cv_requests status');
   assert.equal(state.eventInsert, null, 'should not insert a new cv_events row');
-  assert.deepEqual(state.revalidated, ['/requests/req1', '/dashboard']);
+  assert.deepEqual(state.revalidated, ['/requests/req1', '/dashboard', '/demandes']);
 });
 
 test('test_duplicate_revision_different_body_is_kept', async () => {
