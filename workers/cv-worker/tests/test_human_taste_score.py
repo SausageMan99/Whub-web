@@ -103,8 +103,10 @@ class HumanTasteScoreTest(unittest.TestCase):
     def test_dense_page_and_orphan_heading_drive_poor_score(self):
         def draw(doc):
             page1 = self.add_page(doc)
+            # A full W hub page holds ~4 800 characters: "too dense" starts
+            # above what the renderer can draw at its fixed body size.
             for i in range(62):
-                page1.insert_text((54, 45 + i * 12), f"Ligne dense {i:02d} détails projet contexte livrables environnement", fontsize=8)
+                page1.insert_text((54, 45 + i * 12), f"Ligne dense {i:02d} détails projet contexte livrables environnement, recette, pilotage et suivi", fontsize=8)
             page2 = self.add_page(doc)
             page2.insert_text((54, 710), "2024 - Aujourd’hui", fontsize=9)
             page2.insert_text((54, 732), "ARCHITECTE CLOUD CHEZ CLIENT", fontsize=11)

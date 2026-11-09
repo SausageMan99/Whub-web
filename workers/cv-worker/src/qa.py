@@ -24,7 +24,12 @@ CONTACT_PATTERNS = {
 
 READABLE_MARGIN_PT = 24
 BBOX_TOLERANCE_PT = 1.5
-PAGE_DENSE_CHAR_THRESHOLD = 3000
+# A full-width W hub page holds ~4 400-4 850 characters at the fixed body
+# size, and the renderer never shrinks text: below that a char count says
+# "full", not "crammed". 3 000 (the former value) flagged every well filled
+# page and made the renderer leave pages half empty to stay under it.
+PAGE_DENSE_CHAR_THRESHOLD = 5000
+PAGE_TOO_DENSE_CHAR_THRESHOLD = 5200
 PAGE_DENSE_BLOCK_THRESHOLD = 42
 LAST_PAGE_SPARSE_CHAR_THRESHOLD = 180
 LAST_PAGE_SPARSE_BLOCK_THRESHOLD = 4
@@ -362,6 +367,7 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     page_count = doc.page_count
     page_metrics = collect_page_layout_metrics(doc)
+    experiences_top_p1 = _experiences_title_top(doc[0]) if page_count else None
     for metric in page_metrics:
         page_index = int(metric["page"])
         page = doc[page_index - 1]
@@ -380,9 +386,9 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 snippet=text[:180],
             ))
 
-        dense_by_chars = char_count >= PAGE_DENSE_CHAR_THRESHOLD and not (char_count < 3400 and used_ratio < 0.70)
+        dense_by_chars = char_count >= PAGE_DENSE_CHAR_THRESHOLD and not (char_count < PAGE_DENSE_CHAR_THRESHOLD + 400 and used_ratio < 0.70)
         if dense_by_chars or (block_count >= PAGE_DENSE_BLOCK_THRESHOLD and used_ratio >= 0.75):
-            dense_code = "page_too_dense" if char_count >= 3600 or used_ratio >= 0.92 else "page_dense_but_acceptable"
+            dense_code = "page_too_dense" if char_count >= PAGE_TOO_DENSE_CHAR_THRESHOLD or used_ratio >= 0.92 else "page_dense_but_acceptable"
             findings.append(_issue(
                 dense_code,
                 page_index,
@@ -478,13 +484,21 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 ))
                 break
 
+            # Bullets, the page-1 sidebar and what sits above the experiences
+            # title (skills, when that title is on page 1) are never an experience opener: tech lists in
+            # capitals or dated certifications read like one.
+            outside_experience_flow = block_text.lstrip().startswith(("•", "-")) or (
+                page_index == 1
+                and (x0 >= SIDEBAR_X_PT or (experiences_top_p1 is not None and y0 < experiences_top_p1))
+            )
             near_bottom = y1 >= page.rect.height - EXPERIENCE_ORPHAN_BOTTOM_ZONE_PT
             remaining_text = " ".join(_block_text(candidate) for candidate in blocks[block_position + 1:])
             next_page_text = str(doc[page_index].get_text("text")) if page_index < page_count else ""
             normalized_heading = _normalize_for_fidelity(block_text)
             normalized_next_page = _normalize_for_fidelity(next_page_text)
             section_orphaned_to_suite = (
-                len(block_text) <= 90
+                not outside_experience_flow
+                and len(block_text) <= 90
                 and bool(EXPERIENCE_SECTION_RE.search(block_text))
                 and len(remaining_text.strip()) < 80
                 and normalized_heading
@@ -506,7 +520,7 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 ))
                 break
 
-            if not near_bottom or not _looks_like_experience_heading(block_text):
+            if outside_experience_flow or not near_bottom or not _looks_like_experience_heading(block_text):
                 continue
             opener_without_content = len(remaining_text.strip()) < 80 and bool(EXPERIENCE_SECTION_RE.search(next_page_text))
             if opener_without_content:
@@ -526,6 +540,148 @@ def find_layout_issues(doc: fitz.Document) -> list[dict[str, Any]]:
                 break
 
     return findings
+
+
+# ---------------------------------------------------------------- pagination
+# Measures of the PDF as the recipient sees it, same definitions as the
+# pagination bench (scratchpad banc/banc.py). Reported as warnings in
+# report["pagination"]; they do not change the QA status yet (lot 1, 2026-11:
+# another lot decides what blocks).
+PAGINATION_ZONE_TOP_PT = 36.0
+PAGINATION_ZONE_BOTTOM_PT = 36.0
+SIDEBAR_X_PT = 414.0
+PAGINATION_INTERMEDIATE_MIN_FILL = 0.60
+PAGINATION_LAST_MIN_FILL = 0.35
+PAGINATION_MIN_LINES_UNDER_HEADING = 2
+PAGINATION_SHORT_CONTINUATION_LINES = 2
+_EXPERIENCE_SECTION_SUBHEAD_SIZE = 8.45
+_EXPERIENCE_DATE_SIZE = 9.0
+_PURPLE = 0x7001F5
+EXPERIENCES_TITLE_MARK = "X P É R I E N C E S"
+
+
+def _experiences_title_top(page: fitz.Page) -> float | None:
+    for block in cast(dict[str, Any], page.get_text("dict")).get("blocks", []):
+        if block.get("type") == 0 and EXPERIENCES_TITLE_MARK in _block_text(block).upper():
+            return float(block["bbox"][1])
+    return None
+
+
+def _pagination_lines(page: fitz.Page, page_index: int) -> list[dict[str, Any]]:
+    """Text lines of the reading flow (page 1: left column), page header
+    excluded, sorted top to bottom."""
+    lines: list[dict[str, Any]] = []
+    for block in cast(dict[str, Any], page.get_text("dict")).get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            spans = [span for span in line.get("spans", []) if str(span.get("text", "")).strip()]
+            if not spans:
+                continue
+            text = "".join(str(span.get("text", "")) for span in line.get("spans", [])).strip()
+            x0, y0, _x1, y1 = (float(value) for value in line["bbox"])
+            bold = all("Bold" in str(span.get("font", "")) for span in spans)
+            purple = any(span.get("color") == _PURPLE for span in spans)
+            size = max(float(span.get("size", 0.0)) for span in spans)
+            if page_index > 1 and y1 < 52 and purple and bold:
+                continue  # candidate first name repeated in the page header
+            if page_index == 1 and x0 >= SIDEBAR_X_PT:
+                continue
+            lines.append({"text": text, "y0": y0, "y1": y1, "bold": bold, "purple": purple, "size": size})
+    return sorted(lines, key=lambda item: (item["y0"], item.get("x0", 0.0)))
+
+
+def _is_heading_line(line: dict[str, Any]) -> bool:
+    return bool(line["bold"]) and not str(line["text"]).startswith("•")
+
+
+def _is_experience_continuation(line: dict[str, Any]) -> bool:
+    return "(suite)" in str(line["text"]) and abs(float(line["size"]) - _EXPERIENCE_SECTION_SUBHEAD_SIZE) < 0.2
+
+
+def collect_pagination_metrics(doc: fitz.Document) -> dict[str, Any]:
+    """Fill of each page and pagination defects, measured on the rendered PDF.
+
+    fill = bottom of the reading-flow text over the readable zone (36 pt
+    margins); page 1 is measured on its left column, the sidebar does not
+    hide an empty column. Warnings:
+    - page_underfilled: a page other than the last (page 1 included) under
+      60 % while the CV continues;
+    - last_page_nearly_empty: last page under 35 %;
+    - heading_orphaned_at_page_bottom: a heading at the page bottom with
+      fewer than 2 lines under it while its content goes on next page;
+    - short_continuation: an experience section continued "(suite)" with
+      2 lines or fewer;
+    - first_page_without_experience: page 1 shows no experience opener.
+    """
+    page_count = doc.page_count
+    zone_top = PAGINATION_ZONE_TOP_PT
+    flows = [_pagination_lines(doc[index], index + 1) for index in range(page_count)]
+    fills: list[float] = []
+    warnings: list[dict[str, Any]] = []
+    for index, flow in enumerate(flows):
+        page_index = index + 1
+        page_height = float(doc[index].rect.height or 0.0)
+        zone = page_height - PAGINATION_ZONE_BOTTOM_PT - zone_top
+        bottom = max((line["y1"] for line in flow), default=zone_top)
+        fill = max(0.0, min(1.0, (bottom - zone_top) / zone)) if zone > 0 else 0.0
+        fills.append(round(fill, 3))
+        if page_index < page_count and fill < PAGINATION_INTERMEDIATE_MIN_FILL:
+            warnings.append(_issue(
+                "page_underfilled", page_index,
+                f"Page {page_index} remplie à {fill:.0%} alors que le CV continue page {page_index + 1}",
+                fill=round(fill, 3),
+            ))
+        if page_count > 1 and page_index == page_count and fill < PAGINATION_LAST_MIN_FILL:
+            warnings.append(_issue(
+                "last_page_nearly_empty", page_index,
+                f"Dernière page remplie à {fill:.0%}", fill=round(fill, 3),
+            ))
+        for position, line in enumerate(flow):
+            if not _is_experience_continuation(line):
+                continue
+            body = 0
+            for following in flow[position + 1:]:
+                if _is_heading_line(following):
+                    break
+                body += 1
+            continues_next_page = all(not _is_heading_line(item) for item in flow[position + 1:]) and page_index < page_count
+            if body <= PAGINATION_SHORT_CONTINUATION_LINES and not continues_next_page:
+                warnings.append(_issue(
+                    "short_continuation", page_index,
+                    f"Suite de {body} ligne(s) seulement page {page_index}: {line['text'][:80]}",
+                    snippet=str(line["text"])[:120],
+                ))
+        if page_index < page_count and flow:
+            last_heading = max((position for position, line in enumerate(flow) if _is_heading_line(line)), default=None)
+            if last_heading is not None:
+                body_after = len(flow) - 1 - last_heading
+                next_flow = flows[index + 1]
+                first_next = next_flow[0] if next_flow else None
+                continues = first_next is not None and (not _is_heading_line(first_next) or "(suite)" in str(first_next["text"]))
+                if body_after == 0 or (continues and body_after < PAGINATION_MIN_LINES_UNDER_HEADING):
+                    warnings.append(_issue(
+                        "heading_orphaned_at_page_bottom", page_index,
+                        f"Titre isolé en bas de page {page_index} ({body_after} ligne(s) dessous): {flow[last_heading]['text'][:80]}",
+                        snippet=str(flow[last_heading]["text"])[:120],
+                        lines_under=body_after,
+                    ))
+    first_flow = flows[0] if flows else []
+    title_position = next((pos for pos, line in enumerate(first_flow) if EXPERIENCES_TITLE_MARK in str(line["text"]).upper()), None)
+    first_page_has_experience = title_position is not None and any(
+        line["bold"] and line["purple"] and abs(float(line["size"]) - _EXPERIENCE_DATE_SIZE) < 0.2
+        for line in first_flow[title_position + 1:]
+    )
+    if page_count and not first_page_has_experience:
+        warnings.append(_issue(
+            "first_page_without_experience", 1,
+            "La première page ne montre aucune expérience",
+        ))
+    return {
+        "page_fill": fills,
+        "first_page_has_experience": first_page_has_experience,
+        "warnings": warnings,
+    }
 
 
 PDF_ENTITY_STOPWORDS = {
@@ -709,6 +865,7 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
     layout_issues = find_layout_issues(doc)
     page_layout_metrics = collect_page_layout_metrics(doc)
     human_taste = score_human_taste(page_layout_metrics, layout_issues)
+    pagination = collect_pagination_metrics(doc)
     image_sizes = []
     for page in doc:
         for img in page.get_images(full=True):
@@ -726,6 +883,8 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
         "layout_issues": layout_issues,
         "layout_metrics": human_taste["page_metrics"],
         "human_taste": human_taste,
+        # Warnings only for now: not part of "passed" nor of the status.
+        "pagination": pagination,
         "has_logo": has_logo,
         "has_watermark": has_watermark,
     }
