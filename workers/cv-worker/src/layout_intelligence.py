@@ -70,12 +70,12 @@ def build_layout_retry_options(base_options: dict[str, Any] | None, qa_report: d
         options.setdefault("readability_reserve", 130)
         return options
 
-    # Dense/orphan/bad-break retry: keep anti-crowding and make the renderer more
-    # conservative, while preserving existing break hints from the packing pass.
-    # Only dense-only reports may force every experience onto a new page.
-    options["force_experiences_new_page"] = True
+    # Dense/orphan/bad-break retry. The renderer breaks pages on the measured
+    # height (lot 1, 2026-11) and ignores the former density budget; forcing
+    # every experience onto a new page only added half-empty pages. The retry
+    # keeps the existing break hints and asks for one more line under each
+    # heading before a page break.
+    options.setdefault("force_experiences_new_page", False)
     options.setdefault("force_page_break_before_experience_indexes", [])
-    options["page_dense_char_threshold"] = _min_numeric(options.get("page_dense_char_threshold"), 2600)
-    options["max_used_ratio"] = _min_numeric(options.get("max_used_ratio"), 0.80)
-    options.setdefault("readability_reserve", 170)
+    options["min_lines_under_heading"] = _max_numeric(options.get("min_lines_under_heading"), 3)
     return options

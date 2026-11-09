@@ -44,7 +44,9 @@ def test_real_oussama_fixture_groups_middle_and_final_experiences_as_planned():
 
 
 def test_layout_packing_options_are_non_destructive_and_expose_force_breaks():
-    data = {"name": "O", "title": "T", "formations": [], "skills": [], "experiences": [_exp("A", 4), _exp("B", 4), _exp("C", 2), _exp("D", 2), _exp("E", 2)]}
+    # Explicit request only. A page now counts 58 units (~ one rendered line
+    # each) instead of 21, so the breaks fall about one full page apart.
+    data = {"name": "O", "title": "T", "formations": [], "skills": [], "experiences": [_exp(label, 20) for label in "ABCDE"]}
     original = copy.deepcopy(data)
 
     options = build_layout_packing_options(data, force_experiences_new_page=True)
@@ -53,8 +55,21 @@ def test_layout_packing_options_are_non_destructive_and_expose_force_breaks():
 
     assert data == original
     assert options["force_experiences_new_page"] is True
-    assert options["force_page_break_before_experience_indexes"] == [3]
+    assert options["force_page_break_before_experience_indexes"] == [2, 4]
     assert_packing_preserves_experience_content(data, payload)
+
+
+def test_default_packing_never_forces_breaks_even_for_heavy_cvs():
+    # Lot 1 (2026-11): page breaks follow the measured height in the renderer.
+    # The former forced breaks every 21 units produced 6-page CVs filled at 55 %.
+    data = {"name": "O", "title": "T", "formations": [], "skills": [], "experiences": [_exp(label, 25) for label in "ABCDEFGHIJ"]}
+
+    options = build_layout_packing_options(data)
+
+    assert options["force_experiences_new_page"] is False
+    assert options["force_page_break_before_experience_indexes"] == []
+    assert "page_dense_char_threshold" not in options
+    assert "anti_crowding" not in options
 
 
 def test_layout_packing_guard_rejects_content_mutation():

@@ -365,30 +365,31 @@ class RendererOverflowTest(unittest.TestCase):
 
         self.assertEqual(calls, ['PREMIÈRE EXPÉRIENCE CHEZ CLIENT', 'DEUXIÈME EXPÉRIENCE CHEZ CLIENT'])
 
-    def test_anti_crowding_moves_new_experience_to_fresh_page_when_current_page_is_dense(self):
+    def test_new_experience_moves_to_fresh_page_only_when_its_opener_does_not_fit(self):
+        # Lot 1 (2026-11): the former test forced a break on a page "dense" by
+        # a 100-character budget. Breaks now follow the room left: with room
+        # for date, role, heading and three lines the experience stays; at
+        # the page bottom it moves.
         renderer_module = load_renderer_module()
         renderer_module.prep_assets()
         renderer_module.register_fonts(renderer_module.ensure_poppins())
+        exp = {'date': '2023', 'role': 'EXPÉRIENCE SUIVANTE CHEZ CLIENT', 'sections': [
+            {'heading': 'Missions clés', 'content': ['Cadrage', 'Recette', 'Support', 'Pilotage']},
+        ]}
         with tempfile.TemporaryDirectory() as tmp:
-            renderer = renderer_module.Renderer(
-                str(Path(tmp) / 'anti-crowding.pdf'),
-                {'anti_crowding': True, 'page_dense_char_threshold': 100, 'max_used_ratio': 0.80},
-            )
+            renderer = renderer_module.Renderer(str(Path(tmp) / 'opener-room.pdf'))
             renderer.current_name = 'LINO'
             renderer.new_page(False, 'LINO')
             renderer.flow(renderer.left, renderer.y, renderer.right - renderer.left)
-            renderer.current_page_chars = renderer.current_page_flow_chars = 120
-            renderer.flow_chars_remaining = 5000  # experiences still to render
-            renderer.y = renderer.page_start_y + 120
+            renderer.current_page_chars = 4000  # a full page of text: no longer a reason
+            renderer.y = renderer.page_start_y + 300
             page_before = renderer.page
-            moved = renderer.maybe_break_before_experience(
-                {'date': '2023', 'role': 'EXPÉRIENCE SUIVANTE CHEZ CLIENT', 'sections': []},
-                index=2,
-                total=3,
-            )
+            self.assertFalse(renderer.maybe_break_before_experience(exp, index=2, total=3))
+            self.assertEqual(renderer.page, page_before)
 
-        self.assertTrue(moved)
-        self.assertEqual(renderer.page, page_before + 1)
+            renderer.y = renderer.content_bottom - 40  # date + role only would fit
+            self.assertTrue(renderer.maybe_break_before_experience(exp, index=2, total=3))
+            self.assertEqual(renderer.page, page_before + 1)
 
     def test_zahia_like_layout_retry_rebalances_pages_without_dropping_experience_content(self):
         bullets = [
@@ -439,7 +440,9 @@ class RendererOverflowTest(unittest.TestCase):
             self.assertIn(' '.join(item.split()), normalized_retry_text)
         self.assert_no_text_below_margin(retry_pdf)
 
-    def test_experience_opener_reserves_date_role_heading_and_two_source_lines(self):
+    def test_experience_opener_reserves_date_role_heading_and_first_lines(self):
+        # The opener rule is now counted in lines (min_experience_opener_lines,
+        # 3 by default) instead of bullets.
         renderer_module = load_renderer_module()
         renderer_module.prep_assets()
         renderer_module.register_fonts(renderer_module.ensure_poppins())
@@ -451,24 +454,18 @@ class RendererOverflowTest(unittest.TestCase):
                 'content': [
                     'Première ligne source à conserver avec le titre',
                     'Deuxième ligne source à conserver avec le titre',
-                    'Troisième ligne peut continuer après saut de page',
+                    'Troisième ligne source à conserver avec le titre',
+                    'Quatrième ligne peut continuer après saut de page',
                 ],
             }],
         }
         with tempfile.TemporaryDirectory() as tmp:
-            one_line = renderer_module.Renderer(
-                str(Path(tmp) / 'one-line.pdf'),
-                {'min_experience_opener_bullets': 1},
-            )
-            two_lines = renderer_module.Renderer(
-                str(Path(tmp) / 'two-lines.pdf'),
-                {'min_experience_opener_bullets': 2},
-            )
+            one_line = renderer_module.Renderer(str(Path(tmp) / 'one-line.pdf'), {'min_lines_under_heading': 1, 'min_experience_opener_lines': 1})
+            default = renderer_module.Renderer(str(Path(tmp) / 'default.pdf'))
             one_height = one_line.estimate_experience_opener_height(exp)
-            two_height = two_lines.estimate_experience_opener_height(exp)
+            three_height = default.estimate_experience_opener_height(exp)
 
-        self.assertGreater(two_height, one_height)
-        self.assertLess(two_height, one_height + 35)
+        self.assertAlmostEqual(three_height - one_height, 2 * default.bul.leading + 2 * default.bul.spaceAfter, places=3)
 
     def test_forced_break_is_skipped_when_it_would_create_sparse_experience_page(self):
         renderer_module = load_renderer_module()

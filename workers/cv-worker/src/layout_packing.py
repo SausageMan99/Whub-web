@@ -36,8 +36,8 @@ def estimate_experience_units(exp: dict[str, Any]) -> int:
 def compute_experience_page_breaks(
     experiences: list[dict[str, Any]],
     *,
-    page_capacity_units: int = 21,
-    min_fill_units: int = 10,
+    page_capacity_units: int = 58,
+    min_fill_units: int | None = None,
 ) -> list[int]:
     """Pack sequential experiences into pages and return break-before indexes.
 
@@ -46,6 +46,11 @@ def compute_experience_page_breaks(
     sparse pages, while refusing to split an experience opener/body by content
     mutation. Names/clients are intentionally ignored.
     """
+    # A unit is about one rendered line: a full-width page holds ~70 lines,
+    # 58 leaves room for headings and spacing (the former 21 cut pages at a
+    # third of their height). Below ~half a page, the page is sparse.
+    if min_fill_units is None:
+        min_fill_units = page_capacity_units * 10 // 21
     breaks: list[int] = []
     used = 0
     for index, exp in enumerate(experiences):
@@ -67,33 +72,24 @@ def compute_experience_page_breaks(
 
 
 def build_layout_packing_options(data: dict[str, Any], *, force_experiences_new_page: bool | None = None) -> dict[str, Any]:
+    """Renderer placement hints for a structured CV.
+
+    Since lot 1 of the PDF quality work (2026-11) the renderer decides page
+    breaks on the height really left on the page (heading kept with its
+    first lines, bullets split between lines, short tails rebalanced). The
+    former hints (anti_crowding with a 2 850 character page budget, forced
+    breaks every 21 "units" for heavy CVs) left most pages half empty, so the
+    default packing forces nothing. Forced breaks remain available on an
+    explicit request (force_experiences_new_page=True).
+    """
     experiences = [exp for exp in (data.get("experiences") or []) if isinstance(exp, dict)]
-    units = [estimate_experience_units(exp) for exp in experiences]
-    total_units = sum(units)
-    max_units = max(units, default=0)
-    # Short / medium CVs like THOREZ should be grouped naturally. Forcing all
-    # experiences onto continuation pages and adding deterministic breaks can turn
-    # two pages of source material into four sparse pages. Reserve forced packing
-    # for genuinely heavy experience sets.
-    # Medium CVs like Oussama can have many experience units because source
-    # bullets are faithfully preserved. Do not interpret that alone as a reason
-    # to isolate each mission: artificial break hints created 7-page PDFs with
-    # half-empty experience pages. Reserve forced packing for genuinely large or
-    # highly unbalanced experience sets.
-    is_short_groupable_cv = bool(experiences) and len(experiences) <= 8 and total_units <= 120 and max_units <= 30
-    auto_force_experiences = force_experiences_new_page is None
-    if auto_force_experiences:
-        force_experiences_new_page = not is_short_groupable_cv
-    breaks = [] if (auto_force_experiences and is_short_groupable_cv) else compute_experience_page_breaks(experiences)
+    forced = bool(force_experiences_new_page)
+    breaks = compute_experience_page_breaks(experiences) if forced else []
     return {
-        "anti_crowding": True,
-        "force_experiences_new_page": force_experiences_new_page,
+        "force_experiences_new_page": forced,
         "force_page_break_before_experience_indexes": breaks,
         "allow_grouping": True,
-        "density_profile": "balanced",
-        "page_dense_char_threshold": 2850,
-        "max_used_ratio": 0.86,
-        "readability_reserve": 130,
+        "density_profile": "measured_height",
     }
 
 

@@ -27,7 +27,10 @@ def test_sparse_retry_clears_forced_experience_breaks_and_uses_moderate_density(
     assert base_options["force_page_break_before_experience_indexes"] == [1, 3]
 
 
-def test_dense_retry_enables_anti_crowding_and_preserves_break_hints():
+def test_dense_retry_keeps_break_hints_without_forcing_experience_pages():
+    # The renderer breaks pages on the measured height (lot 1, 2026-11):
+    # forcing each experience onto its own page only added half-empty pages,
+    # so a dense / orphan retry now asks for more lines under each heading.
     base_options = {
         "anti_crowding": False,
         "force_experiences_new_page": False,
@@ -38,12 +41,10 @@ def test_dense_retry_enables_anti_crowding_and_preserves_break_hints():
 
     options = build_layout_retry_options(base_options, _report("page_too_dense", "bad_page_break"))
 
-    assert options["anti_crowding"] is True
-    assert options["force_experiences_new_page"] is True
+    assert options["force_experiences_new_page"] is False
     assert options["force_page_break_before_experience_indexes"] == [2]
-    assert options["page_dense_char_threshold"] <= 2600
-    assert options["max_used_ratio"] <= 0.80
-    assert options["readability_reserve"] == 170
+    assert options["min_lines_under_heading"] >= 3
+    assert base_options["force_page_break_before_experience_indexes"] == [2]
 
 
 def test_mixed_sparse_and_dense_retry_prefers_sparse_grouping():

@@ -205,21 +205,33 @@ def has_forbidden_identity(value, forbidden_terms=None) -> bool:
 
 SKILL_ITEM_SPLIT_RE = re.compile(r"\s*[;,]\s*")
 DEFAULT_MAX_SKILL_ITEM_CHARS = 125
-# Continuation-page balancing (see Renderer._balance_new_page): below this many
-# characters a page reads as sparse, so pages are not evened out under it; a
-# tail this short stays on the current page when it fits.
-BALANCED_PAGE_MIN_CHARS = 1750
-# By height, a last page holding less than this share of a page is a tail.
-SHORT_TAIL_HEIGHT_RATIO = 0.45
-# Pages break between bullets, so they end a little under their budget.
-PAGE_FILL_EFFICIENCY = 0.95
-TAIL_ABSORB_CHARS = 450
-# QA reads a page of this many characters as dense (qa.PAGE_DENSE_CHAR_THRESHOLD).
-QA_DENSE_PAGE_CHARS = 3000
-# A first section shorter than this ("Systèmes : macOS - Windows") is not enough
-# body under an experience title: QA calls a title followed by < 80 characters
-# at a page bottom an orphan, so the opener then also takes the next section.
-SHORT_OPENER_SECTION_CHARS = 120
+# Pagination by measured height (lot 1, 2026-11). The page breaks are decided
+# on the room really left on the page, never on a character count: a full
+# width page holds ~4 400 characters, a density budget of 2 850 left pages
+# half empty.
+# A section heading needs at least this many body lines under it on the same
+# page (or fewer when the section is shorter)...
+MIN_LINES_UNDER_HEADING = 2
+# ...and an experience (date + role) at least this many body lines.
+MIN_EXPERIENCE_OPENER_LINES = 3
+# A paragraph (bullet) split across two pages keeps this many lines each side.
+MIN_SPLIT_LINES = 2
+# A section continued on the next page ("Missions clés (suite)") carries at
+# least this many lines there: a two-line "(suite)" reads as a leftover.
+MIN_CONTINUATION_LINES = 3
+# Fill of a page = bottom of its flow text over the readable zone (36 pt
+# margins), the measure QA reads on the PDF (qa.collect_pagination_metrics).
+FILL_ZONE_TOP = 36.0
+# The last page is rebalanced when it holds less than this share of a page...
+LAST_PAGE_MIN_FILL = 0.35
+# ...towards this share, without bringing the previous page under this one.
+LAST_PAGE_TARGET_FILL = 0.42
+PENULTIMATE_MIN_FILL = 0.65
+# Page 1 is what the client sees first: it gives up a few lines at most.
+FIRST_PAGE_MIN_FILL_WHEN_BALANCING = 0.85
+# Logo of every page (Renderer.brand): x 424-545, y 43-88.
+LOGO_LEFT = 424
+LOGO_BAND_BOTTOM = 92
 DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK = 8
 DEFAULT_MAX_SKILL_BLOCK_CHARS = 470
 
@@ -314,32 +326,29 @@ def prepare_readable_skill_categories(
 
 
 class Renderer:
-    def __init__(self, out: str, layout_options: dict | None = None):
+    def __init__(self, out, layout_options: dict | None = None, page_flow_limits: dict | None = None):
         self.c = canvas.Canvas(out, pagesize=A4, initialFontName='Poppins', initialFontSize=8)
         self.page = 0
         self.layout_options = layout_options or {}
-        self.anti_crowding = bool(self.layout_options.get('anti_crowding'))
+        # Explicit placement requests (revision hints). The default packing
+        # no longer sets them: breaks follow the measured room on the page.
         self.force_experiences_new_page = bool(self.layout_options.get('force_experiences_new_page'))
         self.force_page_break_before_experience_indexes = set(
             int(i) for i in self.layout_options.get('force_page_break_before_experience_indexes', [])
             if str(i).lstrip('-').isdigit()
         )
-        self.page_dense_char_threshold = int(self.layout_options.get('page_dense_char_threshold', 3000))
-        self.max_used_ratio = float(self.layout_options.get('max_used_ratio', 0.82))
-        self.readability_reserve = float(self.layout_options.get('readability_reserve', 155))
         self.allow_grouping = bool(self.layout_options.get('allow_grouping', True))
-        self.min_experience_opener_bullets = int(self.layout_options.get('min_experience_opener_bullets', 2))
+        self.min_lines_under_heading = max(1, int(self.layout_options.get('min_lines_under_heading', MIN_LINES_UNDER_HEADING)))
+        self.min_experience_opener_lines = max(
+            self.min_lines_under_heading,
+            int(self.layout_options.get('min_experience_opener_lines', MIN_EXPERIENCE_OPENER_LINES)),
+        )
         self.current_page_chars = 0
-        # Experience flow text only: page 1 also carries skills and the sidebar,
-        # which must not make its experience area look loaded.
-        self.current_page_flow_chars = 0
-        # Experience text not drawn yet. Continuation pages share it evenly
-        # instead of filling each page to the density threshold and leaving a
-        # few lines alone on the last page.
-        self.flow_chars_remaining = 0
-        self.flow_height_remaining = 0.0
-        self.page_char_budget = self.page_dense_char_threshold
-        self.page_height_budget = None
+        # page number -> lowest y the experience flow may reach on that page
+        # (tail balancing, see render_document).
+        self.page_flow_limits = {int(k): float(v) for k, v in (page_flow_limits or {}).items()}
+        # page number -> bottom of the flow text drawn on that page.
+        self.page_flow_bottoms: dict[int, float] = {}
         self.page_start_y = 55
         self.left = 59.5
         self.right = 535.8
@@ -353,6 +362,8 @@ class Renderer:
     def styles(self):
         self.body = ParagraphStyle('body', fontName='Poppins-Light', fontSize=8.35, leading=10.25, textColor=BLACK, spaceAfter=1.2)
         self.bul = ParagraphStyle('bul', parent=self.body, leftIndent=15, firstLineIndent=-7, fontSize=8.25, leading=10.15, spaceAfter=0.25)
+        # Second part of a bullet split across pages: aligned on the bullet text.
+        self.bul_cont = ParagraphStyle('bul_cont', parent=self.bul, firstLineIndent=0)
         self.date = ParagraphStyle('date', parent=self.body, fontName='Poppins-Bold', fontSize=9.0, leading=11.0, textColor=PURPLE, spaceBefore=2.0, spaceAfter=1.0)
         self.role = ParagraphStyle('role', parent=self.body, fontName='Poppins-Bold', fontSize=8.8, leading=10.6, spaceAfter=1.2)
         self.sub = ParagraphStyle('sub', parent=self.body, fontName='Poppins-Bold', fontSize=8.45, leading=10.2, spaceBefore=2.8, spaceAfter=0.5)
@@ -370,7 +381,7 @@ class Renderer:
         self.c.drawImage(str(path), x, H - y - h, width=w, height=h, mask='auto', preserveAspectRatio=True)
 
     def brand(self, first=False):
-        self.image_top(LOGO, 424, 43, 121, 45)
+        self.image_top(LOGO, LOGO_LEFT, 43, 121, 45)
         self.image_top(WM, 150 if first else 185, 315 if first else 285, 285, 285)
 
     def new_page(self, first=False, name=''):
@@ -378,7 +389,6 @@ class Renderer:
             self.c.showPage()
         self.page += 1
         self.current_page_chars = 0
-        self.current_page_flow_chars = 0
         self.brand(first)
         if not first:
             self.text(name.upper(), self.left, 44, 'Poppins-Bold', 8.3, PURPLE)
@@ -386,7 +396,6 @@ class Renderer:
         else:
             self.y = 55
         self.page_start_y = self.y
-        self._balance_new_page()
 
     def text(self, s, x, y, font, size, color=BLACK):
         self.c.setFillColor(color)
@@ -427,9 +436,8 @@ class Renderer:
         return self.measurep(html(s), style, w)
 
     def ensure_space(self, height, name=None):
-        if self.y + height > self.content_bottom:
-            self.new_page(False, name or self.current_name)
-            self.flow(self.left, self.y, self.right - self.left)
+        if self.y + height > self._flow_bottom() and not self._at_page_top():
+            self._continue_on_new_page(name)
             return True
         return False
 
@@ -441,140 +449,111 @@ class Renderer:
     def _track_page_text(self, text) -> None:
         self.current_page_chars += self._plain_len(text)
 
-    def _track_flow_text(self, text) -> None:
-        length = self._plain_len(text)
-        self.current_page_flow_chars += length
-        self.flow_chars_remaining = max(0, self.flow_chars_remaining - length)
+    # ------------------------------------------------------------ flow helpers
 
-    def _experience_chars(self, exp) -> int:
-        total = self._plain_len(exp.get('date', '')) + self._plain_len(self.role_html(exp))
-        for sec in exp.get('sections', []) or []:
-            total += self._plain_len(sec.get('heading') or '')
-            content = sec.get('content', '')
-            items = content if isinstance(content, list) else [content]
-            total += sum(self._plain_len(item) + 2 for item in items if str(item).strip())
-        return total
+    def _flow_bottom(self) -> float:
+        """Lowest y the experience flow may reach on the current page."""
+        return min(self.content_bottom, self.page_flow_limits.get(self.page, self.content_bottom))
 
-    def _balance_new_page(self) -> None:
-        """Set the char / height budget of the page being opened.
+    def _at_page_top(self) -> bool:
+        return self.y <= self.page_start_y + 1
 
-        A page is bounded by text density (threshold T characters) and by its
-        height. The experience text left needs n pages, the larger of the two
-        counts. When the last of them would only get a short tail, the rest is
-        shared evenly over the n pages; otherwise the page is filled as usual,
-        so the page count does not grow.
-        """
-        threshold = self.page_dense_char_threshold
-        self.page_char_budget, self.page_height_budget = threshold, None
-        chars, height = self.flow_chars_remaining, self.flow_height_remaining
-        capacity = (self.content_bottom - self.page_start_y) * PAGE_FILL_EFFICIENCY
-        if capacity <= 0 or (chars <= threshold and height <= capacity):
-            return
-        pages_by_chars = math.ceil(chars / threshold)
-        pages_by_height = math.ceil(height / capacity)
-        pages = max(pages_by_chars, pages_by_height)
-        if pages_by_height >= pages_by_chars:
-            short_tail = height - (pages - 1) * capacity < capacity * SHORT_TAIL_HEIGHT_RATIO
-        else:
-            short_tail = chars - (pages - 1) * threshold * PAGE_FILL_EFFICIENCY < BALANCED_PAGE_MIN_CHARS
-        if not short_tail:
-            return
-        char_target = chars / pages * 1.06
-        if char_target >= BALANCED_PAGE_MIN_CHARS:
-            self.page_char_budget = int(min(threshold, char_target))
-        self.page_height_budget = height / pages * 1.06
+    def _continue_on_new_page(self, name=None) -> None:
+        self.new_page(False, name or self.current_name)
+        self.flow(self.left, self.y, self.right - self.left)
 
-    def _experience_height(self, exp) -> float:
-        width = self.right - self.left
-        total = self.measure_text(exp.get('date', ''), self.date, width) + self.measurep(self.role_html(exp), self.role, width) + 13
-        for sec in exp.get('sections', []) or []:
-            if sec.get('heading'):
-                total += self.measure_text(sec.get('heading', ''), self.sub, width)
-            content = sec.get('content', '')
-            if isinstance(content, list):
-                total += sum(self.measure_text('• ' + str(item), self.bul, width) for item in content if str(item).strip())
-            elif content:
-                total += self.measure_text(str(content), self.body, width)
-        return total
+    def _mark_flow_bottom(self, y: float) -> None:
+        self.page_flow_bottoms[self.page] = max(self.page_flow_bottoms.get(self.page, 0.0), y)
 
-    def _remaining_flow_fits_here(self) -> bool:
-        return self.y + self.flow_height_remaining <= self.content_bottom
+    def _page_fill(self, page: int) -> float:
+        bottom = self.page_flow_bottoms.get(page, FILL_ZONE_TOP)
+        return max(0.0, (bottom - FILL_ZONE_TOP) / (self.content_bottom - FILL_ZONE_TOP))
 
-    def _page_is_text_dense(self, next_chars: int = 0) -> bool:
-        """next_chars: size of the block about to be drawn, when known, so the
-        page does not cross the QA density line with its last bullet."""
-        crosses_qa_line = next_chars and self.current_page_chars + next_chars >= QA_DENSE_PAGE_CHARS
-        over_height_budget = self.page_height_budget is not None and self.y - self.page_start_y >= self.page_height_budget
-        if self.current_page_chars < self.page_char_budget and not crosses_qa_line and not over_height_budget:
-            return False
-        # A short tail that fits physically stays here: moving it would leave
-        # it alone on the next page.
-        if (
-            self.flow_chars_remaining <= TAIL_ABSORB_CHARS
-            and self.current_page_chars + self.flow_chars_remaining < QA_DENSE_PAGE_CHARS
-            and self._remaining_flow_fits_here()
-        ):
-            return False
-        return True
+    def _lines_of(self, html_text, style, width=None) -> int:
+        p = Paragraph(html_text, style)
+        _, h = p.wrap(width or self.fw, 10000)
+        return max(1, int(round(h / style.leading)))
 
-    def _current_used_ratio(self) -> float:
-        return max(0.0, self.y - self.page_start_y) / H
+    def _draw_paragraph(self, html_text, style, max_lines=None):
+        """Draw a paragraph at the flow position; with max_lines, draw only its
+        first lines and return the html of the rest (None when all drawn)."""
+        p = Paragraph(html_text, style)
+        _, h = p.wrap(self.fw, 10000)
+        if max_lines is not None and h > max_lines * style.leading + 0.5:
+            pieces = self._split_html_at_lines(html_text, style, max_lines)
+            if pieces:
+                first_html, rest_html = pieces
+                first = Paragraph(first_html, style)
+                _, ph = first.wrap(self.fw, 10000)
+                first.drawOn(self.c, self.fx, H - self.y - ph)
+                self._track_page_text(first_html)
+                self._mark_flow_bottom(self.y + ph)
+                self.y += ph + style.spaceAfter
+                return rest_html
+        p.drawOn(self.c, self.fx, H - self.y - h)
+        self._track_page_text(html_text)
+        self._mark_flow_bottom(self.y + h)
+        self.y += h + style.spaceAfter
+        return None
 
-    def _current_page_is_sparse(self) -> bool:
-        # Same bounds as QA's sparse experience page (qa._is_experience_sparse_metric):
-        # leaving a page in that state on purpose would make QA flag it.
-        return (
-            self.y > self.page_start_y + 28
-            and self._current_used_ratio() <= 0.46
-            and self.current_page_flow_chars <= 1700
-        )
+    def _split_html_at_lines(self, html_text, style, max_lines, width=None):
+        """(first, rest) html of a paragraph cut after its first max_lines
+        lines, on a word boundary; None when it cannot be cut safely.
+
+        ReportLab's Paragraph.split pieces return '' from getPlainText, so the
+        rest of a split bullet used to vanish: the cut is computed on the
+        words of the source html instead (bullets and text are escaped plain
+        text; markup with attributes is never cut)."""
+        if '<font' in html_text or max_lines < 1:
+            return None
+        words = html_text.split(' ')
+        lo, hi = 0, len(words)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if self._lines_of(' '.join(words[:mid]), style, width) <= max_lines:
+                lo = mid
+            else:
+                hi = mid - 1
+        if lo <= 0 or lo >= len(words):
+            return None
+        first, rest = ' '.join(words[:lo]), ' '.join(words[lo:]).strip()
+        if not rest or not first.strip() or first.strip() == '•':
+            return None
+        return first, rest
 
     def drawp(self, html_text, style):
-        """Draw a paragraph in the current flow, splitting across pages if needed."""
+        """Draw a paragraph in the current flow, splitting across pages if needed
+        (date, role, skill overflow lines). Returns True when a page was added."""
         page_changed = False
         remaining_html = html_text
-        while True:
+        while remaining_html is not None:
             p = Paragraph(remaining_html, style)
             _, h = p.wrap(self.fw, 10000)
-            avail = self.content_bottom - self.y
+            avail = self._flow_bottom() - self.y
             if h <= avail:
-                p.drawOn(self.c, self.fx, H - self.y - h)
-                drawn = p.getPlainText() if hasattr(p, 'getPlainText') else remaining_html
-                self._track_page_text(drawn)
-                self._track_flow_text(drawn)
-                self.flow_height_remaining = max(0.0, self.flow_height_remaining - h - style.spaceAfter)
-                self.y += h + style.spaceAfter
+                self._draw_paragraph(remaining_html, style)
                 return page_changed
-
-            if avail <= style.leading * 1.5:
-                self.new_page(False, self.current_name)
-                self.flow(self.left, self.y, self.right - self.left)
-                page_changed = True
-                continue
-
-            pieces = p.split(self.fw, avail)
-            if not pieces:
-                self.new_page(False, self.current_name)
-                self.flow(self.left, self.y, self.right - self.left)
-                page_changed = True
-                continue
-
-            first_piece = pieces[0]
-            _, ph = first_piece.wrap(self.fw, avail)
-            first_piece.drawOn(self.c, self.fx, H - self.y - ph)
-            drawn = first_piece.getPlainText() if hasattr(first_piece, 'getPlainText') else remaining_html
-            self._track_page_text(drawn)
-            self._track_flow_text(drawn)
-            self.flow_height_remaining = max(0.0, self.flow_height_remaining - ph - style.spaceAfter)
-            self.y += ph + style.spaceAfter
-            self.new_page(False, self.current_name)
-            self.flow(self.left, self.y, self.right - self.left)
-            page_changed = True
-
-            if len(pieces) == 1:
+            lines_fit = int(avail // style.leading)
+            if lines_fit < MIN_SPLIT_LINES or self._lines_of(remaining_html, style) - lines_fit < MIN_SPLIT_LINES:
+                if self._at_page_top():
+                    # Taller than a page: split anyway rather than loop.
+                    lines_fit = max(1, lines_fit)
+                else:
+                    self._continue_on_new_page()
+                    page_changed = True
+                    continue
+            if self._split_html_at_lines(remaining_html, style, lines_fit) is None:
+                if not self._at_page_top():
+                    self._continue_on_new_page()
+                    page_changed = True
+                    continue
+                self._draw_paragraph(remaining_html, style)
                 return page_changed
-            remaining = pieces[1]
-            remaining_html = html(remaining.getPlainText()) if hasattr(remaining, 'getPlainText') else str(remaining)
+            remaining_html = self._draw_paragraph(remaining_html, style, max_lines=lines_fit)
+            if remaining_html is not None:
+                self._continue_on_new_page()
+                page_changed = True
+        return page_changed
 
     def p(self, s):
         self.drawp(html(s), self.body)
@@ -582,51 +561,135 @@ class Renderer:
     def bullet(self, s):
         self.drawp('• ' + html(s), self.bul)
 
-    def subhead(self, s):
-        return self.drawp(html(s), self.sub)
+    def _heading_width(self) -> float:
+        """Width for a heading drawn here: at the top of a continuation page
+        the first line runs beside the W hub logo (x >= LOGO_LEFT, y < 88),
+        so a long "Heading (suite)" wraps before it."""
+        if self.page > 1 and self.y < LOGO_BAND_BOTTOM:
+            return min(self.fw, LOGO_LEFT - 10 - self.fx)
+        return self.fw
 
-    def draw_heading_with_min_content(self, heading, content_height, *, keep_full_first_block=False):
-        min_body_height = content_height if keep_full_first_block else min(content_height, self.sub.leading * 2)
-        needed = self.measure_text(heading, self.sub) + min_body_height
-        self.ensure_space(needed)
-        return self.subhead(heading)
+    def subhead(self, s):
+        width = self._heading_width()
+        if width >= self.fw:
+            return self.drawp(html(s), self.sub)
+        saved = self.fw
+        self.fw = width
+        try:
+            return self.drawp(html(s), self.sub)
+        finally:
+            self.fw = saved
+
+    # ------------------------------------------------------------ sections
+
+    def _section_paragraphs(self, sec):
+        """(style, [(html, style)]) of a section body, in source order."""
+        content = sec.get('content', '')
+        if isinstance(content, list):
+            items = [str(item) for item in content if str(item).strip()]
+            return self.bul, [('• ' + html(item), self.bul) for item in items]
+        if content:
+            return self.body, [(html(str(content)), self.body)]
+        return self.body, []
+
+    def _section_lines(self, sec, width=None) -> int:
+        _, paras = self._section_paragraphs(sec)
+        return sum(self._lines_of(text, style, width) for text, style in paras)
+
+    def _continuation_lines(self, paras, full, partial, width, next_width) -> int:
+        """Lines the rest of a section takes on the next page, drawn at
+        next_width, when `full` paragraphs and `partial` lines stay here."""
+        rest = list(paras[full:])
+        if partial and rest:
+            text, style = rest[0]
+            pieces = self._split_html_at_lines(text, style, partial, width)
+            if pieces:
+                cont_style = self.bul_cont if style in (self.bul, self.bul_cont) else style
+                rest[0] = (pieces[1], cont_style)
+        return sum(self._lines_of(text, style, next_width) for text, style in rest)
+
+    def _place_section_here(self, heading_text, paras, avail, width=None):
+        """How the section fits in `avail` points: (full, partial, placed, total)
+        or None when its heading would be left without enough lines."""
+        heading_width = width if width is not None else self._heading_width()
+        heading_h = self.measure_text(heading_text, self.sub, heading_width) if heading_text else 0.0
+        counts = [self._lines_of(text, style, width) for text, style in paras]
+        style = paras[0][1]
+        # Page 1 flows in the narrow left column; its continuation is drawn
+        # full width, where the same words take fewer lines.
+        current_width = width or self.fw
+        full_width = self.right - self.left
+        min_continuation = MIN_CONTINUATION_LINES
+        full, partial, placed = plan_section_break(
+            counts, style.leading, style.spaceAfter, avail - heading_h,
+            min_split=MIN_SPLIT_LINES, min_continuation=min_continuation,
+        )
+        if current_width < full_width - 1 and 0 < placed < sum(counts):
+            if self._continuation_lines(paras, full, partial, current_width, full_width) < MIN_CONTINUATION_LINES:
+                min_continuation = math.ceil(MIN_CONTINUATION_LINES * full_width / current_width)
+                full, partial, placed = plan_section_break(
+                    counts, style.leading, style.spaceAfter, avail - heading_h,
+                    min_split=MIN_SPLIT_LINES, min_continuation=min_continuation,
+                )
+        total = sum(counts)
+        if partial and self._split_html_at_lines(paras[full][0], paras[full][1], partial) is None:
+            # Cannot be cut safely (markup): that paragraph moves whole.
+            partial, placed = 0, sum(counts[:full])
+            if 0 < total - placed < min_continuation:
+                placed = 0
+        needed = min(self.min_lines_under_heading, total) if heading_text else 1
+        if placed < needed:
+            return None
+        return full, partial, placed, total
+
+    def render_section(self, sec, opens_experience=False):
+        """Draw one experience section, breaking pages only between lines that
+        keep the heading with its first lines, a split bullet with two lines on
+        each side and a continuation with three lines at least.
+
+        opens_experience is kept for compatibility: the opener is checked once
+        in maybe_break_before_experience."""
+        heading = sec.get('heading')
+        _, paras = self._section_paragraphs(sec)
+        if not paras:
+            if heading:
+                self.ensure_space(self.measure_text(heading, self.sub) + self.body.leading * self.min_lines_under_heading)
+                self.subhead(heading)
+            return
+        first = True
+        while paras:
+            heading_text = heading if first else (f'{heading} (suite)' if heading else None)
+            placement = self._place_section_here(heading_text, paras, self._flow_bottom() - self.y)
+            if placement is None and not self._at_page_top():
+                self._continue_on_new_page()
+                continue
+            if heading_text:
+                self.subhead(heading_text)
+            if placement is None:
+                # Fresh page and still too tall: fill it line by line.
+                text, style = paras.pop(0)
+                self.drawp(text, style)
+                first = False
+                continue
+            full, partial, _placed, _total = placement
+            for text, style in paras[:full]:
+                self._draw_paragraph(text, style)
+            rest = paras[full:]
+            if partial:
+                text, style = rest[0]
+                remainder = self._draw_paragraph(text, style, max_lines=partial)
+                cont_style = self.bul_cont if style in (self.bul, self.bul_cont) else style
+                rest = ([(remainder, cont_style)] if remainder else []) + rest[1:]
+            paras = rest
+            first = False
+            if paras:
+                self._continue_on_new_page()
 
     def render_bullet_list(self, heading, items, opener_items=0):
-        """opener_items: leading bullets that belong to an experience opener and
-        must not be pushed away from it by a density break."""
-        if not items:
-            return
-        first_h = self.measure_text('• ' + str(items[0]), self.bul)
-        if heading:
-            # Keep a section heading with its first bullet. Previously only two
-            # leading units were reserved, so long first bullets could force a
-            # page break immediately after the heading and create an orphaned
-            # "Heading" / "Heading (suite)" split.
-            self.draw_heading_with_min_content(heading, first_h, keep_full_first_block=True)
-        for position, item in enumerate(items):
-            item_h = self.measure_text('• ' + str(item), self.bul)
-            if (
-                position >= max(1, opener_items)
-                and self.anti_crowding
-                and self._page_is_text_dense(next_chars=self._plain_len(item))
-                and self.y > self.page_start_y + 80
-            ):
-                self.new_page(False, self.current_name)
-                self.flow(self.left, self.y, self.right - self.left)
-                if heading:
-                    self.subhead(f'{heading} (suite)')
-            if heading and self.y + min(item_h, self.bul.leading * 2) > self.content_bottom:
-                self.new_page(False, self.current_name)
-                self.flow(self.left, self.y, self.right - self.left)
-                self.subhead(f'{heading} (suite)')
-            self.bullet(item)
+        self.render_section({'heading': heading, 'content': list(items or [])})
 
     def render_text_section(self, heading, content):
-        content_h = self.measure_text(str(content), self.body)
-        if heading:
-            self.draw_heading_with_min_content(heading, content_h)
-        if content:
-            self.p(content)
+        self.render_section({'heading': heading, 'content': content})
 
     def skill_block_height(self, cat, width):
         return self.measurep(self.skill_line_html(cat), self.skill_inline, width) + 4
@@ -814,49 +877,21 @@ class Renderer:
             exp_x, exp_w = self.left, self.right - self.left
         else:
             exp_x, exp_w = lx, lw
-        overflow_page_lacks_experience_room = bool(skill_overflow) and exp_y > float(
-            self.layout_options.get('max_skill_overflow_experience_start_y', 450)
-        )
         exps = data.get('experiences', [])
-        self.flow_chars_remaining = sum(self._experience_chars(exp) for exp in exps)
-        self.flow_height_remaining = sum(self._experience_height(exp) for exp in exps)
-        first_experience_opener_height = self.estimate_experience_opener_height(exps[0]) if exps else 0
-        experience_heading_height = self.measure_text('Expériences professionnelles', self.sub) + 31
-        first_experience_would_orphan = bool(exps) and (
-            exp_y + experience_heading_height + first_experience_opener_height > self.content_bottom
-        )
-        # Page 1 already carries skills, description and the sidebar. When the
-        # first experience opener (never split) would push it over the QA
-        # density line, the experiences start on the next page instead.
-        first_experience_overloads_page = bool(exps) and (
-            self.current_page_chars + self._experience_opener_chars(exps[0]) >= QA_DENSE_PAGE_CHARS
-        )
-        if self.force_experiences_new_page and self.page == 1:
-            self.new_page(False, self.current_name)
-            exp_x, exp_w, exp_y = self.left, self.right - self.left, self.y
-        elif overflow_page_lacks_experience_room:
-            # If the skills overflow already consumes most of the continuation page,
-            # do not start a long first experience at the bottom and leave a tiny
-            # "(suite)" tail on the next page. A clean full-width experience page is
-            # less sparse than a false half-page split.
-            self.new_page(False, self.current_name)
-            exp_x, exp_w, exp_y = self.left, self.right - self.left, self.y
-        elif exp_y + 45 > self.content_bottom or first_experience_would_orphan or first_experience_overloads_page:
+        # The experiences title stays with the opener of the first experience:
+        # both start here when date, role and the first lines fit below.
+        self.flow(exp_x, exp_y + 31, exp_w)
+        starts_here = not exps or self.experience_opener_fits(exps[0])
+        if (self.force_experiences_new_page and self.page == 1) or exp_y + 45 > self.content_bottom or not starts_here:
             self.new_page(False, self.current_name)
             exp_x, exp_w, exp_y = self.left, self.right - self.left, self.y
         self.section_at('Expériences professionnelles', exp_x, exp_y, exp_w, 13.6)
         self.flow(exp_x, exp_y + 31, exp_w)
+        self._mark_flow_bottom(exp_y + 6)
+        self.experiences_start_page = self.page
 
-        if exps:
-            for idx, exp in enumerate(exps):
-                if idx == 1 and self.page == 1 and not self._current_page_is_sparse():
-                    # Keep a genuinely loaded page-1 experience area readable by
-                    # moving following experiences into the full-width continuation
-                    # flow. If page 1 is still sparse, keep grouping enabled so short
-                    # / medium faithful CVs do not create a false sparse tail page.
-                    self.new_page(False, data['name'])
-                    self.flow(self.left, self.y, self.right - self.left)
-                self.render_experience(exp, index=idx, total=len(exps))
+        for idx, exp in enumerate(exps):
+            self.render_experience(exp, index=idx, total=len(exps))
         self.c.save()
 
     def role_html(self, exp):
@@ -869,108 +904,200 @@ class Renderer:
             return f'{html(role)} — {purple(company)}'
         return html(role)
 
-    def render_section(self, sec, opens_experience=False):
-        """opens_experience: first section of an experience, drawn right after
-        its date and role. The break before an experience is decided once, in
-        maybe_break_before_experience; a density break here would strand the
-        date/role at the bottom of the page."""
-        heading = sec.get('heading')
-        content = sec.get('content', '')
-        if (
-            not opens_experience
-            and self.anti_crowding
-            and self._page_is_text_dense()
-            and self.y > self.page_start_y + 80
-        ):
-            self.new_page(False, self.current_name)
-            self.flow(self.left, self.y, self.right - self.left)
-        if isinstance(content, list):
-            self.render_bullet_list(heading, content, opener_items=self.min_experience_opener_bullets if opens_experience else 0)
-        elif content:
-            self.render_text_section(heading, content)
-        elif heading:
-            self.ensure_space(self.measure_text(heading, self.sub))
-            self.subhead(heading)
+    def _sections(self, exp):
+        return [sec for sec in exp.get('sections', []) or [] if isinstance(sec, dict)]
 
-    def _opener_sections(self, exp):
-        sections = [sec for sec in exp.get('sections', []) or [] if isinstance(sec, dict)]
-        if len(sections) > 1:
-            content = sections[0].get('content', '')
-            items = content if isinstance(content, list) else [content]
-            if sum(self._plain_len(item) for item in items) < SHORT_OPENER_SECTION_CHARS:
-                return sections[:2]
-        return sections[:1]
+    def _opener_heights(self, exp, width=None):
+        return (
+            self.measure_text(exp.get('date', ''), self.date, width),
+            self.measurep(self.role_html(exp), self.role, width),
+        )
 
-    def _experience_opener_chars(self, exp) -> int:
-        total = self._plain_len(exp.get('date', '')) + self._plain_len(self.role_html(exp))
-        for sec in self._opener_sections(exp):
-            total += self._plain_len(sec.get('heading') or '')
-            content = sec.get('content', '')
-            items = content[:max(1, self.min_experience_opener_bullets)] if isinstance(content, list) else [content]
-            total += sum(self._plain_len(item) for item in items)
-        return total
+    def experience_lines_here(self, exp, avail, width=None):
+        """(body lines of `exp` that would land in `avail` points, total body
+        lines), following the same rules as render_section."""
+        date_h, role_h = self._opener_heights(exp, width)
+        used = date_h + role_h
+        total = sum(self._section_lines(sec, width) for sec in self._sections(exp))
+        if used > avail:
+            return 0, total
+        lines = 0
+        for sec in self._sections(exp):
+            heading = sec.get('heading')
+            _, paras = self._section_paragraphs(sec)
+            if not paras:
+                used += self.measure_text(heading, self.sub, width) if heading else 0
+                continue
+            placement = self._place_section_here(heading, paras, avail - used, width)
+            if placement is None:
+                break
+            full, partial, placed, sec_total = placement
+            lines += placed
+            if placed < sec_total:
+                break
+            used += (self.measure_text(heading, self.sub, width) if heading else 0) + sum(
+                self._lines_of(text, st, width) * st.leading + st.spaceAfter for text, st in paras
+            )
+            if lines >= self.min_experience_opener_lines:
+                break
+        return lines, total
+
+    def experience_opener_fits(self, exp) -> bool:
+        """Date, role and the first body lines (min_experience_opener_lines, or
+        the whole experience when shorter) fit in the room left on the page."""
+        lines, total = self.experience_lines_here(exp, self._flow_bottom() - self.y)
+        date_h, role_h = self._opener_heights(exp)
+        if self.y + date_h + role_h > self._flow_bottom():
+            return False
+        return lines >= min(self.min_experience_opener_lines, total)
 
     def estimate_experience_opener_height(self, exp):
-        # Keep each experience opening together: date + role + heading + first
-        # source lines. The renderer may split the full section later, but it
-        # must not leave a date/title opener or a single first bullet stranded at
-        # the bottom of a page.
-        opener_height = self.measure_text(exp.get('date', ''), self.date) + self.measurep(self.role_html(exp), self.role) + 24
-        for sec in self._opener_sections(exp):
-            content = sec.get('content', '')
-            if sec.get('heading'):
-                opener_height += self.measure_text(sec.get('heading', ''), self.sub)
-            if isinstance(content, list) and content:
-                kept_items = content[:max(1, self.min_experience_opener_bullets)]
-                for item in kept_items:
-                    opener_height += self.measure_text('• ' + str(item), self.bul)
-            elif content:
-                opener_height += min(self.measure_text(str(content), self.body), self.body.leading * 3)
-        return opener_height
+        """Height of date + role + the first body lines kept with them."""
+        date_h, role_h = self._opener_heights(exp)
+        height = date_h + role_h
+        needed = self.min_experience_opener_lines
+        for sec in self._sections(exp):
+            heading = sec.get('heading')
+            if heading:
+                height += self.measure_text(heading, self.sub)
+            _, paras = self._section_paragraphs(sec)
+            for text, style in paras:
+                n = self._lines_of(text, style)
+                take = min(n, needed)
+                height += take * style.leading + style.spaceAfter
+                needed -= take
+                if needed <= 0:
+                    return height
+        return height
 
     def _forced_break_would_create_sparse_page(self, opener_height):
-        if not self.allow_grouping or not self._current_page_is_sparse():
+        """An explicit break request is skipped on a page still less than half
+        full when the experience opener fits: honouring it would leave a
+        half-empty page."""
+        if not self.allow_grouping:
             return False
-        remaining = self.content_bottom - self.y
-        return remaining >= opener_height + self.body.leading * 2
+        page_half = self.page_start_y + (self._flow_bottom() - self.page_start_y) / 2
+        return self.y < page_half and self._flow_bottom() - self.y >= opener_height + self.body.leading * 2
 
     def maybe_break_before_experience(self, exp, index=0, total=0):
-        opener_height = self.estimate_experience_opener_height(exp)
+        """Start a new page before `exp` only when its opener does not fit
+        (or on an explicit break request). Returns True when a page was added."""
+        if self._at_page_top():
+            return False
         if index in self.force_page_break_before_experience_indexes and self.y > self.page_start_y + 28:
-            if not self._forced_break_would_create_sparse_page(opener_height):
-                self.new_page(False, self.current_name)
-                self.flow(self.left, self.y, self.right - self.left)
+            if not self._forced_break_would_create_sparse_page(self.estimate_experience_opener_height(exp)):
+                self._continue_on_new_page()
                 return True
+        if self.experience_opener_fits(exp):
             return False
-        if not self.anti_crowding or index <= 0:
-            return False
-        # Non-destructive anti-crowding: move only the next experience opener/body
-        # to a fresh page when the current one is already visually loaded.
-        if self.y <= self.page_start_y + 28:
-            return False
-        remaining = self.content_bottom - self.y
-        dense_by_text = self._page_is_text_dense()
-        dense_by_height = self._current_used_ratio() >= self.max_used_ratio
-        weak_remaining = remaining < max(self.readability_reserve, opener_height + self.body.leading * 4)
-        if dense_by_text or dense_by_height or weak_remaining:
-            self.new_page(False, self.current_name)
-            self.flow(self.left, self.y, self.right - self.left)
-            return True
-        return False
+        self._continue_on_new_page()
+        return True
 
     def render_experience(self, exp, index=0, total=0):
         self.maybe_break_before_experience(exp, index=index, total=total)
-        opener_height = self.estimate_experience_opener_height(exp)
-        if self.y + opener_height > H - self.bottom:
-            self.new_page(False, self.current_name)
-            self.flow(self.left, self.y, self.right - self.left)
         self.drawp(html(exp.get('date', '')), self.date)
         self.drawp(self.role_html(exp), self.role)
-        opener_count = len(self._opener_sections(exp))
-        for position, sec in enumerate(exp.get('sections', [])):
-            self.render_section(sec, opens_experience=position < opener_count)
+        for position, sec in enumerate(exp.get('sections', []) or []):
+            if isinstance(sec, dict):
+                self.render_section(sec, opens_experience=position == 0)
         self.y += 13
-        self.flow_height_remaining = max(0.0, self.flow_height_remaining - 13)
+
+    def tail_balance_candidates(self, step: float = 20.0) -> list[dict[int, float]]:
+        """Flow limits to try for the next-to-last page when the last page
+        would hold a few lines only, smallest move first, up to what brings
+        the last page to LAST_PAGE_TARGET_FILL; the previous page never goes
+        under PENULTIMATE_MIN_FILL."""
+        last = self.page
+        if last < 2 or self._page_fill(last) >= LAST_PAGE_MIN_FILL:
+            return []
+        previous = last - 1
+        previous_bottom = self.page_flow_bottoms.get(previous)
+        if previous_bottom is None:
+            return []
+        zone = self.content_bottom - FILL_ZONE_TOP
+        min_fill = FIRST_PAGE_MIN_FILL_WHEN_BALANCING if previous == 1 else PENULTIMATE_MIN_FILL
+        floor = FILL_ZONE_TOP + min_fill * zone
+        move = step
+        max_move = (LAST_PAGE_TARGET_FILL - self._page_fill(last)) * zone + 4 * self.body.leading
+        limits = []
+        while move <= max_move:
+            limit = previous_bottom - move
+            if limit < floor:
+                break
+            limits.append({previous: limit})
+            move += step
+        return limits
+
+
+def plan_section_break(line_counts, leading, space_after, avail, *, min_split=MIN_SPLIT_LINES, min_continuation=MIN_CONTINUATION_LINES):
+    """Choose where a section stops on the current page.
+
+    line_counts: lines of each paragraph (bullet) of the section, in order.
+    Returns (full, partial, placed): `full` paragraphs drawn whole, then
+    `partial` first lines of the next one, `placed` lines in all. The largest
+    legal amount wins: a split paragraph keeps `min_split` lines on each side
+    and what goes to the next page holds at least `min_continuation` lines.
+    (0, 0, 0) when nothing can stay here.
+    """
+    total = sum(line_counts)
+    best = (0, 0, 0)
+    used = 0.0
+    placed = 0
+    for index, count in enumerate(line_counts):
+        for k in range(count - min_split, min_split - 1, -1):
+            if used + k * leading + space_after > avail + 0.01:
+                continue
+            if total - placed - k < min_continuation:
+                continue
+            if placed + k > best[2]:
+                best = (index, k, placed + k)
+            break
+        used += count * leading + space_after
+        placed += count
+        if used > avail + 0.01:
+            break
+        rest = total - placed
+        if (rest == 0 or rest >= min_continuation) and placed > best[2]:
+            best = (index + 1, 0, placed)
+    return best
+
+
+def render_document(out, data, layout_options=None):
+    """Render `data` to `out`. When the last page would only hold a short
+    tail, render again with the previous page shortened step by step. A
+    version is acceptable when it keeps the page count and the page where the
+    experiences start, and leaves the previous page above its minimum fill
+    (FIRST_PAGE_MIN_FILL_WHEN_BALANCING for page 1); the first one (smallest move) whose last page reaches
+    LAST_PAGE_MIN_FILL wins, else the acceptable one with the fullest last
+    page if it gains at least 10 points. Otherwise the plain rendering stays."""
+    import io
+
+    first_buffer = io.BytesIO()
+    first = Renderer(first_buffer, layout_options)
+    first.render(data)
+    plain_fill = first._page_fill(first.page)
+    chosen, best_fill = first_buffer, plain_fill
+    for limits in first.tail_balance_candidates():
+        buffer = io.BytesIO()
+        candidate = Renderer(buffer, layout_options, page_flow_limits=limits)
+        candidate.render(data)
+        if candidate.page != first.page:
+            break
+        if getattr(candidate, 'experiences_start_page', 0) != getattr(first, 'experiences_start_page', 0):
+            break
+        previous = candidate.page - 1
+        min_previous_fill = FIRST_PAGE_MIN_FILL_WHEN_BALANCING if previous == 1 else PENULTIMATE_MIN_FILL
+        if candidate._page_fill(previous) < min_previous_fill:
+            # The break fell much higher than the limit (a whole block moved):
+            # the previous page would be left half empty.
+            continue
+        fill = candidate._page_fill(candidate.page)
+        if fill >= LAST_PAGE_MIN_FILL:
+            chosen = buffer
+            break
+        if fill >= plain_fill + 0.10 and fill > best_fill:
+            chosen, best_fill = buffer, fill
+    Path(out).write_bytes(chosen.getvalue())
 
 
 def main():
@@ -984,7 +1111,7 @@ def main():
         die('Input JSON appears to expose a candidate full name or forbidden identity term. Use first name only.')
     prep_assets()
     register_fonts(ensure_poppins())
-    Renderer(out, data.get('_layout') if isinstance(data.get('_layout'), dict) else None).render(data)
+    render_document(out, data, data.get('_layout') if isinstance(data.get('_layout'), dict) else None)
     print(out)
 
 
