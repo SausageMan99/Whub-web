@@ -115,7 +115,8 @@ Environnement technique: Java, Kubernetes
         self.assertEqual(synthesized["experiences"][0]["sections"], data["experiences"][0]["sections"])
         self.assertTrue(any(skill["category"] == "Backend" for skill in synthesized["skills"]))
         self.assertTrue(any(skill["category"] == "Cloud / DevOps" for skill in synthesized["skills"]))
-        self.assertTrue(all(len(skill["items"]) <= 6 for skill in synthesized["skills"]))
+        # Lot 2: no "— suite" chunks; the item limit is the cleanup's (12).
+        self.assertTrue(all(len(skill["items"]) <= 12 for skill in synthesized["skills"]))
         for expected in items:
             self.assertIn(expected, flat_items)
 
@@ -188,10 +189,11 @@ Environnement technique: Java, Kubernetes
         self.assertTrue(any(skill["category"] == "Backend" for skill in skills))
         self.assertTrue(any(skill["category"] == "Frontend" for skill in skills))
         self.assertTrue(any(skill["category"] == "Cloud / DevOps" for skill in skills))
-        self.assertTrue(any(skill["category"] == "Cloud / DevOps — suite" for skill in skills))
+        # Lot 2 (2026-11): one category per family, never "— suite" nor "Autres".
+        self.assertFalse(any("suite" in skill["category"] or skill["category"] == "Autres" for skill in skills))
         self.assertTrue(any(skill["category"] == "Data" for skill in skills))
         self.assertTrue(any(skill["category"] == "Outils & méthodes" for skill in skills))
-        self.assertTrue(all(len(skill["items"]) <= 6 for skill in skills))
+        self.assertTrue(all(len(skill["items"]) <= 12 for skill in skills))
         self.assertTrue(all(len(item) <= 80 for item in flat_items))
         self.assertEqual(sum(1 for item in flat_items if item.lower() == "java"), 1)
         expected_unique_terms = [

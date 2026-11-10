@@ -18,6 +18,7 @@ from .llm_backend import openrouter_runner
 from .source_sanitizer import is_dotnet_technical_token as _is_dotnet_technical_false_positive
 from .revisions import requests_skills_revision
 from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
+from .skills_cleanup import clean_skills_section, is_certification_item, parse_languages, skill_key
 
 log = logging.getLogger("whub-cv-worker.structuring")
 
@@ -158,9 +159,12 @@ WHUB_SKILL_CATEGORY_TAXONOMY = (
     "Tests & Qualité",
     "Outils & Environnements",
     "Méthodologies",
-    "Langues",
-    "Certifications",
+    "Sécurité",
+    "Compétences fonctionnelles",
+    "Secteurs d'activité",
 )
+# Langues and Certifications are NOT skill categories (2026-11, lot 2): they
+# have their own top-level fields, rendered in the "Formation & Diplômes" column.
 
 
 def _skill_taxonomy_for_prompt() -> str:
@@ -1944,7 +1948,7 @@ def assemble_structured_blocks(parts: list[dict], candidate_first_name: str | No
             if not isinstance(value, list):
                 raise StructuringError(f"CV long: bloc structuré invalide, {key} doit être une liste")
             assembled[key].extend(value)
-        for key in ["certifications", "languages"]:
+        for key in ["certifications", "languages", "projects"]:
             for item in part.get(key) or []:
                 if item not in assembled.setdefault(key, []):
                     assembled[key].append(item)
@@ -2051,12 +2055,6 @@ _SOURCE_FAITHFUL_SKILL_CATEGORIES = {
     "competences et outils",
     "processus métiers",
     "processus metiers",
-    "exemples de realisations professionnelles",
-    "realisations professionnelles",
-    "realisations",
-    "projets",
-    "projets significatifs",
-    "certifications",
     "competences fonctionnelles",
     "methodologie de travail",
     "mainframe",
@@ -2088,7 +2086,11 @@ _BUSINESS_COVERAGE_HEADING_RE = re.compile(
 )
 _SECTION_BOUNDARY_RE = re.compile(
     r"^(?:processus\s+m[ée]tiers|loisirs?|formations?|dipl[oô]mes?|exp[ée]riences?|parcours|mots[-\s]?cl[ée]s?|contact|coordonn[ée]es?"
-    r"|centres?\s+d['’]int[ée]r[êe]ts?|r[ée]seaux\s+sociaux)\b",
+    r"|centres?\s+d['’]int[ée]r[êe]ts?|r[ée]seaux\s+sociaux"
+    # 2026-11 (lot 2): these headings did not close a Projets/Compétences
+    # section, which then swallowed the education ("ÉDUCATION 2016 Master…").
+    r"|[ée]ducation|[ée]tudes|cursus|scolarit[ée]|profil|r[ée]sum[ée]|soft\s*skills|savoir[-\s]?[êe]tre|qualit[ée]s"
+    r"|education|work\s+experience|employment|skills|summary|profile|interests|hobbies|references)\b",
     re.I,
 )
 _EXPERIENCE_COVERAGE_HEADING_RE = re.compile(
@@ -2398,14 +2400,32 @@ def _skill_family(term: str) -> str:
     return next((name for name, keys in _SKILL_FAMILIES if any(_skill_keyword_matches(term, key) for key in keys)), "Autres")
 
 
+def _split_top_level_commas(item: str) -> list[str]:
+    """Split "a, b | c ; d" outside parentheses: "Jira (Xray, Zephyr)" stays whole."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for match in re.finditer(r"[()]|[,|;]", item):
+        token = match.group(0)
+        if token == "(":
+            depth += 1
+        elif token == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            parts.append(item[start:match.start()])
+            start = match.end()
+    parts.append(item[start:])
+    return parts
+
+
 def _dedupe_skill_items(items: list[str], *, split_packed: bool = True) -> list[str]:
     unique: list[str] = []
     seen: set[str] = set()
     for item in items:
-        # Hermes sometimes returns comma/pipe/semicolon packed skills inside one item.
-        # Source-faithful categories must keep original lines intact: commas can be
-        # part of the source bullet and splitting them creates non-copy fragments.
-        parts = re.split(r"[,|;]", item) if split_packed else [item]
+        # Packed skills ("a, b | c") are split outside parentheses only: a
+        # blind comma split produced "React (TypeScript" + "Redux)" (lot 2).
+        # Source-faithful categories keep original lines intact.
+        parts = _split_top_level_commas(item) if split_packed else [item]
         for part in parts:
             cleaned = part.strip(" •\t")
             key = _skill_key(cleaned)
@@ -2415,22 +2435,16 @@ def _dedupe_skill_items(items: list[str], *, split_packed: bool = True) -> list[
     return unique
 
 
-def _skill_family_chunks(items: list[str], max_items: int) -> list[list[str]]:
-    """Split long skill families without silently dropping source technologies."""
-    if max_items <= 0:
-        return [items]
-    return [items[index:index + max_items] for index in range(0, len(items), max_items)]
+def _group_long_skills(skills: list[dict], max_items: int = 12) -> list[dict]:
+    """Deduplicate skill items and split a generic or long category by family.
 
-
-def _continued_skill_category(family: str, chunk_index: int) -> str:
-    if chunk_index == 0:
-        return family
-    if chunk_index == 1:
-        return f"{family} — suite"
-    return f"{family} — suite {chunk_index}"
-
-
-def _group_long_skills(skills: list[dict], max_items: int = 6) -> list[dict]:
+    A generic bag ("Compétences techniques" with 30 items) is split into
+    families (Backend, Frontend, Cloud / DevOps, Data, Sécurité, Outils &
+    méthodes); what matches no family stays in the original category.
+    2026-11 (lot 2): no more "Autres" catch-all and no more "— suite N"
+    chunks (they produced "Autres (suite)" x13 in the PDF). Item limits and
+    the source categories are handled by skills_cleanup.clean_skills_section.
+    """
     curated: list[dict] = []
     for skill in skills:
         original_category = str(skill.get("category") or "Compétences").strip() or "Compétences"
@@ -2453,14 +2467,15 @@ def _group_long_skills(skills: list[dict], max_items: int = 6) -> list[dict]:
             continue
 
         grouped: dict[str, list[str]] = {family: [] for family, _ in _SKILL_FAMILIES}
-        grouped["Autres"] = []
+        unmatched: list[str] = []
         for item in items:
-            grouped[_skill_family(item)].append(item)
-
-        for family in [name for name, _ in _SKILL_FAMILIES] + ["Autres"]:
-            for chunk_index, family_items in enumerate(_skill_family_chunks(grouped[family], max_items)):
-                if family_items:
-                    curated.append({"category": _continued_skill_category(family, chunk_index), "items": family_items})
+            family = _skill_family(item)
+            (grouped[family] if family in grouped else unmatched).append(item)
+        for family, _ in _SKILL_FAMILIES:
+            if grouped[family]:
+                curated.append({"category": family, "items": grouped[family]})
+        if unmatched:
+            curated.append({"category": original_category, "items": unmatched})
     return curated
 
 
@@ -2762,6 +2777,52 @@ def _postprocess_skills_into_languages_and_certifications(data: dict) -> dict:
     return out
 
 
+_PROJECT_COVERAGE_SECTIONS = {
+    "realisations",
+    "realisations professionnelles",
+    "exemples de realisations professionnelles",
+    "projets",
+    "projets significatifs",
+}
+
+
+def _route_uncovered_business_fact(gated: dict, section: str, fact: str) -> str | None:
+    """Put a source business fact the model left out in its own field.
+
+    Returns the destination field, or None when the fact has no destination
+    other than `skills` (Compétences/Autres blocks: never reinjected as raw
+    text; validate_source_fidelity reports them as a warning instead).
+    """
+    normalized_section = _normalize_for_fidelity(section)
+    if normalized_section in _PROJECT_COVERAGE_SECTIONS:
+        projects = gated.setdefault("projects", [])
+        projects.append({"name": "", "date": "", "details": [fact]})
+        return "projects"
+    if normalized_section in {"certifications", "certification"}:
+        parts = [part.strip() for part in re.split(r"[;,]", fact) if part.strip()]
+        added = False
+        certifications = gated.setdefault("certifications", [])
+        keys = {skill_key(str(cert)) for cert in certifications}
+        for part in parts:
+            if is_certification_item(part) or len(part) <= 80:
+                if skill_key(part) not in keys:
+                    certifications.append(part)
+                    keys.add(skill_key(part))
+                    added = True
+        return "certifications" if added else None
+    if normalized_section in {"langues", "languages"}:
+        languages = gated.setdefault("languages", [])
+        names = {_normalize_for_fidelity(str(l.get("name") if isinstance(l, dict) else l)) for l in languages}
+        added = False
+        for language in parse_languages(fact):
+            if _normalize_for_fidelity(language["name"]) not in names:
+                languages.append(language if language["level"] else {"name": language["name"]})
+                names.add(_normalize_for_fidelity(language["name"]))
+                added = True
+        return "languages" if added else None
+    return None
+
+
 def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: bool = True) -> dict:
     """Remove skill items that are not supported by the actual uploaded CV text.
 
@@ -2770,10 +2831,14 @@ def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: 
     this gate only filters the structured skills surface where hallucinated
     expansions are most common.
 
+    Source business facts (Projets, Réalisations, Certifications, Langues) the
+    model left out go to their own field (`projects`, `certifications`,
+    `languages`), never into `skills` as raw text (2026-11, lot 2: the old
+    reinjection poured missions and education into "Compétences techniques").
+
     With ``reinject_source_facts`` False (a revision comment asked to change the
-    skills), the model's categories are kept as it answered and the source
-    coverage facts it removed are recorded under
-    ``REVISION_REMOVED_SOURCE_FACTS_KEY`` instead of being put back.
+    skills), nothing is put back and the facts the model removed are recorded
+    under ``REVISION_REMOVED_SOURCE_FACTS_KEY``.
     """
     source_normalized = _normalize_for_fidelity(source_text or "")
     if not source_normalized:
@@ -2781,7 +2846,6 @@ def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: 
 
     gated = deepcopy(data)
     gated_skills: list[dict] = []
-    promoted_business_items: dict[str, list[str]] = {}
     has_source_faithful_skill_categories = reinject_source_facts and any(
         _normalize_for_fidelity(str(skill.get("category") or "")) in _SOURCE_FAITHFUL_SKILL_CATEGORIES
         for skill in gated.get("skills") or []
@@ -2792,15 +2856,6 @@ def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: 
             continue
         category = str(skill.get("category") or "").strip()
         if has_source_faithful_skill_categories and _normalize_for_fidelity(category) not in _SOURCE_FAITHFUL_SKILL_CATEGORIES:
-            for item in skill.get("items") or []:
-                item_text = str(item).strip()
-                if not item_text or not _contains_fidelity_fact(source_normalized, item_text):
-                    continue
-                business_section = _business_coverage_section_for_item(source_text, item_text)
-                if business_section:
-                    bucket = promoted_business_items.setdefault(business_section, [])
-                    if item_text not in bucket:
-                        bucket.append(item_text)
             continue
         kept_items: list[str] = []
         for item in skill.get("items") or []:
@@ -2813,11 +2868,11 @@ def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: 
             kept_skill = deepcopy(skill)
             kept_skill["items"] = kept_items
             gated_skills.append(kept_skill)
-    for section, items in promoted_business_items.items():
-        if items:
-            gated_skills.append({"category": section, "items": items})
-    json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
+    gated["skills"] = gated_skills
     removed_facts: list[dict[str, str]] = []
+    json_normalized = _normalize_for_fidelity(json.dumps(
+        {key: value for key, value in gated.items() if not str(key).startswith("_")}, ensure_ascii=False
+    ))
     for entry in extract_source_business_coverage_facts(source_text):
         fact = entry["fact"]
         if _contains_fidelity_fact(json_normalized, fact):
@@ -2827,15 +2882,12 @@ def _source_gate_skills(data: dict, source_text: str, *, reinject_source_facts: 
         if not reinject_source_facts:
             removed_facts.append({"section": entry["section"], "fact": fact})
             continue
-        target = next((skill for skill in gated_skills if _normalize_for_fidelity(str(skill.get("category") or "")) == _normalize_for_fidelity(entry["section"])), None)
-        if target is None:
-            target = {"category": entry["section"], "items": []}
-            gated_skills.append(target)
-        items = target.setdefault("items", [])
-        if fact not in items:
-            items.append(fact)
-        json_normalized = _normalize_for_fidelity(json.dumps(gated_skills, ensure_ascii=False))
-    gated["skills"] = gated_skills
+        destination = _route_uncovered_business_fact(gated, entry["section"], fact)
+        if destination:
+            log.info("source business fact routed section=%s destination=%s chars=%d", entry["section"], destination, len(fact))
+            json_normalized = _normalize_for_fidelity(json.dumps(
+                {key: value for key, value in gated.items() if not str(key).startswith("_")}, ensure_ascii=False
+            ))
     if reinject_source_facts:
         gated.pop(REVISION_REMOVED_SOURCE_FACTS_KEY, None)
     else:
@@ -3029,69 +3081,77 @@ def _hermes_prompt(
     return f"""
 Tu es le moteur de structuration du portail interne W hub CV Factory.
 
-Objectif: convertir le CV source ci-dessous en JSON STRICTEMENT compatible avec le renderer W hub.
-Tu dois suivre le skill whub-client-cv-generator déjà chargé.{block_rule}
+Objectif: convertir le CV source ci-dessous en JSON STRICTEMENT compatible avec le renderer W hub (schéma imposé, aucun champ en plus).{block_rule}
 
-Règles non négociables:
+Règles générales:
 - Réponds uniquement avec un objet JSON valide. Aucun markdown, aucun commentaire, aucun texte autour.
 - Identité candidat: champ name = prénom uniquement, idéalement: {first_name_rule!r}. Aucun nom de famille.
-- Supprime les coordonnées et l'adresse personnelle du candidat: email, téléphone, LinkedIn, URL, GitHub, adresse complète.
-- Conserve les localisations de mission/client présentes dans les expériences (ex: ville + département comme Montreuil (93)); ce ne sont pas des coordonnées candidat.
-- Ne crée pas d'informations absentes du CV.
-- Préserve les dates, entreprises, missions, stacks et diplômes présents dans le CV.
+- Supprime les coordonnées et l'adresse personnelle du candidat: email, téléphone, LinkedIn, URL, GitHub, adresse complète. Ne mets jamais `@`, `linkedin`, `http`, `github.com`, `+33` ni de téléphone dans le JSON.
+- Ne crée pas d'informations absentes du CV. Préserve les dates, entreprises, missions, outils et diplômes présents dans le CV.
 - Ne corrige pas les typos, noms d’écoles, accents ou formulations du CV source. Normalise seulement les espaces et les retours ligne nécessaires au JSON.
-- Fidélité copier-coller: chaque élément visible dans `experiences[].sections[].content` doit être un extrait exact du CV source après normalisation des espaces/retours ligne. Ne remplace pas un mot source par un synonyme, même évident.
-- Couverture source: ne supprime aucun élément métier d'expérience (missions, réalisations, responsabilités, livrables, contexte, outils explicitement listés) pour faire plus court. Une mise en page difficile se résout par pagination/regroupement, jamais par omission.
-- Structure les compétences en catégories lisibles, hiérarchisées et client-facing quand elles proviennent d'une section compétences source; ne transforme pas des outils cités dans une expérience en compétences globales inventées.
-- SECTION COMPÉTENCES — INTELLIGENCE W HUB: la section `skills` n'est pas un inventaire brut. Elle doit permettre à un client ESN de comprendre la stack principale du consultant en moins de 10 secondes.
-- Frontières fortes: `COMPÉTENCES`, `COMPETENCES`, `EXPÉRIENCES`, `EXPERIENCES`, `FORMATIONS`, `LANGUES`, `CERTIFICATIONS`, `PROJETS`, `RÉALISATIONS`. Ne mélange jamais du texte d'expérience, formation, identité, projet long ou langue dans `skills`.
-- Un item `skills[].items[]` doit être un label court: technologie, framework, outil, méthode, base de données, cloud, DevOps, IDE ou environnement technique. **Ne mets JAMAIS de langues parlées (Arabe, Français, Anglais, Espagnol, Allemand, Italien, Portugais, Chinois, Japonais, Russe, etc.) ni de certifications dans `skills`.** Les langues parlées vont dans le champ top-level `languages`; les certifications vont dans le champ top-level `certifications`.
-- Distinction critique: `skills[].items[]` ne contient **PAS** les langages de programmation (Java, Python, JavaScript, C++, C#, PHP, Ruby, Go, Rust, TypeScript, SQL, etc. — ce sont des compétences techniques qui restent dans `skills`). Le champ `languages` est **uniquement** pour les langues parlées/écrites par le candidat avec niveau (ex: "Français — courant", "Anglais — technique", "Arabe — natif").
-- Nettoie les artefacts visuels de compétences: étoiles, jauges, icônes, niveaux graphiques et répétitions. Garde seulement le libellé utile; ne transforme pas des jauges en niveaux expert/intermédiaire sauf niveau textuel explicite.
-- Déduplique et normalise sans changer le sens: `JS`/`Javascript` => `JavaScript`, `Jquery` => `jQuery`, `Bootsrap` => `Bootstrap`, `Mac OS`/`MacOS` => `macOS`. Préserve `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server` comme technologies distinctes si elles sont présentes.
-- Taxonomie fermée pour `skills[].category`: {_skill_taxonomy_for_prompt()}.
-- N'utilise jamais `Autres` comme catégorie normale. Si le contenu est réel mais secondaire, préfère `Outils & Environnements` ou `Méthodologies`.
-- Hiérarchise les catégories: stack principale et technologies récentes d'abord; outils, IDE, OS et méthodes ensuite; langues/certifications séparées. Vise 3 à 6 catégories visibles, avec 3 à 8 items courts par catégorie quand le volume source le permet.
-- Ne supprime pas une compétence importante présente dans la source; tu peux seulement compacter des variantes faibles/redondantes si le sens reste identique et source-backed.
-- Évite les pavés par la mise en page, les retours ligne JSON et la pagination, pas par synthèse, condensation ou raccourcissement du contenu source.
-- Structure les expériences sans inventer de sous-sections. Tu peux utiliser `Missions clés` comme conteneur neutre uniquement pour regrouper des phrases source exactes sans heading visible.
-- N'utilise `Environnement technique`, `Stack technique` ou équivalent que si ce heading existe explicitement dans le CV source pour cette expérience.
-- Ne déduis jamais un environnement technique à partir d’outils cités dans un paragraphe. Ne découpe pas un paragraphe source en liste de technologies.
-- Conserve les headings source pertinents quand ils existent dans l'expérience, par exemple `Périmètre applicatif`, au lieu de les renommer.
-- Pour un CV très long: conserve toutes les expériences et informations source; ne synthétise/condense que si la consigne utilisateur demande explicitement une version courte, synthèse ou condensée.
+- Ignore les en-têtes et pieds de page répétés du CV source (prénom, titre, « Page 1 / 4 », « Dossier de compétences »).
+
+Où ranger chaque type d'information (une seule destination par information, jamais deux):
+- Compétence technique (langage, framework, base de données, cloud, outil DevOps, logiciel, ERP, progiciel): `skills[].items`, un label court par item (1 à 6 mots), sans phrase ni date. Exemple: `Java`, `Spring Boot`, `PostgreSQL`, `Azure DevOps`.
+- Outil (Jira, Confluence, Figma, Excel, Postman…): `skills[].items`, dans la catégorie d'outils du CV source ou `Outils & Environnements`.
+- Méthodologie (Scrum, Kanban, SAFe, Cycle en V, ITIL utilisé comme pratique, DevOps, TDD): `skills[].items`, catégorie `Méthodologies`.
+- Compétence fonctionnelle ou métier listée dans la section compétences du CV (AMOA, recueil des besoins, recette, conduite du changement, secteurs d'activité): `skills[].items`, dans la catégorie du CV source ou `Compétences fonctionnelles` / `Secteurs d'activité`.
+- Soft skill / savoir-être (autonomie, rigueur, adaptabilité, esprit d'équipe, communication, leadership…): nulle part. La section compétences du CV W hub est technique.
+- Langue parlée: uniquement `languages` (`{{"name": "Anglais", "level": "courant"}}`). Jamais dans `skills`. Les langages de programmation (Java, Python, SQL…) ne sont pas des langues: ils restent dans `skills`.
+- Certification (titre délivré par un organisme après examen: PSM I, PSPO, AZ-900, ITIL 4 Foundation, PMP, ISTQB, TOEIC…): uniquement `certifications`, une par item, telle qu'écrite dans le CV (organisme et année si présents). Jamais dans `skills` ni dans `formations`.
+- Formation / diplôme (Master, Licence, BTS, Bac, école, université, classe préparatoire, MOOC diplômant): uniquement `formations` (`date`, `degree`, `school`). Jamais dans `skills`.
+- Stage: c'est une expérience professionnelle (`experiences`), pas une formation, même pendant les études.
+- Contexte de mission (client, lieu, secteur, phrase de présentation du projet de la mission): dans l'expérience concernée, en première section `{{"heading": "Contexte", "content": ["phrase source exacte"]}}` ; le lieu peut rester dans `role` (ex: `Business Analyst, Paris`). Jamais dans `company_highlight` (nom de l'entreprise ou du client seulement) ni dans `skills`.
+- Réalisation ou projet mené dans une mission: dans les `sections` de cette expérience (heading source, par exemple `Réalisations` ou `Projets`).
+- Projet ou réalisation hors expérience (section PROJETS / RÉALISATIONS / projets personnels du CV, sans employeur): `projects` (`name` = intitulé, `date` si présente, `details` = phrases source exactes). Jamais dans `skills`.
+- Environnement technique d'une mission: dans l'expérience, seulement si ce heading existe dans le CV source pour cette expérience.
+
+Section compétences (`skills`):
+- Elle est client-facing: des catégories lisibles et hiérarchisées (stack principale et technologies récentes d'abord) qui permettent à un client ESN de comprendre la stack du consultant en moins de 10 secondes. Compétences seulement, aucune phrase de mission, aucune date, aucun nom de client, aucune formation, langue, certification ou soft skill.
+- Si le CV source regroupe ses compétences en catégories, reprends ces catégories et leurs libellés tels quels. Sinon utilise la taxonomie: {_skill_taxonomy_for_prompt()}.
+- Chaque catégorie apparaît une seule fois: pas de `(suite)`, pas de `— suite`, pas de catégorie répétée. Pas de catégorie `Autres` sauf en dernier recours, une seule fois.
+- Vise 3 à 8 catégories et au plus 12 items par catégorie. Ne supprime pas une compétence technique réelle pour tenir ces limites: regroupe-la dans la catégorie la plus proche.
+- Un item qui contient une parenthèse la referme: `React (TypeScript, Redux)` et non `React (TypeScript`.
+- Déduplique sans changer le sens: `JS`/`Javascript` => `JavaScript`, `Mac OS` => `macOS`. Garde `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server` comme technologies distinctes. Nettoie étoiles, jauges et icônes; ne transforme pas une jauge en niveau.
+- Ne transforme pas des outils cités dans une expérience en compétences globales inventées.
+
+Expériences (`experiences`):
+- Fidélité copier-coller: chaque élément de `experiences[].sections[].content` est un extrait exact du CV source après normalisation des espaces/retours ligne. Ne remplace pas un mot source par un synonyme.
+- Couverture: ne supprime aucun élément métier d'expérience (missions, réalisations, responsabilités, livrables, contexte, outils explicitement listés). Une mise en page difficile se résout par la pagination, jamais par omission. Évite les pavés par la mise en page, pas par synthèse, condensation ou raccourcissement du contenu source.
+- N'invente pas de sous-sections. `Missions clés` sert de conteneur neutre pour des phrases source sans heading visible. Conserve les headings source (`Périmètre applicatif`, `Réalisations`…).
+- N'utilise `Environnement technique` ou `Stack technique` que si ce heading existe dans le CV source pour cette expérience. Ne déduis jamais un environnement technique à partir d'outils cités dans un paragraphe.
+- Conserve les localisations de mission/client présentes dans les expériences (ex: Montreuil (93)); ce ne sont pas des coordonnées candidat.
+
+Consignes de l'utilisateur:
 - Classification des consignes: {intent_rule}
 - Les consignes vagues (`CV standard`, `mettre au format W hub`, `faire propre`, `intégrable à la base`) ne sont jamais une autorisation de réécriture, synthèse, condensation ou omission métier.
-- `Raccourcis à 2 pages`, `version courte`, `synthèse`, `condense` autorisent seulement une version courte source-backed: aucun fait inventé, aucune compétence/date/entreprise ajoutée, et les faits visibles doivent rester exacts.
-- `Réécris la présentation` ou équivalent autorise seulement la réécriture de la présentation/profil demandé; le reste du CV reste fidèle sauf consigne ciblée explicite.
-- Les modifications ciblées (`corrige la date`, `remplace le titre`, `ajoute cette compétence`) s'appliquent uniquement à la cible nommée, sans transformation globale du CV.
-- Regroupe les longues listes de certifications/technologies proprement par familles seulement hors expériences et seulement si chaque item reste source-backed.
-- Ne mets jamais `@`, `linkedin`, `http`, `github.com`, `+33`, téléphone mobile français dans le JSON.
+- `Raccourcis à 2 pages`, `version courte`, `synthèse`, `condense` autorisent seulement une version courte source-backed: aucun fait inventé, et les faits visibles restent exacts.
+- `Réécris la présentation` ou équivalent autorise seulement la réécriture de la présentation demandée; le reste du CV reste fidèle.
+- Les modifications ciblées (`corrige la date`, `remplace le titre`, `ajoute cette compétence`, `garde seulement les compétences liées au poste`) s'appliquent uniquement à la cible nommée.
+- Pour un CV très long: conserve toutes les expériences et informations source; ne condense que sur demande explicite.
 
-Schéma attendu:
+Schéma attendu (tous les champs sont obligatoires; liste vide `[]` ou chaîne vide `""` quand l'information est absente):
 {{
   "name": "PRÉNOM",
   "title": "Titre métier court",
-  "description": "Profil court si le CV source en contient un, sinon omettre cette clé",
-  "formations": [{{"date": "...", "degree": "...", "school": "..."}}],
-  "certifications": ["Nom certification (organisme, année si présente)"],
-  "languages": [{{"name": "Français", "level": "courant"}}, {{"name": "Anglais", "level": "technique"}}],
-  "skills": [{{"category": "...", "items": ["..."]}}],
+  "description": "Profil court si le CV source en contient un, sinon chaîne vide",
+  "formations": [{{"date": "2017-2019", "degree": "Master …", "school": "École / université"}}],
+  "certifications": ["PSPO I (Scrum.org, 2021)"],
+  "languages": [{{"name": "Français", "level": "langue maternelle"}}, {{"name": "Anglais", "level": "professionnel"}}],
+  "skills": [{{"category": "Catégorie du CV source ou de la taxonomie", "items": ["Label court"]}}],
   "experiences": [
     {{
       "date": "...",
       "role": "...",
-      "company_highlight": "...",
+      "company_highlight": "Entreprise ou client seulement",
       "sections": [
-        {{"heading": "Missions clés", "content": ["phrases source exactes, sans reformulation"]}},
-        {{"heading": "Périmètre applicatif", "content": ["ligne/paragraphe source exact si ce heading existe dans le CV"]}}
+        {{"heading": "Contexte", "content": ["phrase source exacte de contexte, si le CV en contient une"]}},
+        {{"heading": "Missions clés", "content": ["phrases source exactes, sans reformulation"]}}
       ]
     }}
-  ]
+  ],
+  "projects": [{{"name": "Intitulé du projet", "date": "", "details": ["phrase source exacte"]}}]
 }}
-
-Règles top-level:
-- `certifications`: liste de strings courtes, une certification par item. Si aucune certification détectée, liste vide `[]`. Ne jamais mettre de certifications dans `skills[]`.
-- `languages`: liste d'objets `{{"name": "...", "level": "..."}}`. Le `name` est la langue parlée/écrite (Français, Anglais, Arabe, Espagnol, Allemand, Italien, Portugais, Chinois, Japonais, Russe, etc.). Le `level` est optionnel (courant, professionnel, technique, natif, bilingue, scolaire, A1-C2, score CECRL, ou omis). Si le CV source ne contient pas de section langues, liste vide `[]`. Ne jamais mettre de langues parlées dans `skills[]`. Distinction stricte: les langages de programmation (Java, Python, JavaScript, C++, C#, PHP, Ruby, Go, Rust, TypeScript, SQL, etc.) restent dans `skills[]` et ne doivent PAS apparaître dans `languages`.
 
 Consignes utilisateur:
 {instructions or "Aucune consigne."}
@@ -3275,6 +3335,9 @@ def build_whub_json(
         allow_condensation=resolved_synthesis_mode != "complete",
     )
     data = _source_gate_structured_data(data, compacted_text, model_skills_authoritative=skills_revision)
+    # Last word on the skills section (guard against the model and the source
+    # gates): only skills stay there, the rest is moved or removed, logged.
+    data = clean_skills_section(data, compacted_text, keep_soft_skills=skills_revision)
     enforce_client_first_name(data, candidate_first_name)
     data = sanitize_contact_in_json(data)
     assert_no_contact_in_json(data)

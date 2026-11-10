@@ -15,6 +15,7 @@ from .structuring import (
     build_whub_json,
     assert_no_contact_in_json,
     sanitize_contact_in_json,
+    sanitize_identity_terms_in_json,
     enforce_client_first_name,
     normalize_candidate_first_name,
     infer_forbidden_candidate_identity_terms,
@@ -46,6 +47,7 @@ from .source_coverage import compare_required_block_coverage
 from .block_sanitizer import sanitize_document
 from .visual_skills_extraction import apply_visual_skills_override, extract_visual_skills
 from .revisions import requests_skills_revision
+from .skills_cleanup import CLEANUP_REPORT_KEY, clean_skills_section, summarize_cleanup
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("whub-cv-worker")
@@ -625,6 +627,11 @@ def _attach_final_quality_report(
         extra = {"page": int(page)} if isinstance(page, int) else {}
         builder.add_soft_warning(code, stage="layout", **extra)
 
+    if qa_report.get("skills_cleanup"):
+        # Corrections of the skills section (moved / removed items), listed in
+        # qa_report["skills_cleanup"]: a warning to read, not a draft reason.
+        builder.add_soft_warning("skills_cleanup", stage="structuring")
+
     for warning in fidelity_soft_warnings or []:
         if isinstance(warning, dict):
             code = str(warning.get("code") or "source_fidelity_warning")
@@ -897,6 +904,16 @@ def process_job(job: dict) -> None:
             # source skills read from the PDF styles must not overwrite it.
             if not requests_skills_revision(comments_for_prompt):
                 structured = _apply_source_wins_post_structuring(structured, source)
+        # The visual skills override (and a reused version) bypass the cleanup
+        # done in build_whub_json: run it again, it is idempotent.
+        structured = clean_skills_section(
+            structured,
+            sanitized_text,
+            keep_soft_skills=requests_skills_revision(comments_for_prompt),
+        )
+        structured = sanitize_identity_terms_in_json(
+            structured, infer_forbidden_candidate_identity_terms(sanitized_text, effective_first_name)
+        )
         enforce_client_first_name(structured, effective_first_name)
         # Soft fidelity warnings: extract and remove from data so they don't pollute the render
         fidelity_soft_warnings = structured.pop("_fidelity_soft_warnings", None)
@@ -995,6 +1012,8 @@ def process_job(job: dict) -> None:
             event_payload["layout_warnings"] = layout_warnings
         if fidelity_soft_warnings:
             event_payload["fidelity_warnings"] = fidelity_soft_warnings
+        if qa_report.get("skills_cleanup"):
+            event_payload["skills_cleanup"] = summarize_cleanup(structured.get(CLEANUP_REPORT_KEY))
         emit_event(request_id, request_status, event_payload)
         timings["upload_and_finalize"] = perf_counter() - stage_start
         timings["total"] = total_duration_seconds

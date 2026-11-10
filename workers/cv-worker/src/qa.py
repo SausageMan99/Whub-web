@@ -14,6 +14,7 @@ from .structuring import (
     _role_fact_fragments,
     WHUB_SKILL_CATEGORY_TAXONOMY,
 )
+from .skills_cleanup import CLEANUP_REPORT_KEY as SKILLS_CLEANUP_REPORT_KEY, cleanup_qa_warning
 
 CONTACT_PATTERNS = {
     "email": r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
@@ -83,6 +84,7 @@ ALLOWED_RENDERER_LABEL_FACTS = {
     "Certifications", "Certification",
     "Expériences professionnelles", "Experiences professionnelles", "EXPERIENCES PROFESSIONNELLES",
     "Environnement technique", "Stack technique",
+    "Projets & réalisations", "Projets & realisations", "Contexte",
 }
 
 HUMAN_TASTE_ISSUE_WEIGHTS = {
@@ -712,6 +714,14 @@ def _json_required_facts(data: dict | None) -> list[str]:
                 cleaned = str(item).strip()
                 if len(cleaned) >= 4 and cleaned not in facts:
                     facts.append(cleaned)
+    # Projects outside experiences (lot 2): rendered after the experiences.
+    for project in data.get("projects") or []:
+        if not isinstance(project, dict):
+            continue
+        for value in [project.get("name"), project.get("date"), *(project.get("details") or [])]:
+            cleaned = str(value or "").strip()
+            if len(cleaned) >= 4 and cleaned not in facts:
+                facts.append(cleaned)
     return facts
 
 
@@ -767,9 +777,18 @@ def find_pdf_source_fidelity_issues(text: str, source_text: str | None = None, s
             for entry in (structured_data or {}).get(REVISION_REMOVED_SOURCE_FACTS_KEY) or []
             if isinstance(entry, dict)
         }
+        # What the skills cleanup removed on purpose (duplicates, mission text
+        # already in the experiences, soft skills) is accounted for: it is
+        # listed in the "skills_cleanup" warning, not lost silently.
+        cleanup_removed = _normalize_for_fidelity(" ".join(
+            str(entry.get("item") or "")
+            for entry in (structured_data or {}).get(SKILLS_CLEANUP_REPORT_KEY) or []
+            if isinstance(entry, dict)
+        ))
+        coverage_haystack = f"{pdf_normalized} {cleanup_removed}".strip()
         for entry in extract_source_business_coverage_facts(source_text or ""):
             fact = entry["fact"]
-            if fact in revision_removed_facts or _contains_fidelity_fact(pdf_normalized, fact):
+            if fact in revision_removed_facts or _contains_fidelity_fact(coverage_haystack, fact):
                 continue
             issues.append({
                 "code": "source_coverage_missing_section",
@@ -885,6 +904,8 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
         "human_taste": human_taste,
         # Warnings only for now: not part of "passed" nor of the status.
         "pagination": pagination,
+        # What the skills cleanup moved or removed (warning, never silent).
+        "skills_cleanup": cleanup_qa_warning((structured_data or {}).get(SKILLS_CLEANUP_REPORT_KEY)),
         "has_logo": has_logo,
         "has_watermark": has_watermark,
     }

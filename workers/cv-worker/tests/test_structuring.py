@@ -1096,11 +1096,14 @@ Loisirs :
 
         result = _source_gate_structured_data(data, source)
 
+        # Lot 2 (2026-11): the achievements go to `projects`, not to a skill category.
         assert [skill["category"] for skill in result["skills"]] == [
             "Processus métiers",
             "Compétences et outils",
-            "Exemples de réalisations professionnelles",
         ]
+        project_details = " ".join(detail for project in result["projects"] for detail in project["details"])
+        assert "usine pharmaceutique" in project_details
+        assert "Point Of Control Vilogia" in project_details
         rendered = json.dumps(result, ensure_ascii=False)
         assert "usine pharmaceutique" in rendered
         assert "Point Of Control Vilogia" in rendered
@@ -1236,24 +1239,18 @@ Automatiser les contrôles de qualité avec GitLab CI et SonarQube.
     def test_hermes_prompt_contains_skills_intelligence_contract(self):
         prompt = _hermes_prompt("CV source", "", [], "Nicolas")
 
-        assert "SECTION COMPÉTENCES — INTELLIGENCE W HUB" in prompt
-        assert "la section `skills` n'est pas un inventaire brut" in prompt
-        assert "`EXPÉRIENCES`, `EXPERIENCES`, `FORMATIONS`, `LANGUES`" in prompt
-        # `skills[].items[]` must be a short label (technology, framework, tool, method, db, cloud, devops,
-        # IDE or technical environment). Phrase-long bullets with action verbs are NOT skills.
+        # Lot 2 (2026-11): one destination per type of information.
+        assert "Où ranger chaque type d'information" in prompt
+        assert "la stack du consultant en moins de 10 secondes" in prompt
         assert "label court" in prompt
-        assert "technologie" in prompt and "framework" in prompt
-        assert "Taxonomie fermée pour `skills[].category`" in prompt
+        assert "langage, framework" in prompt
         assert "`Stack principale`, `Langages`, `Frontend`, `Backend`" in prompt
-        assert "N'utilise jamais `Autres` comme catégorie normale" in prompt
-        assert "Préserve `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server`" in prompt
-        # The new contract: spoken languages and certifications must NEVER appear in `skills`.
-        assert "Ne mets JAMAIS de langues parlées" in prompt
-        assert "champ top-level `languages`" in prompt
-        assert "champ top-level `certifications`" in prompt
-        # Top-level schema fields.
+        assert "Garde `.NET`, `.NET Core`, `ASP.NET MVC`, `C#`, `SQL Server`" in prompt
+        assert "Langue parlée: uniquement `languages`" in prompt
+        assert "uniquement `certifications`" in prompt
         assert '"languages"' in prompt
         assert '"certifications"' in prompt
+        assert '"projects"' in prompt
 
     def test_rejects_rewritten_experience_bullets_even_when_topic_matches_source(self):
         source = """

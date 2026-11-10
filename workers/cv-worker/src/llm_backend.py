@@ -46,7 +46,7 @@ _STRING_LIST = {"type": "array", "items": {"type": "string"}}
 CV_JSON_SCHEMA: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["name", "title", "description", "formations", "certifications", "languages", "skills", "experiences"],
+    "required": ["name", "title", "description", "formations", "certifications", "languages", "skills", "experiences", "projects"],
     "properties": {
         "name": {"type": "string"},
         "title": {"type": "string"},
@@ -101,6 +101,18 @@ CV_JSON_SCHEMA: dict[str, Any] = {
                 },
             },
         },
+        # Projects / achievements outside any experience (a PROJETS or
+        # RÉALISATIONS section of the source). Lot 2 (2026-11): without this
+        # field the model, and the source gates, poured them into `skills`.
+        "projects": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["name", "date", "details"],
+                "properties": {"name": {"type": "string"}, "date": {"type": "string"}, "details": _STRING_LIST},
+            },
+        },
     },
 }
 
@@ -141,6 +153,14 @@ def _normalize_structured_output(content: str) -> str:
         for language in data.get("languages") or []:
             if isinstance(language, dict) and not str(language.get("level") or "").strip():
                 language.pop("level", None)
+        projects = [
+            project for project in data.get("projects") or []
+            if isinstance(project, dict) and (str(project.get("name") or "").strip() or any(str(d).strip() for d in project.get("details") or []))
+        ]
+        if projects:
+            data["projects"] = projects
+        else:
+            data.pop("projects", None)
     return json.dumps(data, ensure_ascii=False)
 
 

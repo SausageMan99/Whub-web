@@ -114,12 +114,15 @@ def test_coverage_still_excludes_real_email_addresses():
 
 
 def test_first_version_keeps_source_projects_without_formation_text():
+    # Lot 2 (2026-11): the source projects the model left out go to `projects`,
+    # no longer into a "Projets" skill category.
     data = _build(MODEL_SKILLS_WITHOUT_PROJECTS, [])
 
-    items = _items(data)
-    assert "plateforme Th@Bot" in items
-    assert "API REST Node.js" in items
-    assert not any("Licence" in item or "Université" in item for item in items)
+    project_details = [detail for project in data.get("projects") or [] for detail in project["details"]]
+    assert "plateforme Th@Bot" in project_details
+    assert "API REST Node.js" in project_details
+    assert "Projets" not in [skill["category"] for skill in data["skills"]]
+    assert not any("Licence" in text or "Université" in text for text in project_details + _items(data))
     assert REVISION_REMOVED_SOURCE_FACTS_KEY not in data
 
 
@@ -144,13 +147,17 @@ def test_skills_revision_still_drops_items_absent_from_the_source():
     assert "Databricks" not in _items(data)
 
 
-def test_skill_item_carrying_a_formation_is_a_fidelity_warning():
+def test_skill_item_carrying_a_formation_is_taken_out_of_the_skills_and_logged():
+    # Lot 2 (2026-11): the skills cleanup removes the leaked formation text
+    # from the skills (the formation is already in `formations`) and logs it,
+    # instead of shipping it with a warning.
     leaked = [*MODEL_SKILLS_WITHOUT_PROJECTS, {"category": "Projets", "items": ["API REST Node.js 2014 Licence Informatique Université Paris Cité"]}]
 
     data = _build(leaked, [])
 
-    codes = [warning["code"] for warning in data.get("_fidelity_soft_warnings") or []]
-    assert "skill_item_contains_formation" in codes
+    assert not any("Licence" in item or "Université" in item for item in _items(data))
+    logged = [entry for entry in data["_skills_cleanup"] if "Licence Informatique" in entry["item"]]
+    assert logged and logged[0]["action"] in {"formation_deja_presente", "deplace_vers_formations"}
 
 
 def _pdf_text(lines: list[str], tmp_path) -> str:

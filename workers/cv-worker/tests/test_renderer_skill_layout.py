@@ -33,7 +33,7 @@ def test_dense_skill_items_are_split_without_dropping_source_terms():
     assert sum(len(category["items"]) for category in chunks) > 1
 
 
-def test_long_skill_category_is_chunked_as_explicit_suite_without_mutating_source_order():
+def test_long_skill_category_stays_one_block_without_mutating_source_order():
     source_items = [
         "Python", "FastAPI", "Django", "Flask", "SQLAlchemy", "Pandas", "NumPy", "PyTest",
         "React", "Next.js", "Vue.js", "TypeScript", "Tailwind", "Node.js", "Express", "NestJS",
@@ -46,11 +46,8 @@ def test_long_skill_category_is_chunked_as_explicit_suite_without_mutating_sourc
 
     flattened = [item for category in chunks for item in category["items"]]
     assert flattened == source_items
-    assert [category["category"] for category in chunks] == [
-        "Compétences",
-        "Compétences (suite)",
-        "Compétences (suite)",
-    ]
+    # Lot 2 (2026-11): a category is one block; no repeated "(suite)" titles.
+    assert [category["category"] for category in chunks] == ["Compétences"]
     assert all(len(category["items"]) <= renderer.DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK for category in chunks)
 
 

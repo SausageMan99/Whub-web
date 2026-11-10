@@ -232,8 +232,12 @@ FIRST_PAGE_MIN_FILL_WHEN_BALANCING = 0.85
 # Logo of every page (Renderer.brand): x 424-545, y 43-88.
 LOGO_LEFT = 424
 LOGO_BAND_BOTTOM = 92
-DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK = 8
-DEFAULT_MAX_SKILL_BLOCK_CHARS = 470
+# Lot 2 (2026-11): a category is drawn as one block under one title. Chunks
+# of 8 items each labelled "X (suite)" printed "Autres (suite)" up to 13 times
+# on page 1. Only a category taller than the room left in its column is
+# continued (split_skill_columns_for_page), once.
+DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK = 1000
+DEFAULT_MAX_SKILL_BLOCK_CHARS = 100000
 
 
 def _compact_skill_chunk(parts: list[str], max_chars: int) -> list[str]:
@@ -892,7 +896,50 @@ class Renderer:
 
         for idx, exp in enumerate(exps):
             self.render_experience(exp, index=idx, total=len(exps))
+        self.render_projects(data.get('projects') or [])
         self.c.save()
+
+    def render_projects(self, projects):
+        """"Projets & réalisations" (projects outside any experience), after the
+        experiences, in the experiences' style: optional date in purple, name in
+        bold, details as bullets. Projects without name or date are grouped in
+        one bullet list."""
+        named, loose = [], []
+        for project in projects or []:
+            if not isinstance(project, dict):
+                continue
+            details = [str(d).strip() for d in project.get('details') or [] if str(d).strip()]
+            name = str(project.get('name') or '').strip()
+            date = str(project.get('date') or '').strip()
+            if name or date:
+                named.append({'date': date, 'role': name, 'company_highlight': '',
+                              'sections': [{'heading': '', 'content': details}] if details else []})
+            else:
+                loose.extend(details)
+        blocks = list(named)
+        if loose:
+            blocks.append({'date': '', 'role': '', 'company_highlight': '', 'sections': [{'heading': '', 'content': loose}]})
+        if not blocks:
+            return
+        title_h = 31
+        if not self._at_page_top():
+            room = self._flow_bottom() - self.y - title_h
+            lines, total = self.experience_lines_here(blocks[0], room)
+            if room <= 0 or lines < min(self.min_experience_opener_lines, total):
+                self._continue_on_new_page()
+        self.section_at('Projets & réalisations', self.fx, self.y, self.fw, 13.6)
+        self._mark_flow_bottom(self.y + 6)
+        self.y += title_h
+        for index, block in enumerate(blocks):
+            if index and not self.experience_opener_fits(block) and not self._at_page_top():
+                self._continue_on_new_page()
+            if block['date']:
+                self.drawp(html(block['date']), self.date)
+            if block['role']:
+                self.drawp(html(block['role']), self.role)
+            for sec in block['sections']:
+                self.render_section(sec)
+            self.y += 13
 
     def role_html(self, exp):
         role = exp.get('role', '')
