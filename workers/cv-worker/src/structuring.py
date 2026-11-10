@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .config import settings
 from .llm_backend import openrouter_runner
-from .source_sanitizer import is_dotnet_technical_token as _is_dotnet_technical_false_positive
+from .source_sanitizer import is_technical_domain_like_token as _is_dotnet_technical_false_positive
 from .revisions import requests_skills_revision
 from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
 from .skills_cleanup import clean_skills_section, is_certification_item, parse_languages, skill_key

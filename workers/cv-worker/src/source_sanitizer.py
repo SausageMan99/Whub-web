@@ -54,10 +54,21 @@ CONTACT_LABEL_PREFIX_RE = re.compile(
     re.I,
 )
 
+# ATS / job-board export phrases: noise wherever they appear on a line.
 HELLOWORK_LINE_RE = re.compile(
-    r"\b(?:cv\s+t[ée]l[ée]charg[ée]|t[ée]l[ée]charg[ée]\s+depuis|profil\s+consult[ée]|voir\s+le\s+profil|mettre\s+[àa]\s+jour\s+mon\s+cv|candidature|disponibilit[ée]|dispo\s*:|tjm|salaire\s+souhait[ée]|pr[ée]tentions?|pr[ée]tention\s+salariale|permis|mobilit[ée]|type\s+de\s+contrat|contrat\s+souhait[ée]|m[ée]tier\s+recherch[ée]|poste\s+recherch[ée]|d[ée]but|pr[ée]avis)\b",
+    r"\b(?:cv\s+t[ée]l[ée]charg[ée]|t[ée]l[ée]charg[ée]\s+depuis|profil\s+consult[ée]|voir\s+le\s+profil|mettre\s+[àa]\s+jour\s+mon\s+cv|salaire\s+souhait[ée]|pr[ée]tention\s+salariale|type\s+de\s+contrat|contrat\s+souhait[ée]|m[ée]tier\s+recherch[ée]|poste\s+recherch[ée])\b",
     re.I,
 )
+# Single words that are ATS metadata only as a label opening the line
+# ("Disponibilité : ASAP", "Permis B", "Mobilité internationale", "TJM 500 €").
+# Inside a sentence they are CV content: "haute disponibilité", or a wrapped
+# line "disponibilité" that ends "temps de réponse, erreurs et" (lot 3:
+# the whole line used to be dropped, cutting the bullet).
+ATS_LABEL_START_RE = re.compile(
+    r"^(?:disponibilit[ée]|dispo|tjm|pr[ée]tentions?|permis|mobilit[ée]|d[ée]but|pr[ée]avis|candidature)\b",
+    re.I,
+)
+ATS_LABEL_MAX_WORDS = 5
 HELLOWORK_WORD_RE = re.compile(r"\bhellowork\b", re.I)
 
 POSTAL_CITY_RE = re.compile(r"\b\d{5}\s+[A-ZÀ-ÖØ-Þa-zà-öø-ÿ][A-ZÀ-ÖØ-Þa-zà-öø-ÿ' -]{2,}\b")
@@ -170,6 +181,12 @@ def _is_hellowork_or_ats_line(line: str) -> bool:
     # business content; remove it only when paired with known export/ATS noise.
     if HELLOWORK_LINE_RE.search(line):
         return True
+    label = _strip_leading_contact_icon(line)
+    if ATS_LABEL_START_RE.match(label) and label[:1].isupper():
+        words = label.split()
+        head = " ".join(words[:4])
+        if ":" in head or len(words) <= ATS_LABEL_MAX_WORDS:
+            return True
     folded = line.casefold()
     if HELLOWORK_WORD_RE.search(line) and any(token in folded for token in ("cv", "profil", "candidat", "télécharg", "telecharg")):
         return True
@@ -226,6 +243,35 @@ def is_dotnet_technical_token(value: str) -> bool:
     return label.casefold() in tech_labels
 
 
+# Products, tools and companies whose name is a domain: CV content, not a
+# candidate contact surface. "diagrams in draw.io" lost "draw.io" (lot 3,
+# 1a25452c printed "(architecture diagrams in )").
+KNOWN_PRODUCT_DOMAINS = frozenset({
+    "draw.io", "socket.io", "dev.to", "deno.land", "render.com", "fly.io", "glitch.com",
+    "monday.com", "salesforce.com", "booking.com", "amazon.com", "amazon.fr", "cdiscount.com",
+    "leboncoin.fr", "seloger.com", "meetic.fr", "doctolib.fr", "voyages-sncf.com", "sncf.com",
+    "oui.sncf", "vente-privee.com", "veepee.com", "rueducommerce.fr", "pagesjaunes.fr",
+    "lemonde.fr", "service-public.fr", "impots.gouv.fr", "ameli.fr", "pole-emploi.fr",
+    "francetravail.fr", "lesbonscoins.fr", "boursorama.com", "materiel.net", "ldlc.com",
+    "auth0.com", "segment.io", "mux.com", "readthedocs.io", "netlify.app", "vercel.app",
+    "huggingface.co", "lucid.app", "miro.com", "excalidraw.com",
+    "app.diagrams.net", "diagrams.net", "lucidchart.com", "chart.js", "chat.openai.com",
+})
+
+
+def is_known_product_domain(value: str) -> bool:
+    """True for a bare product/company domain name ("draw.io", "Booking.com")."""
+    token = (value or "").strip().strip(".,;:()[]{}").casefold()
+    if not token or "://" in token or token.startswith("www.") or "/" in token:
+        return False
+    return token in KNOWN_PRODUCT_DOMAINS
+
+
+def is_technical_domain_like_token(value: str) -> bool:
+    """Domain-looking token that is stack or company content (.NET, draw.io)."""
+    return is_dotnet_technical_token(value) or is_known_product_domain(value)
+
+
 def _strip_leading_contact_icon(line: str) -> str:
     """Drop decorative PDF icon glyphs before address detection.
 
@@ -244,7 +290,7 @@ def _sanitize_inline_contacts(line: str) -> tuple[str, dict[str, int]]:
     cleaned, counts["linkedin"] = LINKEDIN_RE.subn("", cleaned)
     cleaned, counts["github"] = GITHUB_PROFILE_RE.subn("", cleaned)
     def _drop_url(match: re.Match[str]) -> str:
-        if is_dotnet_technical_token(match.group(0)):
+        if is_technical_domain_like_token(match.group(0)):
             return match.group(0)
         counts["url"] += 1
         return ""

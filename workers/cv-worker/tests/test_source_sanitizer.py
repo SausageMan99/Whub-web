@@ -561,3 +561,37 @@ def test_real_domains_are_still_removed():
     assert "jean-dupont.dev" not in result.text
     assert "jeandupont.net" not in result.text
     assert result.report.removed_url_count == 2
+
+
+# Lot 3 (2026-11): content lost by the sanitizer before the model saw it.
+
+def test_wrapped_line_starting_with_ats_word_is_kept():
+    """« Superviser les APIs : temps de réponse, erreurs et » + « disponibilité »
+    on the next line: the second line is the end of the bullet, not ATS data."""
+    raw = f"{BUSINESS_CONTENT}\nSuperviser les APIs : temps de réponse, erreurs et\ndisponibilité\nAnalyser les incidents\n"
+
+    result = _sanitize(raw)
+
+    assert "disponibilité" in result.text.splitlines()
+    assert "Superviser les APIs : temps de réponse, erreurs et" in result.text
+    assert result.report.removed_hellowork_line_count == 0
+
+
+@pytest.mark.parametrize("line", [
+    "Garantir la haute disponibilité des services de paiement",
+    "Début du projet de migration vers le cloud avec les équipes métier et infrastructure",
+    "Gestion de la mobilité interne des collaborateurs dans le SIRH",
+])
+def test_sentence_containing_ats_word_is_kept(line):
+    result = _sanitize(f"{BUSINESS_CONTENT}\n{line}\n")
+
+    assert line in result.text.splitlines()
+
+
+@pytest.mark.parametrize("token", ["draw.io", "Draw.io", "socket.io", "Booking.com"])
+def test_product_names_that_look_like_domains_are_kept(token):
+    line = f"Architecture technique (HLD, LLD, diagrams in {token}) et revues de code"
+    result = _sanitize(f"{BUSINESS_CONTENT}\n{line}\n")
+
+    assert line in result.text.splitlines()
+    assert result.report.removed_url_count == 0
