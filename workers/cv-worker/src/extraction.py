@@ -5,6 +5,12 @@ import os
 import re
 import fitz
 from .text_readability import READABILITY_OCR_THRESHOLD, text_readability
+from .text_repair import (
+    repair_broken_ligatures,
+    repair_detached_capitals,
+    repair_missing_space_after_punctuation,
+    text_vocabulary,
+)
 from .config import settings
 from .supabase_client import client
 
@@ -31,12 +37,17 @@ def _sort_blocks(blocks: list[_TextBlock]) -> list[_TextBlock]:
     return sorted(blocks, key=lambda block: (round(block.y0, 1), round(block.x0, 1)))
 
 
-def _page_text_visual_order(page, textpage=None) -> str:
+def _block_box(x0, y0, x1, y1) -> tuple[int, int, int, int]:
+    return (round(float(x0)), round(float(y0)), round(float(x1)), round(float(y1)))
+
+
+def _page_text_visual_order(page, textpage=None, skip_boxes=None) -> str:
     """Extract page text in reading order.
 
     Normal PDFs are sorted top-to-bottom. Sidebar layouts are emitted as
     header/main column first, sidebar second, so skills do not get injected into
-    experience bodies.
+    experience bodies. Blocks whose box is in `skip_boxes` (page furniture,
+    see find_page_furniture) are left out.
     """
     raw_blocks = page.get_text("blocks", textpage=textpage) if textpage is not None else page.get_text("blocks")
     blocks: list[_TextBlock] = []
@@ -44,6 +55,8 @@ def _page_text_visual_order(page, textpage=None) -> str:
         if len(raw) < 5:
             continue
         x0, y0, x1, y1, text = raw[:5]
+        if skip_boxes and _block_box(x0, y0, x1, y1) in skip_boxes:
+            continue
         normalized = str(text or "").strip()
         if normalized:
             blocks.append(_TextBlock(float(x0), float(y0), float(x1), float(y1), normalized))
@@ -64,6 +77,71 @@ def _page_text_visual_order(page, textpage=None) -> str:
     else:
         ordered = _sort_blocks(blocks)
     return "\n".join(block.text for block in ordered)
+
+
+# Page furniture (lot 5, 2026-11): running headers and footers of the
+# source CV ("<Prénom NOM> · <titre>", "Page 2 / 4", "D O S S I E R  D E
+# C O M P É T E N C E S") were read as content and copied into experiences
+# and skills. A block lying in the top or bottom band of the page whose text
+# (digits ignored) comes back on two pages or more is furniture; so is a
+# block made of page numbers only. The page-1 header is kept: it carries the
+# name and title the model needs.
+_FURNITURE_BAND_RATIO = 0.12
+_PAGE_NUMBER_LINE_RE = re.compile(
+    r"^(?:page\s*)?\d{1,3}\s*(?:/|sur|of|·|-)\s*\d{1,3}$|^page\s+\d{1,3}$", re.IGNORECASE
+)
+
+
+def _furniture_key(text: str) -> str:
+    return re.sub(r"\d+", "#", " ".join(str(text or "").split())).casefold()
+
+
+def find_page_furniture(doc) -> tuple[dict[int, set[tuple[int, int, int, int]]], list[str]]:
+    """({page index: boxes of furniture blocks}, distinct furniture texts)."""
+    band_blocks: list[tuple[int, str, tuple[int, int, int, int], str, str]] = []
+    pages_by_key: dict[str, set[int]] = {}
+    for index, page in enumerate(doc):
+        height = float(getattr(getattr(page, "rect", None), "height", 0.0) or 0.0)
+        if height <= 0:
+            continue
+        for raw in page.get_text("blocks"):
+            if len(raw) < 5:
+                continue
+            x0, y0, x1, y1, text = raw[:5]
+            text = str(text or "").strip()
+            if not text:
+                continue
+            if float(y1) <= height * _FURNITURE_BAND_RATIO:
+                band = "top"
+            elif float(y0) >= height * (1 - _FURNITURE_BAND_RATIO):
+                band = "bottom"
+            else:
+                continue
+            key = _furniture_key(text)
+            band_blocks.append((index, band, _block_box(x0, y0, x1, y1), key, text))
+            pages_by_key.setdefault(key, set()).add(index)
+    skip: dict[int, set[tuple[int, int, int, int]]] = {}
+    texts: list[str] = []
+    for index, band, box, key, text in band_blocks:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        page_numbers_only = bool(lines) and all(_PAGE_NUMBER_LINE_RE.match(line) for line in lines)
+        repeated = len(pages_by_key.get(key, ())) >= 2
+        if page_numbers_only or (repeated and not (index == 0 and band == "top")):
+            skip.setdefault(index, set()).add(box)
+            for line in lines:
+                if not _PAGE_NUMBER_LINE_RE.match(line) and line not in texts:
+                    texts.append(line)
+    return skip, texts
+
+
+def detect_page_furniture(path: Path) -> list[str]:
+    """Lines of the running headers/footers of a source PDF (best effort)."""
+    try:
+        doc = fitz.open(str(path))
+        return find_page_furniture(doc)[1]
+    except Exception as exc:  # noqa: BLE001 - informative only
+        log.warning("page furniture detection failed: %s", type(exc).__name__)
+        return []
 
 
 def download_source(job: dict, workdir: Path) -> Path:
@@ -148,8 +226,19 @@ def _strip_control_chars(text: str) -> str:
     return _CONTROL_CHAR_RE.sub(" ", text or "")
 
 
+def _repair_typography(text: str) -> str:
+    """Lost ligatures ("di érents"), detached capitals ("L ead"), missing
+    space after a full stop ("métiers.Cette"): see src/text_repair.py."""
+    text, _ = repair_broken_ligatures(text)
+    text, _ = repair_detached_capitals(text, text_vocabulary([text]))
+    text, _ = repair_missing_space_after_punctuation(text)
+    return text
+
+
 def _clean_extracted_text(raw: str) -> str:
-    return _strip_pdf_footer_lines(_normalize_symbol_font_bullets(_strip_control_chars(_normalize_pdf_text_chars(raw))))
+    return _repair_typography(
+        _strip_pdf_footer_lines(_normalize_symbol_font_bullets(_strip_control_chars(_normalize_pdf_text_chars(raw))))
+    )
 
 
 def _ocr_pdf_text(doc) -> str:
@@ -163,7 +252,15 @@ def _ocr_pdf_text(doc) -> str:
 
 def extract_pdf_text(path: Path) -> str:
     doc = fitz.open(str(path))
-    text = _clean_extracted_text("\n".join(_page_text_visual_order(page) for page in doc))
+    try:
+        furniture, _ = find_page_furniture(doc)
+    except Exception as exc:  # noqa: BLE001 - never block extraction on this
+        log.warning("page furniture detection failed: %s", type(exc).__name__)
+        furniture = {}
+    text = _clean_extracted_text("\n".join(
+        _page_text_visual_order(page, skip_boxes=furniture[index]) if furniture.get(index) else _page_text_visual_order(page)
+        for index, page in enumerate(doc)
+    ))
     native_readability = text_readability(text)
     if len(text.strip()) < 400 or native_readability < READABILITY_OCR_THRESHOLD:
         # Scanned PDFs or broken font maps: the text layer is missing or
