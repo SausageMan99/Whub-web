@@ -88,7 +88,7 @@ def _clean_text(text: str) -> str:
 _MONTHS = r"(?:janv(?:ier)?|f[ée]v(?:rier)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|ao[ûu]t|sept?(?:embre)?|oct(?:obre)?|nov(?:embre)?|d[ée]c(?:embre)?|january|february|march|april|may|june|july|august|september|october|november|december)\.?"
 _DATE_RE = re.compile(
     rf"\b{_MONTHS}\s*[-/ ]?\s*(?:19|20)\d{{2}}\b"            # Juin 2022, juin-2022
-    r"|\b(?:0?[1-9]|1[0-2])\s*/\s*(?:19|20)\d{2}\b"            # 01/2022
+    r"|\b(?:0?[1-9]|1[0-2])\s*[/.]\s*(?:19|20)\d{2}\b"          # 01/2022, 04.2021
     r"|\bdepuis\s+(?:19|20)\d{2}\b"
     r"|\b(?:19|20)\d{2}\s*[-–—/àa]+\s*(?:aujourd|pr[ée]sent|present|ce jour)",
     re.I,
@@ -831,6 +831,8 @@ def clean_skills_section(
                 note("fragment_de_mission_supprime", item, category, "experiences")
                 continue
             lowercase_fragment = bool(re.match(r"^[a-zà-ÿ]", item)) and not from_source_skills and (
+                _word_count(item) >= 2 or _looks_like_common_word(item)
+            ) and (
                 _in_text(item, exp_text) or (_word_count(item) >= 3 and _coverage(item, exp_text) >= 0.8)
             )
             mission_like = (
@@ -846,11 +848,24 @@ def clean_skills_section(
                     note("texte_de_mission_supprime", original, category, "experiences")
                     salvaged.extend((category, value) for value in _labelled_skill_values(original))
                     continue
-                others = " ".join(other for other in all_items_text if other is not raw_item)
+                # Redondant = couvert par les expériences, la formation ou d'autres
+                # compétences courtes (pas par d'autres phrases, retirées elles aussi).
+                others = " ".join(
+                    other for other in all_items_text
+                    if other is not raw_item and not is_phrase(other) and not has_mission_date(other)
+                )
                 if is_phrase(item) and _coverage(item, exp_text + " " + formation_text + " " + _fold(others)) >= 0.85:
                     note("phrase_redondante_supprimee", original, category)
                     salvaged.extend((category, value) for value in _labelled_skill_values(original))
                     continue
+                if has_mission_date(original):
+                    # « 05.2024 - 07.2025 », « AWS 04.2021 - 12.2022 Développeur sénior PHP » :
+                    # en-tête de mission (dates + intitulé), pas un fait à garder.
+                    undated = _YEAR_RANGE_RE.sub(" ", _DATE_RE.sub(" ", original))
+                    undated = re.sub(r"\b(?:0?[1-9]|1[0-2])[./](?:19|20)\d{2}\b|\b(?:19|20)\d{2}\b", " ", undated)
+                    if _word_count(undated) < 3 or _coverage(undated, exp_text) >= 0.6:
+                        note("texte_de_mission_supprime", original, category, "experiences")
+                        continue
                 if (category_is_project and _word_count(item) >= 5) or has_mission_date(original):
                     projects.append({"name": "", "date": "", "details": [original]})
                     exp_text += " " + _fold(original)
