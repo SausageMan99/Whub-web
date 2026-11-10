@@ -248,6 +248,22 @@ class TestCleanupDetails:
         assert cleaned["certifications"] == ["AZ-900 Microsoft Azure Fundamentals"]
         assert _items(cleaned) == ["Azure"]
 
+    def test_languages_glued_with_the_source_page_header_are_split(self):
+        # Cas « 48779cc0 » : trois langues et le pied de page du CV source dans un seul niveau.
+        data = {"name": "LINA", "skills": [], "experiences": [], "languages": [{
+            "name": "Français",
+            "level": "langue maternelle Arabe: langue maternelle Anglais: professionnel Lina · Ingénieur QA Page 4 / 4",
+        }]}
+
+        cleaned = clean_skills_section(data)
+
+        assert cleaned["languages"] == [
+            {"name": "Français", "level": "langue maternelle"},
+            {"name": "Arabe", "level": "langue maternelle"},
+            {"name": "Anglais", "level": "professionnel"},
+        ]
+        assert "langue_redecoupee" in _actions(cleaned)
+
     def test_soft_skills_kept_when_a_skills_revision_asked_for_them(self):
         data = {"skills": [{"category": "Compétences clés", "items": ["Leadership", "Java"]}], "experiences": []}
 
@@ -448,6 +464,20 @@ class TestRenderingAndQa:
             assert fact in text
         issues = find_pdf_source_fidelity_issues(text, structured_data=data)
         assert not [issue for issue in issues if issue["code"] == "json_fact_missing_from_pdf"]
+
+    def test_no_empty_skills_title_when_nothing_is_left(self, tmp_path):
+        spec = importlib.util.spec_from_file_location("whub_cv_renderer_empty", RENDERER_PATH)
+        renderer = importlib.util.module_from_spec(spec)
+        assert spec.loader
+        spec.loader.exec_module(renderer)
+        renderer.prep_assets()
+        renderer.register_fonts(renderer.ensure_poppins())
+        out = tmp_path / "cv.pdf"
+        renderer.render_document(str(out), _model(skills=[]))
+
+        text = fitz.open(str(out))[0].get_text()
+        assert "C O M P É T E N C E S" not in text
+        assert "X P É R I E N C E S" in text
 
     def test_qa_counts_logged_removals_as_accounted_for(self):
         source = "Compétences\nJava\nAutonomie\nEXPÉRIENCES\n"

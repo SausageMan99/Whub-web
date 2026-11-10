@@ -860,7 +860,6 @@ class Renderer:
             skill_top = self.para_at(desc, lx, skill_top - 2.0, lw, self.desc) + 35
 
         # Skills
-        self.section_at('Compétences techniques', lx, skill_top, lw, 14)
         sx1, sx2 = lx, lx + 174
         sw1, sw2 = 156, 152
         y1 = y2 = skill_top + 25
@@ -870,11 +869,18 @@ class Renderer:
             max_items_per_block=int(self.layout_options.get('max_skill_items_per_block', DEFAULT_MAX_SKILL_ITEMS_PER_BLOCK)),
             max_block_chars=int(self.layout_options.get('max_skill_block_chars', DEFAULT_MAX_SKILL_BLOCK_CHARS)),
         )
-        fitted_skills, skill_overflow = self.split_skill_columns_for_page(skills, y1, self.content_bottom - 12)
-        y1 = self.draw_skill_column(fitted_skills[0], sx1, y1, sw1)
-        y2 = self.draw_skill_column(fitted_skills[1], sx2, y2, sw2)
-
-        exp_y = max(y1, y2) + 20
+        has_skills = any(cat.get('items') for cat in skills if isinstance(cat, dict))
+        if has_skills:
+            self.section_at('Compétences techniques', lx, skill_top, lw, 14)
+            fitted_skills, skill_overflow = self.split_skill_columns_for_page(skills, y1, self.content_bottom - 12)
+            y1 = self.draw_skill_column(fitted_skills[0], sx1, y1, sw1)
+            y2 = self.draw_skill_column(fitted_skills[1], sx2, y2, sw2)
+            exp_y = max(y1, y2) + 20
+        else:
+            # Nothing left once the skills are cleaned (lot 2): no empty
+            # "Compétences techniques" title, the experiences start here.
+            skill_overflow = []
+            exp_y = skill_top
         if skill_overflow:
             self.render_skill_overflow(skill_overflow)
             exp_y = self.y + 18

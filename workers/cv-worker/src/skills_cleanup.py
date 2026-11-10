@@ -489,10 +489,11 @@ def _labelled_skill_values(text: str) -> list[str]:
     mission : ce sont des compétences du CV, à garder quand le texte part."""
     values: list[str] = []
     for match in _LABELLED_SKILL_LIST_RE.finditer(text or ""):
-        for value in _split_top_level(match.group(1), r","):
-            value = repair_parentheses(_clean_text(value))
-            if value and _word_count(value) <= 4 and not has_mission_date(value) and not _is_city_fragment(value):
-                values.append(value)
+        for raw_value in _split_top_level(match.group(1), r","):
+            for value in _split_uppercase_labels(raw_value) or []:
+                value = repair_parentheses(_clean_text(value))
+                if value and _word_count(value) <= 4 and not has_mission_date(value) and not _is_city_fragment(value):
+                    values.append(value)
     return values
 
 
@@ -674,7 +675,8 @@ def clean_skills_section(
                     note("phrase_redecoupee", part, category, " | ".join(sentences)[:200])
                     part = sentences[0] if len(sentences) == 1 else part
                     if len(sentences) > 1:
-                        pieces.extend(sentences)
+                        for sentence in sentences:
+                            pieces.extend(_split_uppercase_labels(sentence) or [])
                         continue
                 labelled = _split_uppercase_labels(part)
                 if labelled != [part]:
@@ -735,7 +737,10 @@ def clean_skills_section(
                 rest = label_match.group(2).strip()
                 if skill_key(label) in source_labels and not is_phrase(rest):
                     # « Gestion de projet : Azure Devops/Jira » : catégorie du CV d'origine.
-                    values = [v for part in _split_top_level(rest, r",|;") for v in _split_slash_list(part)]
+                    values = [
+                        v for part in _split_top_level(rest, r",|;")
+                        for piece in _split_uppercase_labels(part) for v in _split_slash_list(piece)
+                    ]
                     relabelled.append((source_labels[skill_key(label)], values))
                     note("reclasse_categorie_source", item, category, source_labels[skill_key(label)])
                     continue
@@ -886,13 +891,17 @@ def clean_skills_section(
     existing = {skill_key(c): i for i, (c, _) in enumerate(kept)}
     regrouped: list[tuple[str, list[str]]] = [(c, list(items)) for c, items in kept]
 
-    def add_to(category: str, item: str) -> None:
+    def resolve(category: str, pool: list[tuple[str, list[str]]]) -> str:
         # « Langages » rejoint « Langages & Frameworks », « Data & IA » rejoint « Data & BI »…
         head = _fold(category).split(" ")[0] if _fold(category) else ""
-        if skill_key(category) not in existing and head:
-            similar = next((c for c, _ in regrouped if _fold(c).split(" ")[0] == head), None)
+        if head and not any(skill_key(c) == skill_key(category) for c, _ in pool):
+            similar = next((c for c, _ in pool if _fold(c).split(" ")[0] == head), None)
             if similar:
-                category = similar
+                return similar
+        return category
+
+    def add_to(category: str, item: str) -> None:
+        category = resolve(category, regrouped)
         key = skill_key(category)
         if key not in existing:
             existing[key] = len(regrouped)
@@ -911,6 +920,7 @@ def clean_skills_section(
                 note("reclasse_categorie_source", item, category, target)
                 continue
             family = _family_for(item)
+            family = resolve(family, regrouped) if family else None
             if family and skill_key(family) in existing and skill_key(family) != skill_key(category):
                 add_to(family, item)
                 note("reclasse_categorie_existante", item, category, family)
@@ -947,6 +957,7 @@ def clean_skills_section(
         rest: list[str] = []
         for item in items:
             family = _family_for(item)
+            family = resolve(family, regrouped) if family else None
             if family and skill_key(family) != skill_key(category):
                 by_family.setdefault(family, []).append(item)
             else:
@@ -1009,6 +1020,39 @@ def clean_skills_section(
             merged[target][1].append(item)
             note("categorie_regroupee", item, category, merged[target][0])
     merged.sort(key=lambda entry: skill_key(entry[0]) in {"autres", "divers"})
+
+    # Langues : « Français — langue maternelle Arabe: langue maternelle Anglais:
+    # professionnel <en-tête> Page 4 / 4 » -> une entrée par langue, sans
+    # l'en-tête de page du CV source recopié.
+    normalized_languages: list = []
+    seen_languages: set[str] = set()
+    for language in languages:
+        if not isinstance(language, dict):
+            normalized_languages.append(language)
+            continue
+        name = str(language.get("name") or "")
+        level = str(language.get("level") or "")
+        combined = f"{name} {level}".strip()
+        if len(_LANGUAGE_NAME_RE.findall(combined)) > 1 or re.search(r"(?i)\bpage\s+\d+\s*(?:/|sur|of)\s*\d+|\s·\s", level):
+            parsed = parse_languages(combined)
+            for entry in parsed:
+                level_text = re.split(r"\s·\s|\b[Pp]age\s+\d", entry["level"])[0]
+                first_name = str(out.get("name") or "").strip()
+                if len(first_name) >= 2:
+                    level_text = re.sub(rf"(?i)\b{re.escape(first_name)}\b", " ", level_text)
+                entry["level"] = re.sub(r"\s+", " ", level_text).strip(" :-–—,;")
+            if parsed:
+                note("langue_redecoupee", combined, "languages", " | ".join(f"{e['name']} {e['level']}".strip() for e in parsed))
+                for entry in parsed:
+                    if _fold(entry["name"]) not in seen_languages:
+                        seen_languages.add(_fold(entry["name"]))
+                        normalized_languages.append(entry if entry["level"] else {"name": entry["name"]})
+                continue
+        if _fold(name) in seen_languages:
+            continue
+        seen_languages.add(_fold(name))
+        normalized_languages.append(language)
+    languages = normalized_languages
 
     # Certifications : « PSPO I, Lean Six Sigma » quand les deux existent déjà.
     deduped_certs: list[str] = []
