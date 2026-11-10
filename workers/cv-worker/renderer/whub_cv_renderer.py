@@ -229,6 +229,16 @@ LAST_PAGE_TARGET_FILL = 0.42
 PENULTIMATE_MIN_FILL = 0.65
 # Page 1 is what the client sees first: it gives up a few lines at most.
 FIRST_PAGE_MIN_FILL_WHEN_BALANCING = 0.85
+# "Formation & Diplômes" column of page 1 (lot 3): it starts under its
+# title and stops above the page bottom; what does not fit continues full
+# width after the experiences (Renderer.plan_sidebar).
+SIDEBAR_X = 431.6
+SIDEBAR_WIDTH = 138
+SIDEBAR_TOP = 270.0
+SIDEBAR_BOTTOM_MARGIN = 2.0
+# Room above a section title opened in the flow (projects, sidebar
+# continuation): its capitals sit above the y it is drawn at.
+SECTION_TITLE_LEAD = 14.0
 # Logo of every page (Renderer.brand): x 424-545, y 43-88.
 LOGO_LEFT = 424
 LOGO_BAND_BOTTOM = 92
@@ -354,6 +364,7 @@ class Renderer:
         # page number -> bottom of the flow text drawn on that page.
         self.page_flow_bottoms: dict[int, float] = {}
         self.page_start_y = 55
+        self.sidebar_overflow = []
         self.left = 59.5
         self.right = 535.8
         self.bottom = 36
@@ -801,54 +812,16 @@ class Renderer:
         # Right column: "Formation & Diplômes" sidebar.
         # Regroups Formations (academic diplomas), Certifications and Spoken Languages
         # into a single client-facing column on the right of the first page.
-        rx, rw, y = 431.6, 138, 211.4
+        rx, rw, y = SIDEBAR_X, SIDEBAR_WIDTH, 211.4
         # The two-line header uses a slightly smaller size than the original 15pt to keep
         # the spaced "FORMATION &" label within the readable column width (right=571.28).
         self.text(spaced('Formation &'), 436.7, y, 'Poppins-SemiBold', 13, TITLE)
         self.text(spaced('Diplômes'), 452.3, y + 20.2, 'Poppins-SemiBold', 15, TITLE)
         self.line(436.7, y + 45, 562, y + 45, TITLE, .55)
-        y = 270
-        formations = data.get('formations') or []
-        for f in formations:
-            y = self.para_at(f.get('date', ''), rx, y, rw, ParagraphStyle('rdate', parent=self.side_b, textColor=PURPLE))
-            y = self.para_at(f.get('degree', ''), rx, y, rw, self.side_b)
-            y = self.para_at(f.get('school', ''), rx, y, rw, self.side)
-            y += 12
-
-        # Certifications sub-section: only when the LLM/source actually surfaced some.
-        certifications = data.get('certifications') or []
-        if certifications:
-            y += 6
-            y = self.para_at('Certifications', rx, y, rw, ParagraphStyle('rsub', parent=self.side_b, textColor=PURPLE))
-            for cert in certifications:
-                cert_text = str(cert).strip() if not isinstance(cert, dict) else str(cert.get('name') or '').strip()
-                if not cert_text:
-                    continue
-                # Each certification = one short bullet in the sidebar.
-                y = self.para_at('• ' + cert_text, rx, y, rw, self.side) + 1
-            y += 8
-
-        # Spoken languages sub-section: only the languages the candidate speaks/writes.
-        # `languages` is a list of {name, level} dicts; legacy support: list of strings.
-        languages = data.get('languages') or []
-        if languages:
-            y += 6
-            y = self.para_at('Langues', rx, y, rw, ParagraphStyle('rsub', parent=self.side_b, textColor=PURPLE))
-            for lang in languages:
-                if isinstance(lang, dict):
-                    name = str(lang.get('name') or '').strip()
-                    level = str(lang.get('level') or '').strip()
-                else:
-                    name = str(lang).strip()
-                    level = ''
-                if not name:
-                    continue
-                if level:
-                    line = f"• {name} — {level}"
-                else:
-                    line = f"• {name}"
-                y = self.para_at(line, rx, y, rw, self.side) + 1
-            y += 4
+        kept, self.sidebar_overflow = self.plan_sidebar(data, SIDEBAR_TOP, self.content_bottom - SIDEBAR_BOTTOM_MARGIN)
+        y = SIDEBAR_TOP
+        for group in kept:
+            y = self.draw_sidebar_group(group, rx, y, rw)
 
         # Optional profile/description block between the headline title and skills.
         lx, lw = 59.5, 328
@@ -903,6 +876,7 @@ class Renderer:
         for idx, exp in enumerate(exps):
             self.render_experience(exp, index=idx, total=len(exps))
         self.render_projects(data.get('projects') or [])
+        self.render_sidebar_overflow(self.sidebar_overflow)
         self.c.save()
 
     def render_projects(self, projects):
@@ -929,10 +903,12 @@ class Renderer:
             return
         title_h = 31
         if not self._at_page_top():
-            room = self._flow_bottom() - self.y - title_h
+            room = self._flow_bottom() - self.y - SECTION_TITLE_LEAD - title_h
             lines, total = self.experience_lines_here(blocks[0], room)
             if room <= 0 or lines < min(self.min_experience_opener_lines, total):
                 self._continue_on_new_page()
+            else:
+                self.y += SECTION_TITLE_LEAD
         self.section_at('Projets & réalisations', self.fx, self.y, self.fw, 13.6)
         self._mark_flow_bottom(self.y + 6)
         self.y += title_h
@@ -945,6 +921,138 @@ class Renderer:
                 self.drawp(html(block['role']), self.role)
             for sec in block['sections']:
                 self.render_section(sec)
+            self.y += 13
+
+    # ------------------------------------------------------------ sidebar
+
+    def sidebar_groups(self, data):
+        """Groups of the "Formation & Diplômes" column, in drawing order:
+        one per formation, then Certifications, then Langues. Each group is
+        {'kind', 'lines': [(text, style, gap_after)], 'gap_before', 'gap_after'}."""
+        rdate = ParagraphStyle('rdate', parent=self.side_b, textColor=PURPLE)
+        rsub = ParagraphStyle('rsub', parent=self.side_b, textColor=PURPLE)
+        groups = []
+        for f in data.get('formations') or []:
+            if not isinstance(f, dict):
+                continue
+            lines = [(str(f.get(key) or '').strip(), style, 0.0)
+                     for key, style in (('date', rdate), ('degree', self.side_b), ('school', self.side))]
+            lines = [line for line in lines if line[0]]
+            if lines:
+                groups.append({'kind': 'formation', 'item': f, 'lines': lines, 'gap_before': 0.0, 'gap_after': 12.0})
+        certs = []
+        for cert in data.get('certifications') or []:
+            text = str(cert.get('name') or '').strip() if isinstance(cert, dict) else str(cert).strip()
+            if text:
+                certs.append(text)
+        if certs:
+            lines = [('Certifications', rsub, 0.0)] + [('• ' + text, self.side, 1.0) for text in certs]
+            groups.append({'kind': 'certifications', 'items': certs, 'lines': lines, 'gap_before': 6.0, 'gap_after': 8.0})
+        langs = []
+        for lang in data.get('languages') or []:
+            if isinstance(lang, dict):
+                name = str(lang.get('name') or '').strip()
+                level = str(lang.get('level') or '').strip()
+            else:
+                name, level = str(lang).strip(), ''
+            if name:
+                langs.append(f"{name} — {level}" if level else name)
+        if langs:
+            lines = [('Langues', rsub, 0.0)] + [('• ' + text, self.side, 1.0) for text in langs]
+            groups.append({'kind': 'languages', 'items': langs, 'lines': lines, 'gap_before': 6.0, 'gap_after': 4.0})
+        return groups
+
+    def sidebar_group_height(self, group, width=SIDEBAR_WIDTH):
+        height = group['gap_before'] + group['gap_after']
+        for text, style, gap in group['lines']:
+            height += self.measure_text(text, style, width) + gap
+        return height
+
+    def plan_sidebar(self, data, top, bottom):
+        """(groups drawn in the column, groups continued after the experiences).
+
+        Lot 3 (2026-11): the column used to be drawn from a fixed y without
+        any bottom check, so long lists ran off the page (12 certifications
+        invisible). Everything fits: drawn as before. Otherwise the column
+        keeps the formations that fit, then the languages (short, read
+        first), then the certifications when the whole list fits; what does
+        not fit is drawn full width at the end of the CV, never cut."""
+        groups = self.sidebar_groups(data)
+        room = bottom - top
+        if sum(self.sidebar_group_height(g) for g in groups) <= room:
+            return groups, []
+        kept, overflow, used = [], [], 0.0
+        formations = [g for g in groups if g['kind'] == 'formation']
+        others = [g for g in groups if g['kind'] == 'languages'] + [g for g in groups if g['kind'] == 'certifications']
+        for group in formations:
+            height = self.sidebar_group_height(group)
+            if not overflow and used + height <= room:
+                kept.append(group)
+                used += height
+            else:
+                overflow.append(group)
+        for group in others:
+            height = self.sidebar_group_height(group)
+            if used + height <= room:
+                kept.append(group)
+                used += height
+            else:
+                overflow.append(group)
+        return kept, overflow
+
+    def draw_sidebar_group(self, group, x, y, w):
+        y += group['gap_before']
+        for text, style, gap in group['lines']:
+            y = self.para_at(text, x, y, w, style) + gap
+        return y + group['gap_after']
+
+    def render_sidebar_overflow(self, overflow):
+        """Formations, certifications or languages that did not fit in the
+        page-1 column, full width after the experiences and projects."""
+        if not overflow:
+            return
+        formations = [g['item'] for g in overflow if g['kind'] == 'formation']
+        blocks = []
+        if formations:
+            entries = []
+            for f in formations:
+                degree, school = str(f.get('degree') or '').strip(), str(f.get('school') or '').strip()
+                line = ' — '.join(part for part in (
+                    f'<font name="Poppins-Bold">{html(degree)}</font>' if degree else '', html(school) if school else '',
+                ) if part)
+                entries.append({'date': str(f.get('date') or '').strip(), 'role': '', 'line_html': line,
+                                'company_highlight': '', 'sections': []})
+            blocks.append(('Formation & Diplômes', entries))
+        for group in overflow:
+            if group['kind'] in ('certifications', 'languages'):
+                title = 'Certifications' if group['kind'] == 'certifications' else 'Langues'
+                blocks.append((title, [{'date': '', 'role': '', 'company_highlight': '',
+                                        'sections': [{'heading': '', 'content': list(group['items'])}]}]))
+        for title, entries in blocks:
+            title_h = 31
+            if not self._at_page_top():
+                room = self._flow_bottom() - self.y - SECTION_TITLE_LEAD - title_h
+                lines, total = self.experience_lines_here(entries[0], room)
+                needs_body = min(self.min_lines_under_heading, max(total, 1))
+                if room <= 0 or (total and lines < needs_body) or (not total and room < 2 * self.role.leading):
+                    self._continue_on_new_page()
+                else:
+                    self.y += SECTION_TITLE_LEAD
+            self.section_at(title, self.fx, self.y, self.fw, 13.6)
+            self._mark_flow_bottom(self.y + 6)
+            self.y += title_h
+            for index, entry in enumerate(entries):
+                if index and not self.experience_opener_fits(entry) and not self._at_page_top():
+                    self._continue_on_new_page()
+                if entry['date']:
+                    self.drawp(html(entry['date']), self.date)
+                if entry['role']:
+                    self.drawp(html(entry['role']), self.role)
+                if entry.get('line_html'):
+                    self.drawp(entry['line_html'], self.body)
+                    self.y += 4
+                for sec in entry['sections']:
+                    self.render_section(sec)
             self.y += 13
 
     def role_html(self, exp):
