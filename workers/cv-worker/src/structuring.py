@@ -19,6 +19,7 @@ from .source_sanitizer import is_technical_domain_like_token as _is_dotnet_techn
 from .revisions import requests_skills_revision
 from .skills_intelligence import apply_skills_intelligence, evaluate_skills_display_quality
 from .skills_cleanup import clean_skills_section, is_certification_item, parse_languages, skill_key
+from .content_log import CONTENT_WARNINGS_KEY, add_content_warning
 
 log = logging.getLogger("whub-cv-worker.structuring")
 
@@ -1380,7 +1381,7 @@ def validate_source_fidelity(source_text: str, data: dict, *, allow_synthesis: b
         if isinstance(entry, dict)
     }
     json_strings_with_paths = _iter_json_strings_with_paths(
-        {key: value for key, value in data.items() if key != REVISION_REMOVED_SOURCE_FACTS_KEY}
+        {key: value for key, value in data.items() if key not in {REVISION_REMOVED_SOURCE_FACTS_KEY, CONTENT_WARNINGS_KEY}}
     )
     json_strings = [text for _, text in json_strings_with_paths]
     source_normalized = _normalize_for_fidelity(source_text)
@@ -2151,16 +2152,27 @@ def _looks_like_section_boundary(line: str) -> bool:
     )
 
 
+# A postal address, not any line holding "rue" or five digits: the substring
+# test dropped "installée" (all[ée]e) and "15000 utilisateurs" (lot 3).
+_SOURCE_ADDRESS_RE = re.compile(
+    r"(?i:\b\d{1,4}\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.|boulevard|bd|impasse|all[ée]e|chemin|place|quai|route|cours)\b)"
+    r"|(?i:\b(?:rue|avenue|boulevard|impasse|all[ée]e)\s+(?:de|du|des|d'|d’|la|le|les)\b)"
+    r"|\b\d{5}\s+[A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ' -]{2,}"
+)
+
+
 def _is_allowed_source_coverage_exclusion(line: str) -> bool:
     cleaned = str(line or "").strip()
     if not cleaned:
         return True
     lower = cleaned.lower()
+    if _SOURCE_ADDRESS_RE.search(cleaned):
+        log.debug("source coverage: address line excluded (%d chars)", len(cleaned))
+        return True
     # A real e-mail address, not any "@": "plateforme Th@Bot" is a project name.
     return bool(
         EMAIL_CONTACT_RE.search(cleaned)
         or re.search(r"linkedin|github\.com|https?://|\+33|\b0[67](?:[ .-]?\d{2}){4}\b", cleaned, re.I)
-        or re.search(r"rue|avenue|boulevard|impasse|all[ée]e|\b\d{5}\b", lower)
         or "cv envoyé par hellowork" in lower
         or "données personnelles" in lower
         or "donnees personnelles" in lower
@@ -2738,20 +2750,34 @@ def _postprocess_skills_into_languages_and_certifications(data: dict) -> dict:
             # Either way, the "Langues" category is consumed — never add it to cleaned_skills as-is.
             continue
         elif category_norm in certification_categories:
+            # Lot 3: nothing is dropped silently. Every item of a
+            # "Certifications" category moves to `certifications` (the source
+            # or the model filed it there); a duplicate is removed and an item
+            # that does not read like a certification is kept, both logged.
             for item in items:
                 if not isinstance(item, str):
                     item = str(item)
                 cleaned_item = item.strip()
                 if not cleaned_item:
                     continue
-                if _is_certification_like_text(cleaned_item) and _dedup_cert(cleaned_item):
-                    new_certifications.append(cleaned_item)
-                elif _dedup_cert(cleaned_item) and len(cleaned_item) <= 140:
-                    # Conservative: only add short items that look like cert names; otherwise let
-                    # the QA pipeline flag it.
-                    if any(kw in cleaned_item.lower() for kw in ("cert", "aws", "azure", "gcp", "oracle", "scrum", "pmp", "itil", "togaf", "java se", "rhcsa", "rhce", "cka", "ckad", "cks", "mcts", "mcsa", "mcse")):
-                        new_certifications.append(cleaned_item)
-            # Drop the entire certifications category from skills; top-level owns this data now.
+                if not _dedup_cert(cleaned_item):
+                    add_content_warning(
+                        out, "certification_duplicate_removed",
+                        f"Certification en double retirée des compétences : {cleaned_item}",
+                        item=cleaned_item,
+                    )
+                    continue
+                new_certifications.append(cleaned_item)
+                if not _is_certification_like_text(cleaned_item) and not any(
+                    kw in cleaned_item.lower()
+                    for kw in ("cert", "aws", "azure", "gcp", "oracle", "scrum", "pmp", "itil", "togaf", "java se", "rhcsa", "rhce", "cka", "ckad", "cks", "mcts", "mcsa", "mcse")
+                ):
+                    add_content_warning(
+                        out, "certification_kept_unverified",
+                        f"Rangé en certification sans en avoir la forme, à relire : {cleaned_item}",
+                        item=cleaned_item,
+                    )
+            # The category leaves skills; top-level `certifications` owns this data now.
             continue
         else:
             cleaned_skills.append(skill)
@@ -3056,6 +3082,19 @@ def apply_client_synthesis_policy(data: dict, mode: str = "complete", *, allow_c
     return synthesized
 
 
+def _prompt_source_text(compacted_text: str) -> tuple[str, int]:
+    """(text sent to the model, characters cut). A cut is logged: the end of
+    a very long CV would otherwise vanish without a trace (lot 3)."""
+    if len(compacted_text) <= MAX_PROMPT_CV_CHARS:
+        return compacted_text, 0
+    cut = len(compacted_text) - MAX_PROMPT_CV_CHARS
+    log.warning(
+        "structuring prompt: source truncated chars=%d kept=%d cut=%d",
+        len(compacted_text), MAX_PROMPT_CV_CHARS, cut,
+    )
+    return compacted_text[:MAX_PROMPT_CV_CHARS], cut
+
+
 def _hermes_prompt(
     extracted_text: str,
     instructions: str,
@@ -3065,7 +3104,7 @@ def _hermes_prompt(
     block_context: str | None = None,
 ) -> str:
     compacted_text = compact_extracted_text(extracted_text)
-    prompt_text = compacted_text[:MAX_PROMPT_CV_CHARS]
+    prompt_text, _cut = _prompt_source_text(compacted_text)
     comments_text = "\n".join(f"- {c.get('comment_type', 'comment')}: {c.get('body', '')}" for c in comments if c.get("body"))
     first_name_rule = candidate_first_name.strip() if candidate_first_name else "le prénom du candidat si identifiable"
     instruction_intent = classify_user_instruction_intent(instructions, comments)
@@ -3090,6 +3129,9 @@ Règles générales:
 - Ne crée pas d'informations absentes du CV. Préserve les dates, entreprises, missions, outils et diplômes présents dans le CV.
 - Ne corrige pas les typos, noms d’écoles, accents ou formulations du CV source. Normalise seulement les espaces et les retours ligne nécessaires au JSON.
 - Ignore les en-têtes et pieds de page répétés du CV source (prénom, titre, « Page 1 / 4 », « Dossier de compétences »).
+- Langue: garde chaque texte dans la langue du CV source, ne traduis rien. Un CV rédigé en anglais reste en anglais dans le JSON (les titres de section français sont ajoutés par le gabarit W hub, pas par toi).
+- Information absente: chaîne vide `""` ou liste vide `[]`. N'écris jamais « Non spécifié », « Non renseigné », « N/A », « Inconnu », ni de parenthèses vides `()`.
+- Dates: recopie-les telles qu'écrites dans le CV source (le moteur les met ensuite au format commun). Un poste en cours se termine par « Aujourd'hui » (même si le CV écrit « Present », « à ce jour », « depuis … »).
 
 Où ranger chaque type d'information (une seule destination par information, jamais deux):
 - Compétence technique (langage, framework, base de données, cloud, outil DevOps, logiciel, ERP, progiciel): `skills[].items`, un label court par item (1 à 6 mots), sans phrase ni date. Exemple: `Java`, `Spring Boot`, `PostgreSQL`, `Azure DevOps`.
@@ -3116,6 +3158,7 @@ Section compétences (`skills`):
 - Ne transforme pas des outils cités dans une expérience en compétences globales inventées.
 
 Expériences (`experiences`):
+- Ordre antichronologique: le poste en cours d'abord, puis du plus récent au plus ancien.
 - Fidélité copier-coller: chaque élément de `experiences[].sections[].content` est un extrait exact du CV source après normalisation des espaces/retours ligne. Ne remplace pas un mot source par un synonyme.
 - Couverture: ne supprime aucun élément métier d'expérience (missions, réalisations, responsabilités, livrables, contexte, outils explicitement listés). Une mise en page difficile se résout par la pagination, jamais par omission. Évite les pavés par la mise en page, pas par synthèse, condensation ou raccourcissement du contenu source.
 - N'invente pas de sous-sections. `Missions clés` sert de conteneur neutre pour des phrases source sans heading visible. Conserve les headings source (`Périmètre applicatif`, `Réalisations`…).
@@ -3326,6 +3369,13 @@ def build_whub_json(
         data = assemble_structured_blocks(structured_blocks, candidate_first_name)
 
     enforce_client_first_name(data, candidate_first_name)
+    if use_single_pass and len(compacted_text) > MAX_PROMPT_CV_CHARS:
+        add_content_warning(
+            data, "prompt_source_truncated",
+            f"CV source coupé avant structuration : {len(compacted_text) - MAX_PROMPT_CV_CHARS} caractères "
+            f"sur {len(compacted_text)} non transmis au modèle. Vérifier la fin du CV.",
+            source_chars=len(compacted_text), kept_chars=MAX_PROMPT_CV_CHARS,
+        )
     resolved_synthesis_mode = resolve_synthesis_mode(synthesis_mode, instructions, comments)
     skills_revision = requests_skills_revision(comments)
     data = _source_gate_structured_data(data, compacted_text, model_skills_authoritative=skills_revision)
