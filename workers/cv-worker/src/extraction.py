@@ -83,23 +83,38 @@ def _page_text_visual_order(page, textpage=None, skip_boxes=None) -> str:
 # source CV ("<Prénom NOM> · <titre>", "Page 2 / 4", "D O S S I E R  D E
 # C O M P É T E N C E S") were read as content and copied into experiences
 # and skills. A block lying in the top or bottom band of the page whose text
-# (digits ignored) comes back on two pages or more is furniture; so is a
-# block made of page numbers only. The page-1 header is kept: it carries the
-# name and title the model needs.
+# (page numbers ignored) comes back on two pages or more is furniture; so is a
+# block made of page numbers only. The repeat must sit at the same place
+# (a bullet repeated in two missions does not). The first occurrence of a
+# repeated header is kept: the page-1 header carries the name and title the
+# model needs, a section title repeated on later pages opens its section.
 _FURNITURE_BAND_RATIO = 0.12
+# Footers sit under the last body line: a tighter bottom band keeps a bullet
+# that happens to end several pages at the same height.
+_FOOTER_BAND_RATIO = 0.075
 _PAGE_NUMBER_LINE_RE = re.compile(
     r"^(?:page\s*)?\d{1,3}\s*(?:/|sur|of|·|-)\s*\d{1,3}$|^page\s+\d{1,3}$", re.IGNORECASE
 )
 
 
+_PAGE_NUMBER_INLINE_RE = re.compile(
+    r"\bpage\s*\d{1,3}(?:\s*(?:/|sur|of|·)\s*\d{1,3})?\b|(?<![\w.])\d{1,3}\s*/\s*\d{1,3}(?![\w.])", re.IGNORECASE
+)
+# Same place on every page: a line repeated in the body (same bullet in two
+# missions) sits a few points higher or lower.
+_FURNITURE_POSITION_TOLERANCE = 3
+
+
 def _furniture_key(text: str) -> str:
-    return re.sub(r"\d+", "#", " ".join(str(text or "").split())).casefold()
+    """Block text with page numbers neutralised (other digits kept: two
+    different dates are not the same header)."""
+    return _PAGE_NUMBER_INLINE_RE.sub("#", " ".join(str(text or "").split())).casefold()
 
 
 def find_page_furniture(doc) -> tuple[dict[int, set[tuple[int, int, int, int]]], list[str]]:
     """({page index: boxes of furniture blocks}, distinct furniture texts)."""
     band_blocks: list[tuple[int, str, tuple[int, int, int, int], str, str]] = []
-    pages_by_key: dict[str, set[int]] = {}
+    positions_by_key: dict[str, list[tuple[int, tuple[int, int, int, int]]]] = {}
     for index, page in enumerate(doc):
         height = float(getattr(getattr(page, "rect", None), "height", 0.0) or 0.0)
         if height <= 0:
@@ -113,20 +128,32 @@ def find_page_furniture(doc) -> tuple[dict[int, set[tuple[int, int, int, int]]],
                 continue
             if float(y1) <= height * _FURNITURE_BAND_RATIO:
                 band = "top"
-            elif float(y0) >= height * (1 - _FURNITURE_BAND_RATIO):
+            elif float(y0) >= height * (1 - _FOOTER_BAND_RATIO):
                 band = "bottom"
             else:
                 continue
+            box = _block_box(x0, y0, x1, y1)
             key = _furniture_key(text)
-            band_blocks.append((index, band, _block_box(x0, y0, x1, y1), key, text))
-            pages_by_key.setdefault(key, set()).add(index)
+            band_blocks.append((index, band, box, key, text))
+            positions_by_key.setdefault(key, []).append((index, box))
     skip: dict[int, set[tuple[int, int, int, int]]] = {}
     texts: list[str] = []
+    first_top_page: dict[str, int] = {}
+    for index, band, box, key, text in band_blocks:
+        if band == "top":
+            first_top_page.setdefault(key, index)
     for index, band, box, key, text in band_blocks:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         page_numbers_only = bool(lines) and all(_PAGE_NUMBER_LINE_RE.match(line) for line in lines)
-        repeated = len(pages_by_key.get(key, ())) >= 2
-        if page_numbers_only or (repeated and not (index == 0 and band == "top")):
+        repeated = len({
+            other_index for other_index, other_box in positions_by_key.get(key, ())
+            if abs(other_box[0] - box[0]) <= _FURNITURE_POSITION_TOLERANCE
+            and abs(other_box[1] - box[1]) <= _FURNITURE_POSITION_TOLERANCE
+        }) >= 2
+        # The first occurrence of a repeated top block is kept: the page-1
+        # header (name, title) or a section title continued on later pages.
+        first_of_header = band == "top" and first_top_page.get(key) == index
+        if page_numbers_only or (repeated and not first_of_header):
             skip.setdefault(index, set()).add(box)
             for line in lines:
                 if not _PAGE_NUMBER_LINE_RE.match(line) and line not in texts:
