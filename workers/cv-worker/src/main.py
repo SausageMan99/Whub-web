@@ -30,7 +30,7 @@ from .structuring import (
 from .revisions import classify_revision_intent
 from .rendering import render_pdf
 from .qa import run_qa, classify_qa_report
-from .storage import save_version
+from .storage import mark_request_blocked, save_version
 from .layout import build_layout_packing_options, run_layout
 from .layout.comment_hints import build_layout_revision_options, mentions_move_from_last_page
 from .layout.revision_verification import verify_layout_revision_improved
@@ -47,7 +47,17 @@ from .section_classifier import classify_sections
 from .source_coverage import compare_required_block_coverage
 from .block_sanitizer import sanitize_document
 from .visual_skills_extraction import apply_visual_skills_override, extract_visual_skills
-from .revisions import requests_skills_revision
+from .revisions import pagination_request, requests_skills_revision
+from .qa_defects import (
+    CONTENT,
+    blocking_defects,
+    blocking_summary,
+    corrective_diagnostic,
+    has_content_loss,
+    rule_for,
+    warning_defects,
+)
+from .layout.pagination import pagination_cost
 from .skills_cleanup import CLEANUP_REPORT_KEY, clean_skills_section, summarize_cleanup
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
@@ -620,9 +630,31 @@ def _attach_final_quality_report(
     if final_qa_status == "failed":
         builder.add_hard_blocker("qa_failed", stage="qa")
 
+    # Lot 4: blocking defects first (hard_blockers, read by the web review
+    # table before anything else), then the warnings of the rendered PDF.
+    defects = qa_report.get("defects") or []
+    for defect in blocking_defects(defects):
+        extra = {key: defect.get(key) for key in ("page", "fill", "count") if isinstance(defect.get(key), (int, float))}
+        builder.add_hard_blocker(str(defect.get("code")), stage="qa", content_loss=bool(defect.get("content_loss")), **extra)
+    for defect in warning_defects(defects):
+        if defect.get("code") == "skills_cleaned":
+            continue  # reported below as "skills_cleanup"
+        extra = {key: defect.get(key) for key in ("page", "fill", "count") if isinstance(defect.get(key), (int, float))}
+        builder.add_soft_warning(str(defect.get("code")), stage="qa", **extra)
+    revision = qa_report.get("revision_pagination")
+    if isinstance(revision, dict):
+        builder.add_soft_warning(
+            "pagination_revision_applied" if revision.get("improved") else "pagination_revision_not_possible",
+            stage="layout",
+            previous_pages=int(revision.get("previous_pages") or 0),
+            new_pages=int(revision.get("new_pages") or 0),
+        )
+
     for issue in layout_warnings:
         if not isinstance(issue, dict):
             continue
+        if issue.get("severity") == "blocking":
+            continue  # already a hard blocker above
         code = str(issue.get("code") or "layout_warning")
         page = issue.get("page")
         extra = {"page": int(page)} if isinstance(page, int) else {}
@@ -770,6 +802,19 @@ def _mark_qa_report_draft_override(qa_report: dict, reason: str) -> dict:
     return {**qa_report, "passed": False, "draft_override_reason": reason}
 
 
+def _llm_configured() -> bool:
+    """A structuring model can be called (lot 4: corrective retry)."""
+    if settings.whub_llm_backend == "openrouter":
+        return bool(settings.openrouter_api_key)
+    return shutil.which(settings.hermes_cli_path) is not None
+
+
+def _content_retry_needed(qa_report: dict[str, Any]) -> bool:
+    """A blocking defect that comes from the structured content (truncated
+    text, printed placeholder, source header): a layout variant cannot fix it."""
+    return any(d.get("origin") == CONTENT for d in blocking_defects(qa_report.get("defects")))
+
+
 def process_job(job: dict) -> None:
     total_start = perf_counter()
     timings: dict[str, float] = {}
@@ -855,11 +900,15 @@ def process_job(job: dict) -> None:
         timings["load_comments"] = perf_counter() - stage_start
 
         history_comments: list[dict] = []
+        previous_qa_report: dict[str, Any] | None = None
         current_version_id = job.get("current_version_id")
         if current_version_id:
             version_res = client.table("cv_versions").select("version_number,qa_status,qa_report").eq("id", current_version_id).execute()
             if version_res.data:
-                history_comments.append(_build_revision_history_comment(cast(dict, version_res.data[0])))
+                previous_version = cast(dict, version_res.data[0])
+                history_comments.append(_build_revision_history_comment(previous_version))
+                if isinstance(previous_version.get("qa_report"), dict):
+                    previous_qa_report = previous_version["qa_report"]
 
         stage_start = perf_counter()
         comments_for_prompt = history_comments + [cast(dict, comment) for comment in (comments_res.data or [])]
@@ -895,58 +944,102 @@ def process_job(job: dict) -> None:
             timings=timings,
             structured_sink=layout_only,
         )
-        if reused:
-            structured = layout_only["structured"]
-        else:
+        def _structure(diagnostic: str | None = None) -> dict:
             structured = build_whub_json(
-                sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name
+                sanitized_text, job.get("instructions") or "", comments_for_prompt, effective_first_name,
+                **({"corrective_diagnostic": diagnostic} if diagnostic else {}),
             )
             # A revision comment on the skills is answered by the model: the
             # source skills read from the PDF styles must not overwrite it.
             if not requests_skills_revision(comments_for_prompt):
                 structured = _apply_source_wins_post_structuring(structured, source)
-        # The visual skills override (and a reused version) bypass the cleanup
-        # done in build_whub_json: run it again, it is idempotent.
-        structured = clean_skills_section(
-            structured,
-            sanitized_text,
-            keep_soft_skills=requests_skills_revision(comments_for_prompt),
-        )
-        # Lots 3 and 5: placeholders, page furniture, typography, dates,
-        # experience order, cut texts repaired from the source; every change
-        # is logged in structured["_content_warnings"] (QA warnings).
-        structured = finalize_cv_content(
-            structured,
-            sanitized_text,
-            furniture_lines=detect_page_furniture(source),
-            candidate_name=effective_first_name,
-        )
-        structured = sanitize_identity_terms_in_json(
-            structured, infer_forbidden_candidate_identity_terms(sanitized_text, effective_first_name)
-        )
-        enforce_client_first_name(structured, effective_first_name)
-        # Soft fidelity warnings: extract and remove from data so they don't pollute the render
-        fidelity_soft_warnings = structured.pop("_fidelity_soft_warnings", None)
-        timings["hermes_structuring"] = perf_counter() - stage_start
+            return structured
 
-        stage_start = perf_counter()
-        structured = sanitize_contact_in_json(structured)
-        assert_no_contact_in_json(structured)
-        layout_options = build_layout_packing_options(structured)
-        forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
-        try:
-            layout_result = run_layout(
+        def _finish(structured: dict) -> tuple[dict, Any]:
+            # The visual skills override (and a reused version) bypass the cleanup
+            # done in build_whub_json: run it again, it is idempotent.
+            structured = clean_skills_section(
+                structured,
+                sanitized_text,
+                keep_soft_skills=requests_skills_revision(comments_for_prompt),
+            )
+            # Lots 3 and 5: placeholders, page furniture, typography, dates,
+            # experience order, cut texts repaired from the source; every change
+            # is logged in structured["_content_warnings"] (QA warnings).
+            structured = finalize_cv_content(
+                structured,
+                sanitized_text,
+                furniture_lines=detect_page_furniture(source),
+                candidate_name=effective_first_name,
+            )
+            structured = sanitize_identity_terms_in_json(
+                structured, infer_forbidden_candidate_identity_terms(sanitized_text, effective_first_name)
+            )
+            enforce_client_first_name(structured, effective_first_name)
+            # Soft fidelity warnings: extract and remove from data so they don't pollute the render
+            soft_warnings = structured.pop("_fidelity_soft_warnings", None)
+            structured = sanitize_contact_in_json(structured)
+            assert_no_contact_in_json(structured)
+            return structured, soft_warnings
+
+        # Lot 4: a pagination request of the reviewer (« moins de pages »,
+        # « rééquilibre », « trop de vide », « sauts de page ») is answered by
+        # renderer variants, compared with the previous version.
+        pagination_goal = pagination_request(revision_comments)
+        if pagination_goal:
+            emit_event(request_id, "pagination_revision_detected", {"goal": pagination_goal})
+
+        def _layout(structured: dict, output_dir: Path):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            return run_layout(
                 structured=structured,
-                workdir=workdir,
+                workdir=output_dir,
                 render_pdf=render_pdf,
                 run_qa=run_qa,
                 forbidden_names=forbidden_names,
                 source_text=sanitized_text,
-                base_options=layout_options,
+                base_options=build_layout_packing_options(structured),
+                pagination_goal=pagination_goal,
+                previous_report=(layout_only.get("prev_qa") if layout_only.get("layout_only_active") else None) or previous_qa_report,
             )
+
+        if reused:
+            structured = layout_only["structured"]
+        else:
+            structured = _structure()
+        structured, fidelity_soft_warnings = _finish(structured)
+        timings["hermes_structuring"] = perf_counter() - stage_start
+
+        stage_start = perf_counter()
+        forbidden_names = forbidden_candidate_name_parts(job.get("candidate_first_name"), text)
+        try:
+            layout_result = _layout(structured, workdir)
         except RuntimeError as exc:
             fail_job(job, str(exc), "qa_failed")
             return
+        content_retry: dict[str, Any] | None = None
+        # Lot 4: a blocking defect of the content (layout variants already
+        # tried in run_layout) gets one corrective structuring, when a model
+        # is configured and the content came from the model in this job.
+        if not reused and _content_retry_needed(layout_result.qa_report) and _llm_configured():
+            diagnostic = corrective_diagnostic(layout_result.qa_report.get("defects"))
+            content_retry = {"codes": sorted({str(d.get("code")) for d in blocking_defects(layout_result.qa_report.get("defects"))})}
+            emit_event(request_id, "content_retry_started", {"codes": content_retry["codes"]})
+            try:
+                retried, retried_warnings = _finish(_structure(diagnostic))
+                retry_result = _layout(retried, workdir / "content_retry")
+            except Exception as exc:  # noqa: BLE001 - the first rendering stays
+                log.warning("content_retry_failed request_id=%s err=%r", request_id, exc)
+                content_retry["error"] = classify_structuring_error(exc)["category"]
+            else:
+                content_retry["blocking_before"] = len(blocking_defects(layout_result.qa_report.get("defects")))
+                content_retry["blocking_after"] = len(blocking_defects(retry_result.qa_report.get("defects")))
+                if pagination_cost(retry_result.qa_report) < pagination_cost(layout_result.qa_report):
+                    structured, fidelity_soft_warnings, layout_result = retried, retried_warnings, retry_result
+                    content_retry["kept"] = True
+                else:
+                    content_retry["kept"] = False
+            emit_event(request_id, "content_retry_done", content_retry)
         timings["render_pdf_qa_layout_variants"] = perf_counter() - stage_start
         pdf = layout_result.pdf
         qa_report = layout_result.qa_report
@@ -959,6 +1052,20 @@ def process_job(job: dict) -> None:
                     "attempts_count": layout_result.attempts_count,
                 },
             )
+
+        repair_info = getattr(layout_result, "repair", None) or {}
+        revision_outcome = getattr(layout_result, "revision", None)
+        if repair_info or content_retry or revision_outcome:
+            qa_report = dict(qa_report)
+            if repair_info:
+                qa_report["layout_repair"] = repair_info
+            if content_retry:
+                qa_report["content_retry"] = content_retry
+            if revision_outcome:
+                qa_report["revision_pagination"] = revision_outcome
+                emit_event(request_id, "pagination_revision_done", {
+                    key: revision_outcome.get(key) for key in ("goal", "improved", "previous_pages", "new_pages", "variant")
+                })
 
         final_qa_status, layout_warnings = classify_qa_report(qa_report)
         draft_override_reason: str | None = None
@@ -986,6 +1093,18 @@ def process_job(job: dict) -> None:
         if fidelity_soft_warnings and final_qa_status == "passed":
             final_qa_status = "draft"
             draft_override_reason = "fidelity_soft_warnings"
+        # Lot 4: a blocking defect left after the retries is never delivered
+        # in silence: "à relire" with the defect first, or blocked (below)
+        # when content is lost.
+        remaining_blocking = blocking_defects(qa_report.get("defects"))
+        if remaining_blocking and final_qa_status == "passed":
+            final_qa_status = "draft"
+            draft_override_reason = "blocking_defects"
+        if revision_outcome and not revision_outcome.get("improved") and final_qa_status == "passed":
+            # The reviewer asked for a pagination change that cannot be made:
+            # the version note says why, the reviewer reads it.
+            final_qa_status = "draft"
+            draft_override_reason = "pagination_revision_not_possible"
         if draft_override_reason:
             qa_report = _mark_qa_report_draft_override(qa_report, draft_override_reason)
         request_status = "draft_ready" if final_qa_status == "draft" else "ready"
@@ -1016,7 +1135,22 @@ def process_job(job: dict) -> None:
             owner=job.get("created_by") or settings.worker_name,
         )
         client.table("cv_comments").update({"resolved": True}).eq("request_id", request_id).eq("comment_type", "revision").execute()
+        content_lost = has_content_loss(remaining_blocking)
+        if content_lost:
+            # Lot 4: content of the JSON missing from the PDF after every
+            # variant: the version stays visible on the site (proof and
+            # defect list) but the request is blocked, not downloadable.
+            mark_request_blocked(request_id, "Contenu absent du PDF : " + blocking_summary(remaining_blocking))
+            request_status = "qa_failed"
         event_payload = {"version_id": saved_version["id"], "version_number": saved_version["version_number"]}
+        if remaining_blocking:
+            event_payload["blocking_defects"] = [
+                {"code": d.get("code"), "page": d.get("page"), "message": d.get("message")} for d in remaining_blocking
+            ]
+        if revision_outcome:
+            event_payload["pagination_revision"] = {
+                key: revision_outcome.get(key) for key in ("goal", "improved", "previous_pages", "new_pages", "message")
+            }
         if request_status == "draft_ready" or layout_warnings:
             # A ready CV can carry advisory layout warnings (qa.ADVISORY_LAYOUT_CODES).
             event_payload["layout_warnings"] = layout_warnings

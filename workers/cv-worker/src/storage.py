@@ -114,5 +114,19 @@ def save_version(
     return {"id": version["id"], "version_number": version_number}
 
 
+def mark_request_blocked(request_id: str, reason: str) -> None:
+    """Lot 4 (2026-11): block a request whose version was just saved.
+
+    Used when a blocking defect means lost content (src/qa_defects.py): the
+    version stays readable on the site (proof and defect list) but the
+    request goes to ``qa_failed`` ("Bloqué", not downloadable) with the
+    reason in ``last_error``. No new status, no schema change."""
+    client.table("cv_requests").update({
+        "status": "qa_failed",
+        "last_error": str(reason or "Défaut bloquant du PDF")[:500],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", request_id).execute()
+
+
 def save_success(request_id: str, structured_json: dict, pdf_path: Path, qa_report: dict, owner: str) -> str:
     return save_version(request_id, structured_json, pdf_path, qa_report, request_status="ready", qa_status="passed", owner=owner)["id"]

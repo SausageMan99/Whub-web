@@ -3270,8 +3270,12 @@ def _run_block(
     candidate_first_name: str | None,
     runner: HermesRunner,
     block_label: str,
+    *,
+    corrective_diagnostic: str | None = None,
 ) -> dict:
     prompt = _hermes_prompt(text, instructions, comments, candidate_first_name, block_context=block_label)
+    if corrective_diagnostic:
+        prompt = _corrective_retry_prompt(prompt, corrective_diagnostic)
     start = perf_counter()
     try:
         returncode, stdout, stderr = runner(prompt, HERMES_STRUCTURING_TIMEOUT_SECONDS)
@@ -3318,7 +3322,14 @@ def build_whub_json(
     long_cv_threshold: int = LONG_CV_CHAR_THRESHOLD,
     synthesis_mode: str = WHUB_CV_SYNTHESIS_MODE,
     hermes_runner: HermesRunner | None = None,
+    corrective_diagnostic: str | None = None,
 ) -> dict:
+    """Structure the CV source with the model.
+
+    corrective_diagnostic (lot 4, 2026-11): the blocking content defects of a
+    first rendering (src/qa_defects.corrective_diagnostic). The prompt is then
+    wrapped by _corrective_retry_prompt; src/main.py calls this at most once
+    per job."""
     compacted_text = compact_extracted_text(extracted_text)
     runner = hermes_runner or default_structuring_runner()
     block_parallelism = (
@@ -3334,6 +3345,8 @@ def build_whub_json(
 
     if use_single_pass:
         prompt = _hermes_prompt(compacted_text, instructions, comments, candidate_first_name)
+        if corrective_diagnostic:
+            prompt = _corrective_retry_prompt(prompt, corrective_diagnostic)
         start = perf_counter()
         try:
             returncode, stdout, stderr = runner(prompt, HERMES_STRUCTURING_TIMEOUT_SECONDS)
@@ -3358,7 +3371,10 @@ def build_whub_json(
             labels.append(label)
 
         def run_one(index: int) -> dict:
-            return _run_block(blocks[index]["text"], instructions, comments, candidate_first_name, runner, labels[index])
+            extra = {"corrective_diagnostic": corrective_diagnostic} if corrective_diagnostic else {}
+            return _run_block(
+                blocks[index]["text"], instructions, comments, candidate_first_name, runner, labels[index], **extra,
+            )
 
         if block_parallelism > 1:
             # map() keeps source order and re-raises the first block failure.
