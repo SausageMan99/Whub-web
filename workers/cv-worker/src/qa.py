@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, cast
 import re
+import unicodedata
 import fitz
 
 from .structuring import (
@@ -15,6 +16,8 @@ from .structuring import (
     WHUB_SKILL_CATEGORY_TAXONOMY,
 )
 from .skills_cleanup import CLEANUP_REPORT_KEY as SKILLS_CLEANUP_REPORT_KEY, cleanup_qa_warning
+from .content_finishing import content_qa_warnings
+from .content_log import content_warnings as content_warnings_from_json
 
 CONTACT_PATTERNS = {
     "email": r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
@@ -815,6 +818,131 @@ def find_pdf_source_fidelity_issues(text: str, source_text: str | None = None, s
     return issues
 
 
+# ---------------------------------------------------------------- coverage
+# Lot 3 (2026-11): every client-visible string of the JSON must be readable in
+# the rendered PDF, section by section. Until now only the experiences were
+# compared (find_pdf_source_fidelity_issues): 12 certifications drawn below
+# the bottom of page 1 went unnoticed. Warning for now (report["content_
+# coverage"] and a "content_missing_from_pdf" entry of report["content_
+# warnings"]); lot 4 decides whether it blocks.
+COVERAGE_SECTIONS = ("experiences", "formations", "certifications", "languages", "skills", "projects")
+
+
+def _coverage_norm(text: str) -> str:
+    text = unicodedata.normalize("NFKC", str(text or "")).lower().replace("’", "'").replace("œ", "oe")
+    text = text.replace("\u2192", "->").replace("\u27f6", "->")
+    text = re.sub(r"[^0-9a-zà-ÿ+#]+", " ", text)
+    return " " + re.sub(r"\s+", " ", text).strip() + " "
+
+
+def _coverage_pdf_texts(doc: fitz.Document) -> tuple[str, str]:
+    """(PDF text, same without section sub-headings): the page header (first
+    name) and the "… (suite)" headings that cut a split bullet are left out."""
+    full: list[str] = []
+    body: list[str] = []
+    for index, page in enumerate(doc, start=1):
+        for block in cast(dict[str, Any], page.get_text("dict")).get("blocks", []):
+            if block.get("type") != 0:
+                continue
+            for line in block.get("lines", []):
+                spans = [span for span in line.get("spans", []) if str(span.get("text", "")).strip()]
+                if not spans:
+                    continue
+                text = "".join(str(span.get("text", "")) for span in line.get("spans", [])).strip()
+                y1 = float(line["bbox"][3])
+                bold = all("Bold" in str(span.get("font", "")) for span in spans)
+                if index > 1 and y1 < 52 and bold and any(span.get("color") == _PURPLE for span in spans):
+                    continue
+                if text.rstrip().endswith("(suite)"):
+                    continue
+                full.append(text)
+                size = max(float(span.get("size", 0.0)) for span in spans)
+                if not (bold and abs(size - _EXPERIENCE_SECTION_SUBHEAD_SIZE) < 0.2):
+                    body.append(text)
+    return _coverage_norm(" ".join(full)), _coverage_norm(" ".join(body))
+
+
+def _coverage_items(data: dict) -> list[tuple[str, str]]:
+    items: list[tuple[str, str]] = []
+
+    def add(section: str, value: Any) -> None:
+        if isinstance(value, str) and _coverage_norm(value).strip():
+            items.append((section, value))
+
+    for exp in data.get("experiences") or []:
+        if not isinstance(exp, dict):
+            continue
+        for key in ("date", "role", "company_highlight"):
+            add("experiences", exp.get(key))
+        for sec in exp.get("sections") or []:
+            if isinstance(sec, dict):
+                add("experiences", sec.get("heading"))
+                content = sec.get("content")
+                for item in content if isinstance(content, list) else [content]:
+                    add("experiences", item)
+    for formation in data.get("formations") or []:
+        if isinstance(formation, dict):
+            for key in ("date", "degree", "school"):
+                add("formations", formation.get(key))
+    for cert in data.get("certifications") or []:
+        add("certifications", cert.get("name") if isinstance(cert, dict) else cert)
+    for lang in data.get("languages") or []:
+        if isinstance(lang, dict):
+            add("languages", lang.get("name"))
+            add("languages", lang.get("level"))
+        else:
+            add("languages", lang)
+    for cat in data.get("skills") or []:
+        if isinstance(cat, dict) and cat.get("items"):
+            add("skills", cat.get("category"))
+            for item in cat.get("items") or []:
+                add("skills", item)
+    for project in data.get("projects") or []:
+        if isinstance(project, dict):
+            add("projects", project.get("name"))
+            add("projects", project.get("date"))
+            for detail in project.get("details") or []:
+                add("projects", detail)
+    return items
+
+
+def collect_json_pdf_coverage(doc: fitz.Document, structured_data: dict | None) -> dict[str, Any] | None:
+    """Per section: strings of the JSON found / missing in the PDF text."""
+    if not isinstance(structured_data, dict):
+        return None
+    full, body = _coverage_pdf_texts(doc)
+    sections: dict[str, dict[str, Any]] = {
+        name: {"total": 0, "present": 0, "missing": []} for name in COVERAGE_SECTIONS
+    }
+    for section, value in _coverage_items(structured_data):
+        entry = sections[section]
+        entry["total"] += 1
+        key = _coverage_norm(value)
+        if key in full or key in body:
+            entry["present"] += 1
+        else:
+            entry["missing"].append(re.sub(r"\s+", " ", value).strip()[:200])
+    missing = sum(len(entry["missing"]) for entry in sections.values())
+    return {"sections": sections, "missing_count": missing}
+
+
+def content_coverage_warning(coverage: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not coverage or not coverage.get("missing_count"):
+        return None
+    parts = [
+        f"{name} {len(entry['missing'])}/{entry['total']}"
+        for name, entry in coverage["sections"].items() if entry["missing"]
+    ]
+    return {
+        "code": "content_missing_from_pdf",
+        "message": f"Contenu du JSON absent du PDF rendu : {', '.join(parts)}.",
+        "items": [
+            {"section": name, "text": text}
+            for name, entry in coverage["sections"].items() for text in entry["missing"][:30]
+        ],
+    }
+
+
 def find_text_overflow(
     doc: fitz.Document,
     margin: float = READABLE_MARGIN_PT,
@@ -885,6 +1013,12 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
     page_layout_metrics = collect_page_layout_metrics(doc)
     human_taste = score_human_taste(page_layout_metrics, layout_issues)
     pagination = collect_pagination_metrics(doc)
+    coverage = collect_json_pdf_coverage(doc, structured_data)
+    content_warnings = [dict(w) for w in content_warnings_from_json(structured_data)]
+    content_warnings.extend(content_qa_warnings(structured_data))
+    coverage_warning = content_coverage_warning(coverage)
+    if coverage_warning:
+        content_warnings.append(coverage_warning)
     image_sizes = []
     for page in doc:
         for img in page.get_images(full=True):
@@ -906,6 +1040,11 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
         "pagination": pagination,
         # What the skills cleanup moved or removed (warning, never silent).
         "skills_cleanup": cleanup_qa_warning((structured_data or {}).get(SKILLS_CLEANUP_REPORT_KEY)),
+        # Lots 3 and 5, warnings only (not part of "passed" nor of the
+        # status): JSON strings missing from the PDF per section, and every
+        # content change or doubt (src/content_log.py, content_finishing).
+        "content_coverage": coverage,
+        "content_warnings": content_warnings,
         "has_logo": has_logo,
         "has_watermark": has_watermark,
     }

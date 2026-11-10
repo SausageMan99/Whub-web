@@ -10,7 +10,8 @@ from typing import Any, cast
 from .config import settings
 from .supabase_client import client
 from .events import emit_event
-from .extraction import download_source, extract_pdf_text
+from .extraction import detect_page_furniture, download_source, extract_pdf_text
+from .content_finishing import finalize_cv_content
 from .structuring import (
     build_whub_json,
     assert_no_contact_in_json,
@@ -911,6 +912,15 @@ def process_job(job: dict) -> None:
             sanitized_text,
             keep_soft_skills=requests_skills_revision(comments_for_prompt),
         )
+        # Lots 3 and 5: placeholders, page furniture, typography, dates,
+        # experience order, cut texts repaired from the source; every change
+        # is logged in structured["_content_warnings"] (QA warnings).
+        structured = finalize_cv_content(
+            structured,
+            sanitized_text,
+            furniture_lines=detect_page_furniture(source),
+            candidate_name=effective_first_name,
+        )
         structured = sanitize_identity_terms_in_json(
             structured, infer_forbidden_candidate_identity_terms(sanitized_text, effective_first_name)
         )
@@ -1014,6 +1024,13 @@ def process_job(job: dict) -> None:
             event_payload["fidelity_warnings"] = fidelity_soft_warnings
         if qa_report.get("skills_cleanup"):
             event_payload["skills_cleanup"] = summarize_cleanup(structured.get(CLEANUP_REPORT_KEY))
+        if qa_report.get("content_warnings"):
+            # Content removed, repaired or doubtful (lots 3 and 5): codes and
+            # messages only, the details stay in the version's qa_report.
+            event_payload["content_warnings"] = [
+                {"code": w.get("code"), "message": w.get("message")}
+                for w in qa_report["content_warnings"] if isinstance(w, dict)
+            ]
         emit_event(request_id, request_status, event_payload)
         timings["upload_and_finalize"] = perf_counter() - stage_start
         timings["total"] = total_duration_seconds
