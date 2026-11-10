@@ -43,7 +43,23 @@ _SKILLS_START_RE = re.compile(
 _SECTION_STOP_RE = re.compile(
     r"^\s*(?:exp[ée]riences?|parcours|missions?|formations?|dipl[oô]mes?"
     r"|certifications?|langues?|centres?\s+d['’]int[ée]r[êe]t|loisirs?"
-    r"|projets?|r[ée]alisations?|coordonn[ée]es?|contact)\b",
+    r"|projets?|r[ée]alisations?|coordonn[ée]es?|contact"
+    # 2026-11 (lot 2) : titres absents qui laissaient la section Compétences
+    # avaler la formation (« EDUCATION 2017-2019 : Master… ») et les missions.
+    r"|[ée]ducation|[ée]tudes|cursus|scolarit[ée]|profil|r[ée]sum[ée]|soft\s*skills|savoir[-\s]?[êe]tre"
+    r"|education|experience|work\s+experience|employment|languages?|projects?|interests|summary|profile)\b",
+    re.IGNORECASE,
+)
+# A dated mission opens after the skills block ("Juin 2026-Dec 2026", "2019 - 2021",
+# "Depuis 03/2024") : the skills section ends there.
+_MONTH_WORD = (
+    r"(?:janv(?:ier)?|f[ée]v(?:rier)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|ao[ûu]t|sept?(?:embre)?|oct(?:obre)?"
+    r"|nov(?:embre)?|d[ée]c(?:embre)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?"
+    r"|sep(?:tember)?|october|november|dec(?:ember)?)\.?"
+)
+_DATED_LINE_RE = re.compile(
+    rf"^\s*(?:de\s+|depuis\s+)?(?:{_MONTH_WORD}\s*)?(?:\d{{1,2}}/)?(?:19|20)\d{{2}}\s*"
+    rf"(?:[-–—/]|à|a|au|to|->)\s*(?:{_MONTH_WORD}\s*)?(?:(?:\d{{1,2}}/)?(?:19|20)\d{{2}}|aujourd|pr[ée]sent|present|ce\s+jour|now)",
     re.IGNORECASE,
 )
 
@@ -77,7 +93,7 @@ def _extract_skills_lines(source_text: str) -> list[str]:
 
     out: list[str] = []
     for line in lines[start_index:]:
-        if out and (_SECTION_STOP_RE.match(line.strip()) or _is_letter_spaced_stop(line)):
+        if out and (_SECTION_STOP_RE.match(line.strip()) or _is_letter_spaced_stop(line) or _DATED_LINE_RE.match(line.strip())):
             break
         if line.strip():
             out.append(line.strip())
@@ -138,6 +154,12 @@ def _split_arrow_skill_items(lines: list[str]) -> list[str]:
     items: list[str] = []
     buffer: list[str] = []
     pending_arrow = False
+    # No bullet at all: one skill per line ("Java", "Spring Boot", "React"),
+    # not one item gluing the whole block (lot 2, 2026-11).
+    if lines and not any(_ARROW_RE.match(re.sub(r"\s+", " ", raw or "").strip()) for raw in lines):
+        for raw in lines:
+            items.extend(_flush_skill_item([raw]))
+        return items
 
     def flush() -> None:
         nonlocal buffer
