@@ -8,6 +8,7 @@ from typing import Any, Callable
 from .intelligence import build_layout_retry_options
 from .retry import is_safe_layout_retry_report
 from ...qa import QAError, classify_qa_report
+from ...qa_defects import blocking_defects
 
 MAX_LAYOUT_VARIANT_ATTEMPTS = 2
 
@@ -69,6 +70,8 @@ def select_best_layout_variant(attempts: list[LayoutVariantAttempt]) -> LayoutVa
     selected = max(
         safe_attempts,
         key=lambda attempt: (
+            # Lot 4: fewer blocking defects (src/qa_defects.py) first.
+            -len(blocking_defects((attempt.qa_report or {}).get("defects"))),
             attempt.score,
             1 if attempt.status == "passed" else 0,
             # Same quality: the shorter CV reads better (noel: 10 vs 12 pages).

@@ -43,6 +43,9 @@ CONTENT_WARNING_CODES: dict[str, str] = {
     "content_language_not_french": "Contenu du CV en anglais (non traduit)",
     "broken_ligature": "Mot coupé par une ligature perdue",
     "content_missing_from_pdf": "Contenu du JSON absent du PDF",
+    # Lot 4 (lus sur le PDF rendu, bloquants : voir src/qa_defects.py)
+    "placeholder_printed": "« Non spécifié » ou valeur vide imprimé",
+    "page_furniture_printed": "Reste d'en-tête du CV source imprimé",
 }
 
 

@@ -212,6 +212,9 @@ DEFAULT_MAX_SKILL_ITEM_CHARS = 125
 # A section heading needs at least this many body lines under it on the same
 # page (or fewer when the section is shorter)...
 MIN_LINES_UNDER_HEADING = 2
+# Gap after each experience block, normal / compact spacing profile.
+EXPERIENCE_GAP = 13.0
+COMPACT_EXPERIENCE_GAP = 7.0
 # ...and an experience (date + role) at least this many body lines.
 MIN_EXPERIENCE_OPENER_LINES = 3
 # A paragraph (bullet) split across two pages keeps this many lines each side.
@@ -357,6 +360,11 @@ class Renderer:
             self.min_lines_under_heading,
             int(self.layout_options.get('min_experience_opener_lines', MIN_EXPERIENCE_OPENER_LINES)),
         )
+        # Spacing profile (lot 4, 2026-11): "compact" tightens line spacing and
+        # the gaps between blocks, never the font sizes. Tried as a layout
+        # variant when a CV can drop a page or a reviewer asks for fewer pages.
+        self.compact = str(self.layout_options.get('spacing') or '') == 'compact'
+        self.experience_gap = COMPACT_EXPERIENCE_GAP if self.compact else EXPERIENCE_GAP
         self.current_page_chars = 0
         # page number -> lowest y the experience flow may reach on that page
         # (tail balancing, see render_document).
@@ -391,6 +399,20 @@ class Renderer:
         # while preserving every item in the structured JSON.
         self.skill_inline = ParagraphStyle('skill_inline', parent=self.body, fontName='Poppins-Light', fontSize=7.85, leading=9.15, spaceAfter=1.5)
         self.desc = ParagraphStyle('desc', parent=self.body, fontName='Poppins-Light', fontSize=7.85, leading=9.55, spaceAfter=1.0)
+        if self.compact:
+            for style, leading, space_before, space_after in (
+                (self.body, 9.75, None, 0.8),
+                (self.bul, 9.6, None, 0.1),
+                (self.bul_cont, 9.6, None, 0.1),
+                (self.date, 10.6, 1.0, 0.6),
+                (self.role, 10.2, None, 0.6),
+                (self.sub, 9.9, 1.6, 0.3),
+                (self.desc, 9.2, None, 0.6),
+            ):
+                style.leading = leading
+                style.spaceAfter = space_after
+                if space_before is not None:
+                    style.spaceBefore = space_before
 
     def image_top(self, path: Path, x: float, y: float, w: float, h: float) -> None:
         self.c.drawImage(str(path), x, H - y - h, width=w, height=h, mask='auto', preserveAspectRatio=True)
@@ -830,7 +852,7 @@ class Renderer:
         if desc:
             # Keep the description below the job title with enough breathing room, then push skills down.
             skill_top = self.section_at('Description', lx, 188.0, lw, 11.2)
-            skill_top = self.para_at(desc, lx, skill_top - 2.0, lw, self.desc) + 35
+            skill_top = self.para_at(desc, lx, skill_top - 2.0, lw, self.desc) + (26 if self.compact else 35)
 
         # Skills
         sx1, sx2 = lx, lx + 174
@@ -848,7 +870,7 @@ class Renderer:
             fitted_skills, skill_overflow = self.split_skill_columns_for_page(skills, y1, self.content_bottom - 12)
             y1 = self.draw_skill_column(fitted_skills[0], sx1, y1, sw1)
             y2 = self.draw_skill_column(fitted_skills[1], sx2, y2, sw2)
-            exp_y = max(y1, y2) + 20
+            exp_y = max(y1, y2) + (14 if self.compact else 20)
         else:
             # Nothing left once the skills are cleaned (lot 2): no empty
             # "Compétences techniques" title, the experiences start here.
@@ -921,7 +943,7 @@ class Renderer:
                 self.drawp(html(block['role']), self.role)
             for sec in block['sections']:
                 self.render_section(sec)
-            self.y += 13
+            self.y += self.experience_gap
 
     # ------------------------------------------------------------ sidebar
 
@@ -1053,7 +1075,7 @@ class Renderer:
                     self.y += 4
                 for sec in entry['sections']:
                     self.render_section(sec)
-            self.y += 13
+            self.y += self.experience_gap
 
     def role_html(self, exp):
         role = exp.get('role', '')
@@ -1161,7 +1183,7 @@ class Renderer:
         for position, sec in enumerate(exp.get('sections', []) or []):
             if isinstance(sec, dict):
                 self.render_section(sec, opens_experience=position == 0)
-        self.y += 13
+        self.y += self.experience_gap
 
     def tail_balance_candidates(self, step: float = 20.0) -> list[dict[int, float]]:
         """Flow limits to try for the next-to-last page when the last page

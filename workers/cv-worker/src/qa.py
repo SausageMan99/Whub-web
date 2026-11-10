@@ -16,7 +16,8 @@ from .structuring import (
     WHUB_SKILL_CATEGORY_TAXONOMY,
 )
 from .skills_cleanup import CLEANUP_REPORT_KEY as SKILLS_CLEANUP_REPORT_KEY, cleanup_qa_warning
-from .content_finishing import content_qa_warnings
+from .content_finishing import content_qa_warnings, find_page_furniture_in_content, find_placeholders
+from .qa_defects import blocking_defects, collect_defects
 from .content_log import content_warnings as content_warnings_from_json
 
 CONTACT_PATTERNS = {
@@ -133,6 +134,11 @@ def classify_qa_report(report: dict) -> tuple[str, list[dict[str, Any]]]:
         return "draft", layout_issues
     if content_issues:
         return "failed", []
+    # Lot 4: a blocking defect of the rendered PDF (src/qa_defects.py) never
+    # passes; the worker retries, then delivers "à relire" or blocks.
+    blocking = blocking_defects(report.get("defects"))
+    if blocking:
+        return "draft", layout_issues + blocking
     return "passed", layout_issues
 
 
@@ -906,11 +912,35 @@ def _coverage_items(data: dict) -> list[tuple[str, str]]:
     return items
 
 
+def _words_in_order(key: str, words: list[str]) -> bool:
+    """Lot 4: the words of `key` appear in this order in the PDF, close to
+    each other (at most 3 PDF words per word of the key). A long skill item
+    is drawn in pieces by the renderer (split_skill_item_non_destructively):
+    present, not lost. Only used for keys of 4 words or more."""
+    tokens = key.split()
+    if len(tokens) < 4:
+        return False
+    span = 3 * len(tokens)
+    for start, word in enumerate(words):
+        if word != tokens[0]:
+            continue
+        position, found = start + 1, 1
+        limit = min(len(words), start + span)
+        while found < len(tokens) and position < limit:
+            if words[position] == tokens[found]:
+                found += 1
+            position += 1
+        if found == len(tokens):
+            return True
+    return False
+
+
 def collect_json_pdf_coverage(doc: fitz.Document, structured_data: dict | None) -> dict[str, Any] | None:
     """Per section: strings of the JSON found / missing in the PDF text."""
     if not isinstance(structured_data, dict):
         return None
     full, body = _coverage_pdf_texts(doc)
+    full_words = full.split()
     sections: dict[str, dict[str, Any]] = {
         name: {"total": 0, "present": 0, "missing": []} for name in COVERAGE_SECTIONS
     }
@@ -918,7 +948,7 @@ def collect_json_pdf_coverage(doc: fitz.Document, structured_data: dict | None) 
         entry = sections[section]
         entry["total"] += 1
         key = _coverage_norm(value)
-        if key in full or key in body:
+        if key in full or key in body or _words_in_order(key, full_words):
             entry["present"] += 1
         else:
             entry["missing"].append(re.sub(r"\s+", " ", value).strip()[:200])
@@ -941,6 +971,42 @@ def content_coverage_warning(coverage: dict[str, Any] | None) -> dict[str, Any] 
             for name, entry in coverage["sections"].items() for text in entry["missing"][:30]
         ],
     }
+
+
+# Lot 4 (2026-11): values that must never be printed. The finishing pass
+# removes them from the JSON; this check reads the rendered PDF as well.
+PRINTED_PLACEHOLDER_RE = re.compile(
+    r"\bnon\s+sp[ée]cifi[ée]e?s?\b|\bnon\s+renseign[ée]e?s?\b|\bnon\s+communiqu[ée]e?s?\b"
+    r"|(?<![\w/])n\s*/\s*a(?![\w/])|\(\s*[,;:.\-–—/]*\s*\)",
+    re.I,
+)
+
+
+def printed_content_warnings(pdf_text: str, structured_data: dict | None) -> list[dict[str, Any]]:
+    """Placeholders (« Non spécifié », « N/A », « () ») and leftovers of the
+    source page header/footer found in what the client reads."""
+    warnings: list[dict[str, Any]] = []
+    placeholders = [
+        re.sub(r"\s+", " ", match.group(0)).strip()
+        for line in (pdf_text or "").splitlines()
+        for match in PRINTED_PLACEHOLDER_RE.finditer(line)
+    ]
+    if isinstance(structured_data, dict):
+        placeholders.extend(find_placeholders(structured_data))
+    if placeholders:
+        warnings.append({
+            "code": "placeholder_printed",
+            "message": f"Valeur vide ou « Non spécifié » imprimée dans le CV ({len(placeholders)})",
+            "items": [{"text": text[:120]} for text in placeholders[:20]],
+        })
+    furniture = find_page_furniture_in_content(structured_data) if isinstance(structured_data, dict) else []
+    if furniture:
+        warnings.append({
+            "code": "page_furniture_printed",
+            "message": f"Reste d'en-tête ou de pied de page du CV source dans le CV ({len(furniture)})",
+            "items": [{"text": text[:120]} for text in furniture[:20]],
+        })
+    return warnings
 
 
 def find_text_overflow(
@@ -1019,6 +1085,7 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
     coverage_warning = content_coverage_warning(coverage)
     if coverage_warning:
         content_warnings.append(coverage_warning)
+    content_warnings.extend(printed_content_warnings(text, structured_data))
     image_sizes = []
     for page in doc:
         for img in page.get_images(full=True):
@@ -1048,6 +1115,11 @@ def run_qa(pdf_path: Path, forbidden_names: list[str] | None = None, source_text
         "has_logo": has_logo,
         "has_watermark": has_watermark,
     }
+    # Lot 4: every measure above classified blocking / warning / log
+    # (src/qa_defects.py). A blocking defect keeps the CV out of "passed".
+    report["defects"] = collect_defects(report, source_text, structured_data)
+    if blocking_defects(report["defects"]):
+        report["passed"] = False
     if not report["passed"]:
         raise QAError(report)
     return report
