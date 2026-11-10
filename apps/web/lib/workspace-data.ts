@@ -19,6 +19,8 @@ export type QueueItem = {
   updatedAt: string;
   versionCount: number;
   notesCount: number;
+  /** Défauts bloquants restés après les réessais automatiques (en tête des points). */
+  blockingCount: number;
   step: number;
   validatedBy: string | null;
 };
@@ -45,7 +47,7 @@ type RequestRow = {
   updated_at: string | null;
 };
 
-type VersionRow = WorkspaceVersion & { poste?: string | null; layout_issues?: unknown; soft_warnings?: unknown };
+type VersionRow = WorkspaceVersion & { poste?: string | null; layout_issues?: unknown; soft_warnings?: unknown; hard_blockers?: unknown; revision_pagination?: unknown };
 
 export async function loadQueue(): Promise<QueueItem[]> {
   const admin = createSupabaseAdminClient();
@@ -62,7 +64,7 @@ export async function loadQueue(): Promise<QueueItem[]> {
   const [{ data: versions }, { data: events }] = await Promise.all([
     admin
       .from("cv_versions")
-      .select("id,request_id,version_number,created_at,poste:structured_json->>title,layout_issues:qa_report->layout_issues,soft_warnings:qa_report->quality_report->soft_warnings")
+      .select("id,request_id,version_number,created_at,poste:structured_json->>title,layout_issues:qa_report->layout_issues,soft_warnings:qa_report->quality_report->soft_warnings,hard_blockers:qa_report->quality_report->hard_blockers,revision_pagination:qa_report->revision_pagination")
       .in("request_id", ids),
     admin
       .from("cv_events")
@@ -92,7 +94,13 @@ export async function loadQueue(): Promise<QueueItem[]> {
     const validation = currentValidation(evts, latest);
     const group = groupFor(r.status, Boolean(validation));
     if (!group) continue;
-    const notes = latest ? proofNotes({ layout_issues: latest.layout_issues, quality_report: { soft_warnings: latest.soft_warnings } }) : [];
+    const notes = latest
+      ? proofNotes({
+          layout_issues: latest.layout_issues,
+          revision_pagination: latest.revision_pagination,
+          quality_report: { soft_warnings: latest.soft_warnings, hard_blockers: latest.hard_blockers },
+        })
+      : [];
     items.push({
       id: r.id,
       prenom: r.candidate_first_name || "Sans prénom",
@@ -102,6 +110,7 @@ export async function loadQueue(): Promise<QueueItem[]> {
       updatedAt: r.updated_at || r.created_at,
       versionCount: numbered.length,
       notesCount: notes.length,
+      blockingCount: notes.filter((n) => n.blocking).length,
       step: currentStep(r.status, evts),
       validatedBy: validation?.by ?? null,
     });

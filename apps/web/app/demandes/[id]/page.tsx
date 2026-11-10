@@ -36,7 +36,7 @@ export default async function DemandePage({ params, searchParams }: Props) {
   const poste = (shown as { poste?: string | null } | null)?.poste?.trim() || null;
   const canDownload = Boolean(shown?.final_pdf_path) && request.status !== "qa_failed";
   const nextOrdinal = (latest?.ordinal ?? 0) + 1;
-  const reason = group === "bloque" ? blockedReason(request.status) : null;
+  const reason = group === "bloque" ? blockedReason(request.status, latest?.qa_report) : null;
   const downloadHref = shown ? `/requests/${id}/download/${shown.id}` : "#";
 
   const facts = (

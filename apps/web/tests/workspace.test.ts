@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  blockedReason,
   currentStep,
   currentValidation,
   groupFor,
   numberVersions,
   proofNotes,
+  reviewLine,
   shortAgo,
   stepLine,
   guessFirstName,
@@ -85,4 +87,76 @@ test("new CV — guesses the first name from the file name", () => {
   assert.equal(guessFirstName("CV_Ines_Martin.pdf"), "Ines");
   assert.equal(guessFirstName("CV-Thibaut-Chabert.pdf"), "Thibaut");
   assert.equal(guessFirstName("cv final (1).pdf"), "");
+});
+
+test("workspace — blocking defects come first, in French, with a correction to propose", () => {
+  const notes = proofNotes({
+    layout_issues: [{ code: "skills_too_dense", page: 1 }],
+    quality_report: {
+      hard_blockers: [
+        { code: "truncated_text", stage: "qa", content_loss: false, count: 1 },
+        { code: "heading_orphaned_at_page_bottom", stage: "qa", page: 2, content_loss: false },
+      ],
+      soft_warnings: [
+        { code: "future_end_date", stage: "qa" },
+        { code: "page_underfilled", stage: "qa", page: 2, fill: 0.52 },
+        { code: "last_page_nearly_empty", stage: "qa", page: 3, fill: 0.2 },
+        { code: "content_language_not_french", stage: "qa" },
+      ],
+    },
+  });
+  assert.deepEqual(notes.slice(0, 2).map((n) => [n.title, n.blocking]), [["Titre seul en bas de page", true], ["Phrase coupée", true]]);
+  assert.ok(notes.slice(2).every((n) => !n.blocking));
+  assert.match(notes[0].detail, /à corriger avant l’envoi/);
+  assert.equal(notes[1].fix?.label, "Reprendre le texte complet");
+  assert.ok(notes.some((n) => n.title === "Page peu remplie" && n.detail === "Remplie à 52 %." && n.fix));
+  assert.ok(notes.some((n) => n.title === "Dernière page presque vide" && n.page === 3));
+  assert.ok(notes.some((n) => n.title === "Date dans le futur"));
+  assert.ok(notes.some((n) => n.title === "CV en anglais" && n.fix?.text.includes("français")));
+  for (const n of notes) assert.doesNotMatch(`${n.title} ${n.detail}`, /_|Point à vérifier/);
+});
+
+test("workspace — every QA code of the worker has a French note", () => {
+  const codes = [
+    "content_missing_from_pdf", "text_overflow", "truncated_text", "page_nearly_empty", "heading_orphaned_at_page_bottom",
+    "placeholder_printed", "page_furniture_printed", "page_underfilled", "last_page_nearly_empty", "short_continuation",
+    "first_page_without_experience", "truncated_in_source", "future_end_date", "content_language_not_french",
+    "description_too_short", "company_field_sentence", "broken_ligature", "experience_order_unverified",
+    "prompt_source_truncated", "certification_kept_unverified", "skills_cleanup", "pagination_revision_applied",
+    "pagination_revision_not_possible",
+  ];
+  for (const code of codes) {
+    const [note] = proofNotes({ quality_report: { soft_warnings: [{ code, stage: "qa" }] } });
+    assert.notEqual(note.title, "Point à vérifier", code);
+  }
+  // qa_failed is an engine code, not a point for the reviewer.
+  assert.deepEqual(proofNotes({ quality_report: { hard_blockers: [{ code: "qa_failed", stage: "qa" }] } }), []);
+});
+
+test("workspace — a pagination request that cannot be applied says why", () => {
+  const message = "Impossible de passer sous 2 pages sans retirer de contenu : le texte remplit réellement les pages (100 % / 79 %).";
+  const notes = proofNotes({
+    revision_pagination: { goal: "fewer_pages", improved: false, message },
+    quality_report: { soft_warnings: [{ code: "pagination_revision_not_possible", stage: "layout", previous_pages: 2, new_pages: 2 }] },
+  });
+  assert.equal(notes[0].title, "Mise en page déjà au plus juste");
+  assert.equal(notes[0].detail, message);
+  assert.equal(notes[0].fix?.label, "Raccourcir le CV");
+  const applied = proofNotes({ quality_report: { soft_warnings: [{ code: "pagination_revision_applied", stage: "layout", previous_pages: 6, new_pages: 3 }] } });
+  assert.match(applied[0].detail, /6 page\(s\) avant, 3 maintenant/);
+});
+
+test("workspace — review table line counts defects to fix apart", () => {
+  assert.equal(reviewLine(2, 0, 0), "Version 2, aucun point signalé");
+  assert.equal(reviewLine(1, 3, 0), "Version 1, 3 points à vérifier");
+  assert.equal(reviewLine(3, 3, 1), "Version 3, 1 défaut à corriger, 2 points à vérifier");
+  assert.equal(reviewLine(1, 2, 2), "Version 1, 2 défauts à corriger");
+});
+
+test("workspace — lost content gets its own blocked reason", () => {
+  const lost = blockedReason("qa_failed", { quality_report: { hard_blockers: [{ code: "content_missing_from_pdf", content_loss: true }] } });
+  assert.equal(lost.title, "Du contenu manque dans le PDF");
+  assert.equal(lost.action, null);
+  assert.equal(blockedReason("qa_failed").title, "Le contrôle a bloqué le PDF");
+  assert.equal(blockedReason("qa_failed", { quality_report: { hard_blockers: [{ code: "truncated_text" }] } }).title, "Le contrôle a bloqué le PDF");
 });

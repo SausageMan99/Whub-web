@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { QueueItem } from "@/lib/workspace-data";
-import { GROUPS, shortAgo, stepLine } from "@/lib/workspace";
+import { GROUPS, reviewLine, shortAgo, stepLine } from "@/lib/workspace";
 import { IconSearch } from "./icons";
 
 const VISIBLE_PER_GROUP = 8;
@@ -12,11 +12,12 @@ const VISIBLE_PER_GROUP = 8;
 function subline(item: QueueItem) {
   if (item.group === "fab") return stepLine(item.step);
   if (item.group === "bloque") {
+    if (item.status === "qa_failed" && item.blockingCount) return "Contenu absent du PDF, à corriger";
     return item.status === "needs_human_review" ? "CV source illisible" : item.status === "qa_failed" ? "PDF bloqué par le contrôle" : "Mise au format en échec";
   }
   const version = `Version ${item.versionCount || 1}`;
   if (item.group === "pret") return item.validatedBy ? `${version}, validée par ${item.validatedBy}` : `${version}, validée`;
-  return item.notesCount ? `${version}, ${item.notesCount} point${item.notesCount > 1 ? "s" : ""} à vérifier` : `${version}, aucun point signalé`;
+  return reviewLine(item.versionCount, item.notesCount, item.blockingCount);
 }
 
 export function QueueList({ items }: { items: QueueItem[] }) {

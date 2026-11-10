@@ -212,11 +212,11 @@ export function ProofDesk({
             <p>Le contrôle a relevé ces détails. Rien n’a été inventé : vérifie-les avant l’envoi au client.</p>
             <ul className="qa">
               {notes.map((note, i) => (
-                <li key={note.key} className={active === note.key ? "on" : undefined} onMouseEnter={() => setActive(note.key)} onMouseLeave={() => setActive(null)}>
+                <li key={note.key} className={[active === note.key ? "on" : "", note.blocking ? "blocking" : ""].filter(Boolean).join(" ") || undefined} onMouseEnter={() => setActive(note.key)} onMouseLeave={() => setActive(null)}>
                   <button type="button" className="note" onClick={() => setActive((a) => (a === note.key ? null : note.key))} aria-pressed={active === note.key}>
                     <span className="n" aria-hidden="true">{i + 1}</span>
                     <span>
-                      <strong>{note.title}</strong>
+                      <strong>{note.blocking && <em className="tag-bloquant">À corriger</em>}{note.title}</strong>
                       <small>{note.page ? `Page ${note.page}. ` : ""}{note.detail}</small>
                     </span>
                   </button>

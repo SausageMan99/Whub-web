@@ -192,6 +192,8 @@ button, input, textarea { font: inherit; color: inherit; }
 .qa .n { width: 22px; height: 22px; border-radius: 50%; background: var(--whub); color: #fff; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
 .qa strong { display: block; font-size: 14px; font-weight: 600; }
 .qa small { display: block; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
+.qa li.blocking .n { background: var(--bloque); }
+.qa .tag-bloquant { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: var(--bloque-bg); color: var(--bloque); font-size: 12px; font-style: normal; font-weight: 600; }
 .qa .fix { display: inline-flex; margin: 0 0 6px 42px; padding: 4px 10px; border: 1px solid var(--whub); border-radius: 999px; background: var(--paper); color: var(--whub); font-size: 13px; font-weight: 600; cursor: pointer; }
 .qa .fix:hover { background: var(--whub); color: #fff; }
 .ok { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); margin: 8px 0 0; }
